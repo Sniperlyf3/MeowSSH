@@ -1,0 +1,26 @@
+# Build output
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+artifacts/
+*.user
+*.suo
+
+# Test + coverage
+[Tt]est[Rr]esult*/
+coverage*.xml
+coverage*.json
+*.trx
+
+# Tooling
+.vs/
+.vscode/
+.idea/
+node_modules/
+.playwright/
+
+# Local secrets and vaults -- never commit either
+*.meowvault
+appsettings.Local.json
+local.settings.json

@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/MeowSSH.Core/MeowSSH.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/MeowSSH.Core.Tests/MeowSSH.Core.Tests.csproj" />
+  </Folder>
+</Solution>

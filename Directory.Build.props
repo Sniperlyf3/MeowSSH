@@ -1,0 +1,32 @@
+<Project>
+
+  <PropertyGroup>
+    <TargetFramework Condition="'$(TargetFramework)' == '' and '$(TargetFrameworks)' == ''">net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <!--
+    A vault app has no business shipping a build that produced warnings: the
+    analyzers catch exactly the mistakes that matter here (a disposed buffer used
+    after free, an async path without a cancellation token, a nullable secret
+    dereferenced). Treating them as errors keeps them from accumulating.
+  -->
+  <PropertyGroup>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- Undocumented public member: the docs that matter are written by hand, not enforced by count. -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <Authors>Sniperlyf3</Authors>
+    <Product>MeowSSH</Product>
+    <Copyright>Copyright (c) Sniperlyf3</Copyright>
+  </PropertyGroup>
+
+</Project>
