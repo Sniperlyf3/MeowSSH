@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="@Theme">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>MeowSSH</title>
+    <base href="/" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" />
+    <link rel="stylesheet" href="_content/MeowSSH.UI/css/meowssh.css" />
+    <HeadOutlet />
+</head>
+<body>
+    <Routes />
+    <script src="_framework/blazor.web.js"></script>
+</body>
+</html>
+
+@code {
+    /// <summary>
+    /// Lets a test pin the theme with <c>?theme=light</c> so both palettes can be
+    /// screenshotted deterministically, rather than depending on the CI browser's
+    /// colour-scheme preference.
+    /// </summary>
+    [CascadingParameter] private HttpContext? HttpContext { get; set; }
+
+    private string? Theme => HttpContext?.Request.Query["theme"] is { Count: > 0 } value
+        && (value == "light" || value == "dark") ? value.ToString() : null;
+}

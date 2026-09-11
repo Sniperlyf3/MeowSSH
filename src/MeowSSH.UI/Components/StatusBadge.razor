@@ -1,0 +1,22 @@
+<span class="badge badge--@Variant">
+    @if (ShowDot)
+    {
+        <span class="badge__dot"></span>
+    }
+    @Label
+</span>
+
+@code {
+    [Parameter, EditorRequired] public string Label { get; set; } = "";
+    [Parameter] public string Variant { get; set; } = "neutral";
+    [Parameter] public bool ShowDot { get; set; }
+
+    /// <summary>Maps a connection state onto the badge that describes it.</summary>
+    public static (string Label, string Variant) ForState(ConnectionState state) => state switch
+    {
+        ConnectionState.Connected => ("Connected", "ok"),
+        ConnectionState.Connecting => ("Connecting", "warn"),
+        ConnectionState.Error => ("Failed", "danger"),
+        _ => ("", "neutral"),
+    };
+}

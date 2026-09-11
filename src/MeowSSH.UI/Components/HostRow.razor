@@ -1,0 +1,68 @@
+<button type="button" class="host @StateClass" @onclick="OnActivate" data-testid="host-row" data-host-id="@Status.Host.Id">
+    <span class="host__rail"></span>
+
+    <span class="host__glyph" aria-hidden="true">@Status.Host.Initials</span>
+
+    <span class="host__detail">
+        <span class="host__name">@Status.Host.Label</span>
+        @if (Status.State == ConnectionState.Error && Status.Detail is not null)
+        {
+            <span class="host__reason">@Status.Detail</span>
+        }
+        else
+        {
+            <span class="host__address">@Status.Host.DisplayAddress</span>
+        }
+    </span>
+
+    <span class="host__meta">
+        @if (Latency is not null)
+        {
+            <span class="transport">@Latency</span>
+        }
+        @if (Badge is not null)
+        {
+            <StatusBadge Label="@Badge.Value.Label" Variant="@Badge.Value.Variant" ShowDot="true" />
+        }
+        else
+        {
+            <span class="transport">@TransportLabel</span>
+        }
+    </span>
+</button>
+
+@code {
+    [Parameter, EditorRequired] public HostStatus Status { get; set; } = default!;
+    [Parameter] public EventCallback<HostRecord> OnSelected { get; set; }
+
+    private string StateClass => Status.State switch
+    {
+        ConnectionState.Connected => "host--connected",
+        ConnectionState.Connecting => "host--connecting",
+        ConnectionState.Error => "host--error",
+        _ => "",
+    };
+
+    private (string Label, string Variant)? Badge
+    {
+        get
+        {
+            var (label, variant) = StatusBadge.ForState(Status.State);
+            return string.IsNullOrEmpty(label) ? null : (label, variant);
+        }
+    }
+
+    // Only a connected host's latency earns space beside the badge. A failure
+    // reason goes in the detail column instead: it describes the host, it is far
+    // longer, and putting it here crushed the label it was meant to explain.
+    private string? Latency => Status.State == ConnectionState.Connected ? Status.Detail : null;
+
+    private string TransportLabel => Status.Host.Transport switch
+    {
+        SshTransport.Tailcat => "tailcat",
+        SshTransport.TailscaleSsh => "tailnet",
+        _ => $"ssh:{Status.Host.Port}",
+    };
+
+    private Task OnActivate() => OnSelected.InvokeAsync(Status.Host);
+}

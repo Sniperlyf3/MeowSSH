@@ -1,0 +1,81 @@
+@inject IHostDirectory Directory
+@implements IDisposable
+
+<AppShell Title="Hosts" ActiveTab="hosts">
+    <Actions>
+        <button type="button" class="btn btn--icon" aria-label="Search hosts" data-testid="search">
+            <Icon Name="search" />
+        </button>
+        <button type="button" class="btn btn--icon" aria-label="Add host" data-testid="add-host">
+            <Icon Name="plus" />
+        </button>
+    </Actions>
+
+    <ChildContent>
+        @if (_hosts is null)
+        {
+            <p class="visually-hidden" role="status">Loading hosts</p>
+        }
+        else if (_hosts.Count == 0)
+        {
+            <div class="empty" data-testid="empty-state">
+                <span class="empty__glyph"><Icon Name="terminal" /></span>
+                <p class="empty__title">No hosts yet</p>
+                <p class="empty__body">
+                    Add a server you connect to over SSH, or paste a tailcat address to reach
+                    a machine that has no open port at all.
+                </p>
+                <button type="button" class="btn btn--primary">
+                    <Icon Name="plus" /> Add your first host
+                </button>
+            </div>
+        }
+        else
+        {
+            @foreach (var group in Grouped(_hosts))
+            {
+                <h2 class="section-label">
+                    @group.Key
+                    <span class="section-label__count">@group.Count()</span>
+                </h2>
+                <div class="host-list" data-testid="host-list">
+                    @foreach (var status in group)
+                    {
+                        <HostRow Status="status" OnSelected="Connect" />
+                    }
+                </div>
+            }
+        }
+    </ChildContent>
+</AppShell>
+
+@code {
+    private IReadOnlyList<HostStatus>? _hosts;
+
+    [Parameter] public EventCallback<HostRecord> OnHostSelected { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        Directory.Changed += OnDirectoryChanged;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync() => _hosts = await Directory.GetHostsAsync();
+
+    private void OnDirectoryChanged(object? sender, EventArgs e) =>
+        _ = InvokeAsync(async () => { await LoadAsync(); StateHasChanged(); });
+
+    private Task Connect(HostRecord host) => OnHostSelected.InvokeAsync(host);
+
+    // Connected hosts first: a session already running is what the user is most
+    // likely coming back to, and burying it under an alphabetical list makes them
+    // hunt for the one row that is actually live.
+    private static IEnumerable<IGrouping<string, HostStatus>> Grouped(IReadOnlyList<HostStatus> hosts) =>
+        hosts
+            .OrderBy(h => h.State == ConnectionState.Connected ? 0 : 1)
+            .ThenBy(h => h.Host.Label, StringComparer.OrdinalIgnoreCase)
+            .GroupBy(h => h.State == ConnectionState.Connected ? "Active sessions" : "All hosts")
+            .OrderBy(g => g.Key == "Active sessions" ? 0 : 1);
+
+    public void Dispose() => Directory.Changed -= OnDirectoryChanged;
+}

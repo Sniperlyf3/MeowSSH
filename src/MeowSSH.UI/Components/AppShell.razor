@@ -1,0 +1,42 @@
+<div class="app">
+    <header class="topbar">
+        <h1 class="topbar__title">@Title</h1>
+        <div class="topbar__actions">@Actions</div>
+    </header>
+
+    <main class="app__body" data-testid="app-body">
+        @ChildContent
+    </main>
+
+    <nav class="tabbar" aria-label="Main">
+        @foreach (var tab in Tabs)
+        {
+            <button type="button"
+                    class="tabbar__tab @(tab.Id == ActiveTab ? "is-active" : "")"
+                    aria-current="@(tab.Id == ActiveTab ? "page" : null)"
+                    data-testid="tab-@tab.Id"
+                    @onclick="() => OnTabSelected.InvokeAsync(tab.Id)">
+                <Icon Name="@tab.Icon" />
+                @tab.Label
+            </button>
+        }
+    </nav>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter] public RenderFragment? Actions { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string ActiveTab { get; set; } = "hosts";
+    [Parameter] public EventCallback<string> OnTabSelected { get; set; }
+
+    private sealed record Tab(string Id, string Label, string Icon);
+
+    private static readonly Tab[] Tabs =
+    [
+        new("hosts", "Hosts", "terminal"),
+        new("files", "Files", "folder"),
+        new("keys", "Keys", "key"),
+        new("settings", "Settings", "settings"),
+    ];
+}

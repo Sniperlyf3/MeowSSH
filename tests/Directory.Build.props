@@ -1,0 +1,21 @@
+<Project>
+
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <!--
+    Rules that fight test conventions rather than catching defects. Everything
+    else, including the analyzers that matter for correctness, still fails the
+    build here exactly as it does in src.
+  -->
+  <PropertyGroup>
+    <!-- CA1711: xUnit's own collection-fixture pattern requires the "Collection" suffix. -->
+    <!-- CA1707: test names read as sentences, and underscores are how they stay readable. -->
+    <NoWarn>$(NoWarn);CA1711;CA1707</NoWarn>
+  </PropertyGroup>
+
+</Project>

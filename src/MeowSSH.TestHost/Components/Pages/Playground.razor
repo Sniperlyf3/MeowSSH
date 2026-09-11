@@ -1,0 +1,43 @@
+@page "/"
+@page "/hosts"
+@using MeowSSH.UI.Pages
+@* Without an explicit render mode the page is statically rendered: it looks
+   right but no button does anything, so every interaction test fails. *@
+@rendermode InteractiveServer
+
+@*
+    The Linux-runnable face of the app. It mounts the same components the Android
+    build does, against fakes, so Playwright can drive real flows in CI without an
+    emulator. Query parameters pick the scenario, which keeps each test a plain
+    navigation rather than a setup script.
+*@
+
+@if (RendererInfo.IsInteractive)
+{
+    @* Marks the circuit as live. Until this appears the markup is server-rendered
+       only: it looks finished but no handler is wired, so a click does nothing. *@
+    <span data-testid="interactive" hidden></span>
+}
+
+@if (_unlocked)
+{
+    <HostsPage OnHostSelected="OnHostSelected" />
+}
+else
+{
+    <VaultLockScreen OnUnlocked="() => _unlocked = true" />
+}
+
+@code {
+    [Inject] private NavigationManager Navigation { get; set; } = default!;
+
+    private bool _unlocked;
+
+    protected override void OnInitialized()
+    {
+        var query = new Uri(Navigation.Uri).Query;
+        _unlocked = !query.Contains("locked", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void OnHostSelected(HostRecord host) { /* Terminal view lands next. */ }
+}

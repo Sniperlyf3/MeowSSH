@@ -1,0 +1,166 @@
+/*
+  MeowSSH design tokens.
+
+  The palette runs cool everywhere except the accent: neutrals carry a slight
+  blue bias toward the ground they sit on, and the one warm colour -- apricot --
+  is reserved for the thing the user is meant to act on. Terminal apps default to
+  green-on-black; this one deliberately does not, because the green channel is
+  worth more as a status signal than as decoration.
+
+  Dark is the primary design. An SSH client is used in dim rooms and at night,
+  and the terminal itself is a dark surface, so the app is built around that and
+  adapts to light rather than the other way round.
+*/
+
+:root {
+  color-scheme: dark light;
+
+  /* Ground and surfaces ------------------------------------------------ */
+  --ground: #0b0e13;
+  --surface: #12171f;
+  --surface-raised: #1a2029;
+  --surface-sunken: #080a0e;
+  --overlay: rgb(4 6 9 / 72%);
+
+  /* Lines -------------------------------------------------------------- */
+  --border: #242c38;
+  --border-strong: #323d4c;
+
+  /* Text --------------------------------------------------------------- */
+  --text: #e7ebf2;
+  --text-muted: #8b95a7;
+  --text-faint: #5d6676;
+  --text-on-accent: #1a0d05;
+
+  /* Accent: the one warm colour, spent only on the primary action ------ */
+  --accent: #ff8a5b;
+  --accent-hover: #ff9d75;
+  --accent-sunken: #e5713f;
+  --accent-wash: rgb(255 138 91 / 12%);
+  --accent-line: rgb(255 138 91 / 34%);
+
+  /* Semantic status: separate from the accent, never interchangeable --- */
+  --ok: #3fbf8f;
+  --ok-wash: rgb(63 191 143 / 13%);
+  --warn: #e3b341;
+  --warn-wash: rgb(227 179 65 / 13%);
+  --danger: #f2555a;
+  --danger-wash: rgb(242 85 90 / 13%);
+  --info: #59a9ff;
+  --info-wash: rgb(89 169 255 / 13%);
+
+  /* Type --------------------------------------------------------------- */
+  --font-ui: "Instrument Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Mono", Menlo, monospace;
+
+  --text-xs: 0.6875rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.9375rem;
+  --text-lg: 1.0625rem;
+  --text-xl: 1.3125rem;
+  --text-2xl: 1.625rem;
+  --text-3xl: 2rem;
+
+  /* Space: a 4px base, named by role rather than size ------------------ */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+
+  /* Shape: spent by role, not stamped on everything -------------------- */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-full: 999px;
+
+  --shadow-sheet: 0 -8px 32px rgb(0 0 0 / 44%);
+  --shadow-pop: 0 8px 24px rgb(0 0 0 / 38%);
+
+  --ring: 0 0 0 2px var(--ground), 0 0 0 4px var(--accent);
+
+  /* Chrome ------------------------------------------------------------- */
+  --topbar-height: 3.5rem;
+  --tabbar-height: 3.75rem;
+  --content-max: 34rem;
+}
+
+/*
+  Light theme. The bare :root above is the dark palette, so light is the
+  override -- declared twice so both routes win: once for a light OS with no
+  explicit choice, once for an explicit light choice on a dark OS.
+*/
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+
+    --ground: #f7f8fa;
+    --surface: #ffffff;
+    --surface-raised: #ffffff;
+    --surface-sunken: #eceef3;
+    --overlay: rgb(16 20 27 / 42%);
+
+    --border: #e0e4eb;
+    --border-strong: #c6cdd8;
+
+    --text: #121820;
+    --text-muted: #5c6675;
+    --text-faint: #8b94a2;
+    --text-on-accent: #2a1105;
+
+    --accent: #e0632f;
+    --accent-hover: #c9531f;
+    --accent-sunken: #a94319;
+    --accent-wash: rgb(224 99 47 / 10%);
+    --accent-line: rgb(224 99 47 / 28%);
+
+    --ok: #128a5f;
+    --ok-wash: rgb(18 138 95 / 11%);
+    --warn: #9a6f06;
+    --warn-wash: rgb(154 111 6 / 12%);
+    --danger: #cf2f34;
+    --danger-wash: rgb(207 47 52 / 10%);
+    --info: #1f6fd0;
+    --info-wash: rgb(31 111 208 / 11%);
+
+    --shadow-sheet: 0 -8px 32px rgb(18 24 32 / 14%);
+    --shadow-pop: 0 8px 24px rgb(18 24 32 / 12%);
+  }
+}
+
+[data-theme="light"] {
+  --ground: #f7f8fa;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-sunken: #eceef3;
+  --overlay: rgb(16 20 27 / 42%);
+
+  --border: #e0e4eb;
+  --border-strong: #c6cdd8;
+
+  --text: #121820;
+  --text-muted: #5c6675;
+  --text-faint: #8b94a2;
+  --text-on-accent: #2a1105;
+
+  --accent: #e0632f;
+  --accent-hover: #c9531f;
+  --accent-sunken: #a94319;
+  --accent-wash: rgb(224 99 47 / 10%);
+  --accent-line: rgb(224 99 47 / 28%);
+
+  --ok: #128a5f;
+  --ok-wash: rgb(18 138 95 / 11%);
+  --warn: #9a6f06;
+  --warn-wash: rgb(154 111 6 / 12%);
+  --danger: #cf2f34;
+  --danger-wash: rgb(207 47 52 / 10%);
+  --info: #1f6fd0;
+  --info-wash: rgb(31 111 208 / 11%);
+
+  --shadow-sheet: 0 -8px 32px rgb(18 24 32 / 14%);
+  --shadow-pop: 0 8px 24px rgb(18 24 32 / 12%);
+}

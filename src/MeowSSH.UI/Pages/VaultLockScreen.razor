@@ -1,0 +1,136 @@
+@inject IVaultSession Vault
+@implements IDisposable
+
+<div class="lock" data-testid="lock-screen">
+    <div class="lock__panel">
+        <div class="lock__mark @(_needsRecovery ? "lock__mark--alert" : "")" aria-hidden="true">
+            <Icon Name="@(_needsRecovery ? "alert" : "lock")" />
+        </div>
+
+        <div class="lock__copy">
+            <h1 class="lock__title">@Title</h1>
+            <p class="lock__body">@Body</p>
+        </div>
+
+        @if (_error is not null)
+        {
+            <p class="lock__error" role="alert" data-testid="unlock-error">@_error</p>
+        }
+
+        @if (_showRecovery)
+        {
+            <div class="lock__form">
+                <label class="field">
+                    <span class="field__label">Recovery code</span>
+                    <input class="field__input mono"
+                           type="text"
+                           inputmode="latin"
+                           autocomplete="off"
+                           autocapitalize="characters"
+                           spellcheck="false"
+                           placeholder="XXXX-XXXX-XXXX-XXXX"
+                           data-testid="recovery-input"
+                           @bind="_recoveryCode"
+                           @bind:event="oninput" />
+                    <span class="field__hint">The code you wrote down when you set up the vault.</span>
+                </label>
+
+                <button type="button" class="btn btn--primary btn--block"
+                        disabled="@(_busy || !RecoveryCodeLooksComplete)"
+                        data-testid="submit-recovery"
+                        @onclick="UnlockWithRecoveryCode">
+                    @(_busy ? "Unlocking…" : "Unlock vault")
+                </button>
+
+                @if (!_needsRecovery)
+                {
+                    <button type="button" class="btn btn--ghost btn--block" @onclick="() => _showRecovery = false">
+                        Back
+                    </button>
+                }
+            </div>
+        }
+        else
+        {
+            <div class="lock__form">
+                <button type="button" class="btn btn--primary btn--block"
+                        disabled="@_busy" data-testid="unlock-biometric" @onclick="UnlockWithBiometrics">
+                    <Icon Name="fingerprint" />
+                    @(_busy ? "Waiting…" : "Unlock with biometrics")
+                </button>
+
+                <button type="button" class="btn btn--ghost btn--block"
+                        data-testid="use-recovery" @onclick="() => _showRecovery = true">
+                    Use recovery code instead
+                </button>
+            </div>
+        }
+
+        <p class="lock__footnote">
+            <Icon Name="shield" />
+            Hosts, keys and passwords stay encrypted on this device.
+        </p>
+    </div>
+</div>
+
+@code {
+    private bool _busy;
+    private bool _showRecovery;
+    private string _recoveryCode = "";
+    private string? _error;
+
+    [Parameter] public EventCallback OnUnlocked { get; set; }
+
+    private bool _needsRecovery => Vault.State == VaultState.NeedsRecovery;
+
+    private bool RecoveryCodeLooksComplete => RecoveryCode.IsWellFormed(_recoveryCode);
+
+    private string Title => _needsRecovery ? "Biometric unlock unavailable" : "MeowSSH is locked";
+
+    private string Body => _needsRecovery
+        // Say what happened and why it is not a malfunction. A user who thinks the
+        // app has lost their data will uninstall it; one who understands the check
+        // did its job will reach for the code.
+        ? "This device's fingerprints or face data changed, so the key guarding your vault was retired automatically. That is the protection working. Enter your recovery code to get back in."
+        : "Unlock to reach your saved hosts and keys.";
+
+    protected override void OnInitialized()
+    {
+        Vault.StateChanged += OnVaultStateChanged;
+        if (_needsRecovery) _showRecovery = true;
+    }
+
+    private void OnVaultStateChanged(object? sender, EventArgs e) => _ = InvokeAsync(StateHasChanged);
+
+    private async Task UnlockWithBiometrics()
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            var result = await Vault.UnlockAsync();
+            if (result.Succeeded) await OnUnlocked.InvokeAsync();
+            else
+            {
+                _error = result.Message;
+                if (result.State == VaultState.NeedsRecovery) _showRecovery = true;
+            }
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task UnlockWithRecoveryCode()
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            var result = await Vault.UnlockWithRecoveryCodeAsync(_recoveryCode);
+            if (result.Succeeded) await OnUnlocked.InvokeAsync();
+            else _error = result.Message;
+        }
+        finally { _busy = false; }
+    }
+
+    public void Dispose() => Vault.StateChanged -= OnVaultStateChanged;
+}
