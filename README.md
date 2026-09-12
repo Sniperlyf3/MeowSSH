@@ -14,12 +14,23 @@ the terminal, file manager and Android host are next.
 
 | Area | State |
 | --- | --- |
-| Vault: key hierarchy, sealing, backups, recovery codes | Done, 57 tests |
-| Host list and vault unlock UI | Done, 12 end-to-end tests |
-| Meowshell agent integration | Next |
-| Terminal (xterm.js) | Next |
-| SFTP file manager | Planned |
+| Vault: key hierarchy, sealing, backups, recovery codes | Done |
+| Host list and vault unlock UI | Done |
+| Terminal (xterm.js), key bar, live resize | Done |
+| SSH engine over Meowshell's agent | Done, proven against real OpenSSH |
+| Trust-on-first-use for new hosts | Blocked — see below |
+| SFTP file manager | Next |
 | Android app host | Planned |
+
+**99 tests**: 74 unit, 20 browser end-to-end, 5 against a real `sshd`.
+
+### Known gap: first connections to new hosts
+
+`MeowshellAgentConnection` completes its handshake inside `ConnectAsync` and
+exposes prompts as instance events, so a caller cannot subscribe before the host
+key question is asked. A host absent from `known_hosts` therefore fails rather
+than prompting. `docs/specs/meowshell-prehandshake-prompts.md` specifies the fix.
+Connections to already-known hosts, and the host-key-changed warning, work.
 
 ## How it is put together
 
@@ -65,9 +76,14 @@ Requires the .NET 10 SDK.
 
 ```sh
 dotnet build
-dotnet test tests/MeowSSH.Core.Tests     # unit tests
-dotnet test tests/MeowSSH.UI.Tests       # Playwright end-to-end tests
+dotnet test tests/MeowSSH.Core.Tests          # unit tests
+dotnet test tests/MeowSSH.UI.Tests            # Playwright end-to-end tests
+sudo -E dotnet test tests/MeowSSH.Integration.Tests   # against a real sshd
 ```
+
+The integration tests start their own OpenSSH server on a free port with its own
+host key, and skip where `sshd` is not installed. They need root to create the
+test user and start the daemon.
 
 To see the UI without an Android device:
 

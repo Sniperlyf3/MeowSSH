@@ -28,6 +28,15 @@ jobs:
       - name: Unit tests
         run: dotnet test tests/MeowSSH.Core.Tests --no-build --configuration Release --logger "trx;LogFileName=core.trx"
 
+      # Against a real OpenSSH server over a real socket. Nothing else catches a
+      # wrong signature byte, a mis-negotiated terminal mode, or a host key
+      # policy that trusts more than it should.
+      - name: Install OpenSSH server
+        run: sudo apt-get update && sudo apt-get install -y openssh-server
+
+      - name: SSH engine integration tests
+        run: sudo -E env "PATH=$PATH" dotnet test tests/MeowSSH.Integration.Tests --no-build --configuration Release --logger "trx;LogFileName=integration.trx"
+
       # The UI is Razor components in a WebView, so the same components that ship
       # to Android run in a browser. That is what lets the interaction tests run
       # here at all -- no emulator, no device farm.

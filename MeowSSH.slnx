@@ -6,6 +6,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/MeowSSH.Core.Tests/MeowSSH.Core.Tests.csproj" />
+    <Project Path="tests/MeowSSH.Integration.Tests/MeowSSH.Integration.Tests.csproj" />
     <Project Path="tests/MeowSSH.UI.Tests/MeowSSH.UI.Tests.csproj" />
   </Folder>
 </Solution>

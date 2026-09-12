@@ -12,11 +12,16 @@ namespace MeowSSH.Core.Ssh;
 public interface ISshEngine
 {
     /// <summary>
-    /// Connects to <paramref name="host"/>, calling back into
-    /// <paramref name="prompts"/> for anything only the user can answer.
+    /// Connects to <paramref name="host"/> offering <paramref name="credentials"/>,
+    /// calling back into <paramref name="prompts"/> for anything only the user can
+    /// answer.
     /// </summary>
     /// <exception cref="SshException">The connection could not be established.</exception>
-    Task<ISshConnection> ConnectAsync(HostRecord host, ISshPrompts prompts, CancellationToken cancellationToken = default);
+    Task<ISshConnection> ConnectAsync(
+        HostRecord host,
+        SshCredentials credentials,
+        ISshPrompts prompts,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>
