@@ -1,0 +1,27 @@
+@using MeowSSH.Core.Ssh
+
+<div class="session" data-testid="session">
+    <header class="topbar">
+        <button type="button" class="btn btn--icon" aria-label="Back to hosts"
+                data-testid="session-back" @onclick="OnClose">
+            <Icon Name="back" />
+        </button>
+
+        <span class="session__title">
+            <span class="session__host">@Host.Label</span>
+            <span class="session__address">@Host.DisplayAddress</span>
+        </span>
+
+        <StatusBadge Label="Connected" Variant="ok" ShowDot="true" />
+    </header>
+
+    <TerminalView Shell="Shell" />
+</div>
+
+@code {
+    [Parameter, EditorRequired] public HostRecord Host { get; set; } = default!;
+    [Parameter, EditorRequired] public ISshShell Shell { get; set; } = default!;
+    [Parameter] public EventCallback OnClosed { get; set; }
+
+    private Task OnClose() => OnClosed.InvokeAsync();
+}

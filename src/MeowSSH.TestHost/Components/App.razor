@@ -10,10 +10,16 @@
     <link rel="stylesheet"
           href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" />
     <link rel="stylesheet" href="_content/MeowSSH.UI/css/meowssh.css" />
+    @* xterm ships its own stylesheet; without it the terminal renders with
+       broken metrics, not merely unstyled. Served from the app, not a CDN --
+       see wwwroot/vendor/xterm/README.md. *@
+    <link rel="stylesheet" href="_content/MeowSSH.UI/vendor/xterm/xterm.css" />
     <HeadOutlet />
 </head>
 <body>
     <Routes />
+    <script src="_content/MeowSSH.UI/vendor/xterm/xterm.js"></script>
+    <script src="_content/MeowSSH.UI/vendor/xterm/addon-fit.js"></script>
     <script src="_framework/blazor.web.js"></script>
 </body>
 </html>

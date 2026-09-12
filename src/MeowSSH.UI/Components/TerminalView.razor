@@ -1,0 +1,175 @@
+@using MeowSSH.Core.Ssh
+@implements IAsyncDisposable
+@inject IJSRuntime Js
+
+<div class="terminal" data-testid="terminal">
+    <div class="terminal__surface" id="@_elementId"></div>
+
+    @* A phone keyboard has no Ctrl, Esc, Tab or arrows, and a shell is unusable
+       without them. This bar is not a convenience; it is what makes the terminal
+       usable on the device the app actually ships to. *@
+    <div class="keybar" role="toolbar" aria-label="Terminal keys" data-testid="keybar">
+        @* aria-pressed is bound as an explicit string: given a bool, Blazor emits
+           it as a boolean attribute, and ARIA needs the literal "true"/"false"
+           for a screen reader to announce whether the latch is armed. *@
+        <button type="button" class="keybar__key @(_ctrlArmed ? "is-armed" : "")"
+                aria-pressed="@(_ctrlArmed ? "true" : "false")"
+                data-testid="key-ctrl" @onclick="ToggleCtrl">Ctrl</button>
+        @foreach (var key in QuickKeys)
+        {
+            <button type="button" class="keybar__key" data-testid="key-@key.Id"
+                    @onclick="() => SendKeyAsync(key)">@key.Label</button>
+        }
+    </div>
+</div>
+
+@code {
+    private readonly string _elementId = $"term-{Guid.NewGuid():N}";
+    private IJSObjectReference? _module;
+    private DotNetObjectReference<TerminalView>? _self;
+    private bool _ctrlArmed;
+
+    // Output that arrived before the terminal existed to draw it. Loading the JS
+    // module is asynchronous, and a server sends its banner and MOTD the instant
+    // the shell opens -- without this, the first thing the user is told is the
+    // first thing thrown away.
+    private readonly List<byte[]> _pendingOutput = [];
+    private bool _terminalReady;
+
+    [Parameter, EditorRequired] public ISshShell Shell { get; set; } = default!;
+
+    private sealed record QuickKey(string Id, string Label, byte[] Bytes);
+
+    private const byte Escape = 0x1b;
+
+    private static readonly QuickKey[] QuickKeys =
+    [
+        new("esc", "Esc", [Escape]),
+        new("tab", "Tab", [0x09]),
+        new("up", "↑", [Escape, (byte)'[', (byte)'A']),
+        new("down", "↓", [Escape, (byte)'[', (byte)'B']),
+        new("left", "←", [Escape, (byte)'[', (byte)'D']),
+        new("right", "→", [Escape, (byte)'[', (byte)'C']),
+    ];
+
+    protected override void OnInitialized() => Shell.OutputReceived += OnOutput;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        _module = await Js.InvokeAsync<IJSObjectReference>("import", "./_content/MeowSSH.UI/js/terminal.js");
+        _self = DotNetObjectReference.Create(this);
+
+        var size = await _module.InvokeAsync<TerminalSize>("create", _elementId, _self, new
+        {
+            fontFamily = "'JetBrains Mono', ui-monospace, monospace",
+            fontSize = 13,
+            theme = TerminalTheme,
+        });
+
+        // The pty has to be created at the size the terminal actually achieved,
+        // not a guess: a mismatch makes every full-screen program draw wrong
+        // until something happens to resize it.
+        await Shell.ResizeAsync(size.Cols, size.Rows);
+
+        // Drain anything that arrived while the module was loading, in order,
+        // before any further output can be written.
+        byte[][] backlog;
+        lock (_pendingOutput)
+        {
+            _terminalReady = true;
+            backlog = [.. _pendingOutput];
+            _pendingOutput.Clear();
+        }
+        foreach (var chunk in backlog)
+            await _module.InvokeVoidAsync("write", _elementId, chunk);
+
+        await _module.InvokeVoidAsync("focus", _elementId);
+    }
+
+    private void OnOutput(object? sender, ReadOnlyMemory<byte> data)
+    {
+        var chunk = data.ToArray();
+        lock (_pendingOutput)
+        {
+            if (!_terminalReady)
+            {
+                _pendingOutput.Add(chunk);
+                return;
+            }
+        }
+
+        _ = InvokeAsync(async () =>
+        {
+            if (_module is null) return;
+            try
+            {
+                await _module.InvokeVoidAsync("write", _elementId, chunk);
+            }
+            catch (JSDisconnectedException)
+            {
+                // The circuit went away mid-write; nothing left to draw to.
+            }
+        });
+    }
+
+    [JSInvokable]
+    public async Task OnInputAsync(byte[] data)
+    {
+        if (_ctrlArmed && data.Length == 1)
+        {
+            data = [ToControlCode(data[0])];
+            _ctrlArmed = false;
+            StateHasChanged();
+        }
+        await Shell.WriteAsync(data);
+    }
+
+    [JSInvokable]
+    public Task OnResizeAsync(int columns, int rows) => Shell.ResizeAsync(columns, rows);
+
+    private void ToggleCtrl() => _ctrlArmed = !_ctrlArmed;
+
+    private Task SendKeyAsync(QuickKey key) => Shell.WriteAsync(key.Bytes);
+
+    // Ctrl+A..Z is the letter with its top three bits cleared, so Ctrl+C is 0x03.
+    // Anything outside that range passes through unchanged rather than silently
+    // becoming a different character.
+    private static byte ToControlCode(byte b)
+    {
+        var upper = (byte)char.ToUpperInvariant((char)b);
+        return upper is >= 0x40 and < 0x60 ? (byte)(upper & 0x1f) : b;
+    }
+
+    private static object TerminalTheme => new
+    {
+        background = "#0b0e13",
+        foreground = "#e7ebf2",
+        cursor = "#ff8a5b",
+        cursorAccent = "#0b0e13",
+        selectionBackground = "rgba(255, 138, 91, 0.28)",
+        black = "#12171f", red = "#f2555a", green = "#3fbf8f", yellow = "#e3b341",
+        blue = "#59a9ff", magenta = "#c98bdb", cyan = "#4fc4cf", white = "#c8cfdb",
+        brightBlack = "#5d6676", brightRed = "#ff7a7e", brightGreen = "#62d6a8",
+        brightYellow = "#f0c75e", brightBlue = "#82bfff", brightMagenta = "#dba6e8",
+        brightCyan = "#74d8e1", brightWhite = "#f2f5fa",
+    };
+
+    private sealed record TerminalSize(int Cols, int Rows);
+
+    public async ValueTask DisposeAsync()
+    {
+        Shell.OutputReceived -= OnOutput;
+        if (_module is not null)
+        {
+            try
+            {
+                await _module.InvokeVoidAsync("dispose", _elementId);
+                await _module.DisposeAsync();
+            }
+            catch (JSDisconnectedException) { /* circuit already gone */ }
+        }
+        _self?.Dispose();
+    }
+}

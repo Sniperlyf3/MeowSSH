@@ -1,6 +1,7 @@
 @page "/"
 @page "/hosts"
 @using MeowSSH.UI.Pages
+@using MeowSSH.Core.Ssh
 @* Without an explicit render mode the page is statically rendered: it looks
    right but no button does anything, so every interaction test fails. *@
 @rendermode InteractiveServer
@@ -19,19 +20,26 @@
     <span data-testid="interactive" hidden></span>
 }
 
-@if (_unlocked)
+@if (!_unlocked)
 {
-    <HostsPage OnHostSelected="OnHostSelected" />
+    <VaultLockScreen OnUnlocked="() => _unlocked = true" />
+}
+else if (_session is not null)
+{
+    <SessionPage Host="_session.Host" Shell="_session.Shell" OnClosed="CloseSession" />
 }
 else
 {
-    <VaultLockScreen OnUnlocked="() => _unlocked = true" />
+    <HostsPage OnHostSelected="OpenSession" />
 }
 
 @code {
     [Inject] private NavigationManager Navigation { get; set; } = default!;
 
     private bool _unlocked;
+    private SessionState? _session;
+
+    private sealed record SessionState(HostRecord Host, FakeSshShell Shell);
 
     protected override void OnInitialized()
     {
@@ -39,5 +47,27 @@ else
         _unlocked = !query.Contains("locked", StringComparison.OrdinalIgnoreCase);
     }
 
-    private void OnHostSelected(HostRecord host) { /* Terminal view lands next. */ }
+    private bool _sessionStarted;
+
+    private void OpenSession(HostRecord host)
+    {
+        _session = new SessionState(host, new FakeSshShell());
+        _sessionStarted = false;
+    }
+
+    // The shell is started after a render, so TerminalView has been initialised
+    // and is subscribed. Starting it inline would emit the banner into a session
+    // nothing is listening to yet.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_session is null || _sessionStarted) return;
+        _sessionStarted = true;
+        await _session.Shell.StartAsync();
+    }
+
+    private void CloseSession()
+    {
+        _session = null;
+        _sessionStarted = false;
+    }
 }

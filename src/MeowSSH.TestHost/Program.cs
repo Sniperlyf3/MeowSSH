@@ -5,7 +5,10 @@ using MeowSSH.TestHost.Fakes;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddRazorComponents().AddInteractiveServerComponents();
+// Detailed circuit errors: this host exists to be debugged from a browser, and
+// the default "an exception occurred" tells a failing interop call's story badly.
+builder.Services.AddRazorComponents()
+    .AddInteractiveServerComponents(options => options.DetailedErrors = true);
 
 // The fakes stand in for Android's Keystore, BiometricPrompt and the Meowshell
 // agent, none of which exist on Linux. Everything above them is the same code
