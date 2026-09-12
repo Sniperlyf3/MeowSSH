@@ -24,6 +24,11 @@ internal sealed class MeowshellSshConnection(Guid hostId, MeowshellAgentConnecti
         }
     }
 
+    // The agent multiplexes, so this is not a second connection and costs no
+    // second authentication -- the whole reason one agent is kept per host.
+    public Task<ISftpSession> OpenSftpAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult<ISftpSession>(new MeowshellSftpSession(agent));
+
     private void OnChannelLost(SshConnectionLost lost)
     {
         IsConnected = false;

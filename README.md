@@ -19,10 +19,10 @@ the terminal, file manager and Android host are next.
 | Terminal (xterm.js), key bar, live resize | Done |
 | SSH engine over Meowshell's agent | Done, proven against real OpenSSH |
 | Trust-on-first-use for new hosts | Blocked — see below |
-| SFTP file manager | Next |
-| Android app host | Planned |
+| SFTP file manager | Done, proven against real OpenSSH |
+| Android app host | Next |
 
-**99 tests**: 74 unit, 20 browser end-to-end, 5 against a real `sshd`.
+**153 tests**: 108 unit, 31 browser end-to-end, 14 against a real `sshd`.
 
 ### Known gap: first connections to new hosts
 

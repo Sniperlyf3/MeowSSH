@@ -41,6 +41,9 @@ public interface ISshConnection : IAsyncDisposable
 
     Task<ISshShell> OpenShellAsync(int columns, int rows, CancellationToken cancellationToken = default);
 
+    /// <summary>Opens file operations on this same connection.</summary>
+    Task<ISftpSession> OpenSftpAsync(CancellationToken cancellationToken = default);
+
     /// <summary>Raised when the connection drops without being closed deliberately.</summary>
     event EventHandler<SshConnectionLost>? ConnectionLost;
 }

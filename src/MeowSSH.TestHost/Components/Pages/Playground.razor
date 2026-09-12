@@ -24,6 +24,10 @@
 {
     <VaultLockScreen OnUnlocked="() => _unlocked = true" />
 }
+else if (_files is not null)
+{
+    <FilesPage Host="_files.Host" Sftp="_files.Sftp" OnClosed="CloseFiles" />
+}
 else if (_session is not null)
 {
     <SessionPage Host="_session.Host" Shell="_session.Shell" OnClosed="CloseSession" />
@@ -38,13 +42,18 @@ else
 
     private bool _unlocked;
     private SessionState? _session;
+    private FilesState? _files;
 
     private sealed record SessionState(HostRecord Host, FakeSshShell Shell);
+
+    private sealed record FilesState(HostRecord Host, FakeSftpSession Sftp);
 
     protected override void OnInitialized()
     {
         var query = new Uri(Navigation.Uri).Query;
         _unlocked = !query.Contains("locked", StringComparison.OrdinalIgnoreCase);
+        if (query.Contains("files", StringComparison.OrdinalIgnoreCase))
+            _files = new FilesState(SampleHost, new FakeSftpSession());
     }
 
     private bool _sessionStarted;
@@ -70,4 +79,17 @@ else
         _session = null;
         _sessionStarted = false;
     }
+
+    private void CloseFiles() => _files = null;
+
+    /// <summary>The host the file browser opens against when driven by URL.</summary>
+    private static HostRecord SampleHost => new()
+    {
+        Id = Guid.NewGuid(),
+        Label = "prod-web-01",
+        Address = "10.4.2.11",
+        Username = "deploy",
+        Transport = SshTransport.Tcp,
+        UpdatedAt = DateTimeOffset.UtcNow,
+    };
 }

@@ -530,3 +530,143 @@ h1:focus, h2:focus, h3:focus, [tabindex="-1"]:focus { outline: none; box-shadow:
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* File browser --------------------------------------------------------- */
+
+.files {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
+  height: 100dvh;
+  max-width: 100%;
+  background: var(--ground);
+}
+
+.files__body {
+  min-width: 0;
+  overflow-y: auto;
+  padding: var(--space-4);
+  padding-bottom: calc(var(--space-8) + env(safe-area-inset-bottom));
+}
+
+.files__status { color: var(--text-muted); font-size: var(--text-sm); }
+
+/* Breadcrumbs ---------------------------------------------------------- */
+
+/*
+  Scrolls sideways rather than truncating. A path is deepest where it matters,
+  so an ellipsis in the middle hides precisely the segments the user is looking
+  for -- and on a phone most interesting paths are wider than the screen.
+*/
+.crumbs {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-4);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: none;
+  white-space: nowrap;
+}
+
+.crumbs::-webkit-scrollbar { display: none; }
+
+.crumbs__crumb {
+  flex: 0 0 auto;
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.crumbs__crumb:hover { background: var(--surface-raised); color: var(--text); }
+.crumbs__crumb.is-current { color: var(--text); font-weight: 500; }
+
+/* Separators are drawn rather than typed, so they are never selected when a
+   user copies a path out of the trail. */
+.crumbs__crumb + .crumbs__crumb::before {
+  content: "/";
+  margin-right: var(--space-2);
+  color: var(--text-faint);
+}
+
+/* The root crumb is itself labelled "/", so the separator after it would make
+   the trail read "/ / home". */
+.crumbs__crumb:first-child + .crumbs__crumb::before { content: none; }
+
+/* File list ------------------------------------------------------------ */
+
+.filelist {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.fileitem {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  border: 0;
+  background: var(--surface);
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.fileitem:hover { background: var(--surface-raised); }
+
+.fileitem__icon { display: grid; place-items: center; color: var(--text-faint); }
+.fileitem__icon .icon { width: 19px; height: 19px; }
+/* Directories are the thing you navigate, so they get the one bit of colour. */
+.fileitem__icon.is-dir { color: var(--accent); }
+
+.fileitem__detail { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+
+.fileitem__name {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fileitem__meta {
+  display: flex;
+  gap: var(--space-2);
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.fileitem__chevron { color: var(--text-faint); }
+.fileitem__chevron .icon { width: 15px; height: 15px; }
+
+/* Notices -------------------------------------------------------------- */
+
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-3);
+}
+
+.notice--danger { background: var(--danger-wash); color: var(--danger); }
+.notice .icon { width: 18px; height: 18px; margin-top: 1px; }
+.notice__title { font-size: var(--text-sm); font-weight: 600; }
+.notice__body { font-size: var(--text-sm); opacity: 0.85; }

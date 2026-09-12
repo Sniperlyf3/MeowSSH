@@ -1,0 +1,240 @@
+@using MeowSSH.Core.Ssh
+@implements IDisposable
+
+<div class="files" data-testid="files">
+    <header class="topbar">
+        <button type="button" class="btn btn--icon" aria-label="Back to hosts"
+                data-testid="files-back" @onclick="OnClose">
+            <Icon Name="back" />
+        </button>
+
+        <span class="session__title">
+            <span class="session__host">Files</span>
+            <span class="session__address">@Host.Label</span>
+        </span>
+
+        <button type="button" class="btn btn--icon" aria-label="Show hidden files"
+                aria-pressed="@(_showHidden ? "true" : "false")"
+                data-testid="toggle-hidden" @onclick="ToggleHidden">
+            <Icon Name="@(_showHidden ? "eye" : "eye-off")" />
+        </button>
+        <button type="button" class="btn btn--icon" aria-label="New folder"
+                data-testid="new-folder" @onclick="StartNewFolder">
+            <Icon Name="folder-plus" />
+        </button>
+    </header>
+
+    @* A path can be far wider than a phone. It scrolls horizontally on its own
+       rather than being truncated, because the deepest segments are the ones the
+       user needs and an ellipsis in the middle hides exactly those. *@
+    <nav class="crumbs" aria-label="Path" data-testid="crumbs">
+        @foreach (var (label, path) in RemotePath.Breadcrumbs(_path))
+        {
+            <button type="button" class="crumbs__crumb @(path == _path ? "is-current" : "")"
+                    aria-current="@(path == _path ? "location" : null)"
+                    data-testid="crumb" @onclick="() => NavigateAsync(path)">@label</button>
+        }
+    </nav>
+
+    <div class="files__body">
+        @if (_error is not null)
+        {
+            <div class="notice notice--danger" role="alert" data-testid="files-error">
+                <Icon Name="alert" />
+                <div>
+                    <p class="notice__title">@_error.Title</p>
+                    <p class="notice__body">@_error.Body</p>
+                </div>
+            </div>
+            @if (RemotePath.ParentOf(_path) is { } up)
+            {
+                <button type="button" class="btn btn--ghost btn--block"
+                        data-testid="go-up" @onclick="() => NavigateAsync(up)">
+                    Go up to @RemotePath.NameOf(up)
+                </button>
+            }
+        }
+        else if (_entries is null)
+        {
+            <p class="files__status" role="status" data-testid="files-loading">Loading…</p>
+        }
+        else if (_newFolder is not null)
+        {
+            <div class="stack" data-testid="new-folder-form">
+                <label class="field">
+                    <span class="field__label">Folder name</span>
+                    <input class="field__input" type="text" autocomplete="off" spellcheck="false"
+                           data-testid="new-folder-name" @bind="_newFolder" @bind:event="oninput" />
+                </label>
+                <button type="button" class="btn btn--primary btn--block"
+                        disabled="@(string.IsNullOrWhiteSpace(_newFolder))"
+                        data-testid="create-folder" @onclick="CreateFolderAsync">Create</button>
+                <button type="button" class="btn btn--ghost btn--block"
+                        @onclick="() => _newFolder = null">Cancel</button>
+            </div>
+        }
+        else if (Visible.Count == 0)
+        {
+            <div class="empty" data-testid="files-empty">
+                <span class="empty__glyph"><Icon Name="folder" /></span>
+                <p class="empty__title">Nothing here</p>
+                <p class="empty__body">
+                    @(_entries.Count == 0
+                        ? "This folder is empty."
+                        : "Every item here is hidden. Use the eye button to show them.")
+                </p>
+            </div>
+        }
+        else
+        {
+            <ul class="filelist" data-testid="filelist">
+                @foreach (var entry in Visible)
+                {
+                    <li>
+                        <button type="button" class="fileitem" data-testid="file-entry"
+                                data-file-name="@entry.Name"
+                                @onclick="() => ActivateAsync(entry)">
+                            <span class="fileitem__icon @(entry.IsDirectory ? "is-dir" : "")" aria-hidden="true">
+                                <Icon Name="@(entry.IsDirectory ? "folder" : "file")" />
+                            </span>
+                            <span class="fileitem__detail">
+                                <span class="fileitem__name">
+                                    @entry.Name@(entry.IsSymlink ? " →" : "")
+                                </span>
+                                <span class="fileitem__meta">
+                                    <span class="mono">@entry.PermissionString</span>
+                                    @if (!entry.IsDirectory)
+                                    {
+                                        <span>@entry.DisplaySize</span>
+                                    }
+                                    <span>@Relative(entry.ModifiedAt)</span>
+                                </span>
+                            </span>
+                            @if (entry.IsDirectory)
+                            {
+                                <span class="fileitem__chevron" aria-hidden="true"><Icon Name="chevron" /></span>
+                            }
+                        </button>
+                    </li>
+                }
+            </ul>
+        }
+    </div>
+</div>
+
+@code {
+    private string _path = "/";
+    private IReadOnlyList<RemoteFile>? _entries;
+    private ErrorNotice? _error;
+    private bool _showHidden;
+    private string? _newFolder;
+
+    [Parameter, EditorRequired] public HostRecord Host { get; set; } = default!;
+    [Parameter, EditorRequired] public ISftpSession Sftp { get; set; } = default!;
+    [Parameter] public EventCallback OnClosed { get; set; }
+    [Parameter] public EventCallback<RemoteFile> OnFileSelected { get; set; }
+
+    private sealed record ErrorNotice(string Title, string Body);
+
+    // Directories first, then by name. A flat alphabetical list mixes the things
+    // you navigate with the things you act on, and on a phone that means
+    // scrolling past files to reach a folder.
+    private IReadOnlyList<RemoteFile> Visible =>
+        _entries is null
+            ? []
+            : [.. _entries
+                .Where(e => _showHidden || !e.IsHidden)
+                .OrderBy(e => e.IsDirectory ? 0 : 1)
+                .ThenBy(e => e.Name, StringComparer.OrdinalIgnoreCase)];
+
+    protected override async Task OnInitializedAsync()
+    {
+        // SFTP has no "home directory" request; resolving "." gives the directory
+        // the session opened in, which is where a user expects to start.
+        try
+        {
+            _path = await Sftp.ResolveAsync(".");
+        }
+        catch (SshException)
+        {
+            _path = "/";
+        }
+        await LoadAsync();
+    }
+
+    private async Task NavigateAsync(string path)
+    {
+        _path = path;
+        _newFolder = null;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _entries = null;
+        _error = null;
+        try
+        {
+            _entries = await Sftp.ListAsync(_path);
+        }
+        catch (SshException ex)
+        {
+            // Typed failures earn their keep here: "that folder is gone" and
+            // "you cannot read that" need different words, and a raw protocol
+            // message needs none of them.
+            _error = ex.Failure switch
+            {
+                SshFailure.NotFound => new("Folder not found", $"{_path} no longer exists on this host."),
+                SshFailure.PermissionDenied => new("Not allowed", $"{Host.Username ?? "This account"} cannot read {_path}."),
+                SshFailure.ConnectionLost => new("Connection lost", "The connection to this host dropped."),
+                _ => new("Could not open folder", ex.Message),
+            };
+        }
+    }
+
+    private Task ActivateAsync(RemoteFile entry) =>
+        entry.IsDirectory ? NavigateAsync(entry.Path) : OnFileSelected.InvokeAsync(entry);
+
+    private async Task ToggleHidden()
+    {
+        _showHidden = !_showHidden;
+        await Task.CompletedTask;
+    }
+
+    private void StartNewFolder() => _newFolder = "";
+
+    private async Task CreateFolderAsync()
+    {
+        var name = _newFolder?.Trim();
+        if (string.IsNullOrEmpty(name)) return;
+        _newFolder = null;
+        try
+        {
+            await Sftp.CreateDirectoryAsync(RemotePath.Join(_path, name));
+        }
+        catch (SshException ex)
+        {
+            _error = new("Could not create folder", ex.Message);
+            return;
+        }
+        await LoadAsync();
+    }
+
+    /// <summary>A modification time as something readable at a glance.</summary>
+    private static string Relative(DateTimeOffset when)
+    {
+        var age = DateTimeOffset.UtcNow - when;
+        return age switch
+        {
+            { TotalMinutes: < 1 } => "just now",
+            { TotalHours: < 1 } => $"{(int)age.TotalMinutes}m ago",
+            { TotalDays: < 1 } => $"{(int)age.TotalHours}h ago",
+            { TotalDays: < 30 } => $"{(int)age.TotalDays}d ago",
+            _ => when.ToString("MMM yyyy", System.Globalization.CultureInfo.InvariantCulture),
+        };
+    }
+
+    private Task OnClose() => OnClosed.InvokeAsync();
+
+    public void Dispose() { }
+}
