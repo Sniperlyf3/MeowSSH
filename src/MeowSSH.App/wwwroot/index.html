@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="utf-8" />
+    <!--
+      maximum-scale and user-scalable=no on purpose: a pinch-zoom on a terminal
+      shifts the viewport instead of changing the font size, which leaves the
+      user unable to see the line they are typing.
+    -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>MeowSSH</title>
+    <base href="/" />
+    <link rel="stylesheet" href="_content/MeowSSH.UI/vendor/xterm/xterm.css" />
+    <link rel="stylesheet" href="_content/MeowSSH.UI/css/meowssh.css" />
+    <link rel="icon" href="data:," />
+</head>
+
+<body>
+    <div id="app"></div>
+
+    <div id="blazor-error-ui" data-nosnippet>
+        Something went wrong.
+        <a href="." class="reload">Reload</a>
+    </div>
+
+    <!--
+      Served from the app, not a CDN. A terminal that cannot draw itself without
+      the public internet is broken exactly when someone is using it to fix a
+      network, and it would announce every session to a third party.
+    -->
+    <script src="_content/MeowSSH.UI/vendor/xterm/xterm.js"></script>
+    <script src="_content/MeowSSH.UI/vendor/xterm/addon-fit.js"></script>
+    <script src="_framework/blazor.webview.js" autostart="false"></script>
+</body>
+</html>

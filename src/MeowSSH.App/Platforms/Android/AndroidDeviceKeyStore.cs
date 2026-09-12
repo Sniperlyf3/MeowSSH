@@ -1,0 +1,185 @@
+using Android.Security.Keystore;
+using Java.Security;
+using Javax.Crypto;
+using Javax.Crypto.Spec;
+using MeowSSH.Core.Security;
+
+namespace MeowSSH.App.Platforms.Android;
+
+/// <summary>
+/// Wraps the vault master key with a key held in the Android Keystore, gated on
+/// the user authenticating.
+/// </summary>
+/// <remarks>
+/// <para>
+/// The wrapping key never leaves the secure element: the OS performs the
+/// AES-GCM operation on the app's behalf. That is why
+/// <see cref="IDeviceKeyStore"/> exposes wrap and unwrap rather than "give me
+/// the key" — no implementation against real hardware could satisfy the latter.
+/// </para>
+/// <para>
+/// The key is bound to biometric enrolment, so adding a fingerprint invalidates
+/// it. That is the protection working: it stops someone who can unlock the
+/// device from enrolling their own finger and reading the vault. It also means
+/// this key cannot be the only way in, which is why the recovery code exists.
+/// </para>
+/// </remarks>
+internal sealed class AndroidDeviceKeyStore(string keyAlias = AndroidDeviceKeyStore.DefaultAlias) : IDeviceKeyStore
+{
+    public const string DefaultAlias = "meowssh.vault.kek";
+
+    private const string Provider = "AndroidKeyStore";
+    private const string Transformation = "AES/GCM/NoPadding";
+    private const int TagBits = 128;
+    private const int NonceBytes = 12;
+
+    public ValueTask<bool> IsAvailableAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            LoadKeyStore();
+            return ValueTask.FromResult(true);
+        }
+        catch (Exception)
+        {
+            return ValueTask.FromResult(false);
+        }
+    }
+
+    public ValueTask<bool> IsStrongBoxBackedAsync(CancellationToken cancellationToken = default)
+    {
+        // KeyInfo.SecurityLevel is API 31. Below that the platform will not say
+        // which kind of hardware holds the key, and guessing would be worse than
+        // reporting the weaker answer.
+        if (!OperatingSystem.IsAndroidVersionAtLeast(31)) return ValueTask.FromResult(false);
+
+        try
+        {
+            var key = LoadKeyStore().GetKey(keyAlias, null);
+            if (key is not ISecretKey secretKey) return ValueTask.FromResult(false);
+            var factory = SecretKeyFactory.GetInstance(key.Algorithm!, Provider);
+            var info = (KeyInfo?)factory?.GetKeySpec(secretKey, Java.Lang.Class.FromType(typeof(KeyInfo)));
+            // StrongBox is the dedicated security chip; a trusted execution
+            // environment is the main processor's secure world. Both are
+            // hardware, and the distinction is worth showing a user who asks.
+            return ValueTask.FromResult(info?.SecurityLevel == (int)KeyStoreSecurityLevel.Strongbox);
+        }
+        catch (Exception)
+        {
+            return ValueTask.FromResult(false);
+        }
+    }
+
+    public ValueTask CreateWrappingKeyAsync(bool requireUserAuthentication, CancellationToken cancellationToken = default)
+    {
+        var generator = KeyGenerator.GetInstance(KeyProperties.KeyAlgorithmAes, Provider)
+            ?? throw new DeviceKeyUnavailableException(
+                DeviceKeyUnavailableReason.NotSupported, "This device has no AES key generator in its key store.");
+
+        var spec = new KeyGenParameterSpec.Builder(
+                keyAlias, KeyStorePurpose.Encrypt | KeyStorePurpose.Decrypt)
+            .SetBlockModes(KeyProperties.BlockModeGcm)!
+            .SetEncryptionPaddings(KeyProperties.EncryptionPaddingNone)!
+            .SetKeySize(256)!
+            .SetUserAuthenticationRequired(requireUserAuthentication)!
+            // A new fingerprint must not inherit access to an existing vault.
+            .SetInvalidatedByBiometricEnrollment(requireUserAuthentication)!;
+
+        // StrongBox is absent on most devices and throws rather than degrading,
+        // so it is attempted and then retried without.
+        try
+        {
+            generator.Init(spec.SetIsStrongBoxBacked(true)!.Build());
+            generator.GenerateKey();
+            return ValueTask.CompletedTask;
+        }
+        catch (Exception)
+        {
+            generator.Init(spec.SetIsStrongBoxBacked(false)!.Build());
+            generator.GenerateKey();
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    public ValueTask<byte[]> WrapAsync(ReadOnlyMemory<byte> masterKey, CancellationToken cancellationToken = default)
+    {
+        var cipher = Cipher.GetInstance(Transformation)
+            ?? throw new DeviceKeyUnavailableException(DeviceKeyUnavailableReason.NotSupported, "AES-GCM is unavailable.");
+
+        cipher.Init(CipherMode.EncryptMode, RequireKey());
+        var sealedKey = cipher.DoFinal(masterKey.ToArray())
+            ?? throw new DeviceKeyUnavailableException(DeviceKeyUnavailableReason.NotProvisioned, "The key store returned nothing.");
+
+        // The nonce is generated by the OS and is not recoverable from the key,
+        // so it is stored alongside the ciphertext.
+        var nonce = cipher.GetIV() ?? throw new DeviceKeyUnavailableException(
+            DeviceKeyUnavailableReason.NotSupported, "The key store produced no nonce.");
+
+        var output = new byte[1 + nonce.Length + sealedKey.Length];
+        output[0] = (byte)nonce.Length;
+        nonce.CopyTo(output, 1);
+        sealedKey.CopyTo(output, 1 + nonce.Length);
+        return ValueTask.FromResult(output);
+    }
+
+    public ValueTask<SecretBuffer> UnwrapAsync(byte[] wrapped, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(wrapped);
+        if (wrapped.Length < 1 + NonceBytes + 16)
+            throw new DeviceKeyUnavailableException(DeviceKeyUnavailableReason.NotProvisioned, "The wrapped key is truncated.");
+
+        var nonceLength = wrapped[0];
+        var nonce = wrapped[1..(1 + nonceLength)];
+        var ciphertext = wrapped[(1 + nonceLength)..];
+
+        try
+        {
+            var cipher = Cipher.GetInstance(Transformation)!;
+            cipher.Init(CipherMode.DecryptMode, RequireKey(), new GCMParameterSpec(TagBits, nonce));
+            var plaintext = cipher.DoFinal(ciphertext)
+                ?? throw new DeviceKeyUnavailableException(DeviceKeyUnavailableReason.AuthenticationFailed, "Decryption produced nothing.");
+            return ValueTask.FromResult(SecretBuffer.TakeOwnershipOf(plaintext));
+        }
+        catch (KeyPermanentlyInvalidatedException ex)
+        {
+            // The device's biometric enrolment changed. Not a malfunction: it is
+            // the guarantee that a newly added finger cannot reach an existing
+            // vault. Only the recovery code gets back in from here.
+            throw new DeviceKeyUnavailableException(
+                DeviceKeyUnavailableReason.BiometricEnrolmentChanged,
+                "The key protecting this vault was retired because the device's biometric enrolment changed.", ex);
+        }
+        catch (UserNotAuthenticatedException ex)
+        {
+            throw new DeviceKeyUnavailableException(
+                DeviceKeyUnavailableReason.AuthenticationFailed,
+                "Authenticate before unlocking the vault.", ex);
+        }
+    }
+
+    public ValueTask DeleteWrappingKeyAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            LoadKeyStore().DeleteEntry(keyAlias);
+        }
+        catch (Exception)
+        {
+            // Already gone is the desired end state.
+        }
+        return ValueTask.CompletedTask;
+    }
+
+    private IKey RequireKey() =>
+        LoadKeyStore().GetKey(keyAlias, null)
+        ?? throw new DeviceKeyUnavailableException(
+            DeviceKeyUnavailableReason.NotProvisioned, "No vault key exists on this device yet.");
+
+    private static KeyStore LoadKeyStore()
+    {
+        var store = KeyStore.GetInstance(Provider)
+            ?? throw new DeviceKeyUnavailableException(DeviceKeyUnavailableReason.NotSupported, "No Android key store.");
+        store.Load(null);
+        return store;
+    }
+}

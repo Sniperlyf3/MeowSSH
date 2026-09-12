@@ -1,0 +1,131 @@
+@using MeowSSH.Core.Services
+@using MeowSSH.Core.Ssh
+@implements IAsyncDisposable
+@inject IVaultSession Vault
+@inject ISshEngine Engine
+@inject ISshPrompts Prompts
+
+@*
+    The whole app, composed from services. Both hosts render this: the Android
+    app with the real engine and vault, the test host with fakes. Keeping the
+    composition here rather than in each host is what stops the two from drifting
+    into testing something the app does not do.
+*@
+
+@if (Vault.State is not VaultState.Unlocked)
+{
+    <VaultLockScreen OnUnlocked="OnUnlockedAsync" />
+}
+else if (_session is not null)
+{
+    <SessionPage Host="_session.Host" Shell="_session.Shell" OnClosed="CloseSessionAsync" />
+}
+else if (_files is not null)
+{
+    <FilesPage Host="_files.Host" Sftp="_files.Sftp" OnClosed="CloseFilesAsync" />
+}
+else
+{
+    <HostsPage OnHostSelected="ConnectAsync" />
+
+    @if (_connecting is not null)
+    {
+        <div class="sheet" role="status" data-testid="connecting">
+            <p class="sheet__title">Connecting to @_connecting</p>
+            <p class="sheet__body">Waiting for the host to answer.</p>
+        </div>
+    }
+    @if (_failure is not null)
+    {
+        <div class="sheet sheet--danger" role="alert" data-testid="connect-error">
+            <p class="sheet__title">@_failure.Title</p>
+            <p class="sheet__body">@_failure.Body</p>
+            <button type="button" class="btn btn--ghost btn--block"
+                    data-testid="dismiss-error" @onclick="() => _failure = null">Dismiss</button>
+        </div>
+    }
+}
+
+@code {
+    private SessionState? _session;
+    private FilesState? _files;
+    private string? _connecting;
+    private Failure? _failure;
+    private ISshConnection? _connection;
+
+    private sealed record SessionState(HostRecord Host, ISshShell Shell);
+    private sealed record FilesState(HostRecord Host, ISftpSession Sftp);
+    private sealed record Failure(string Title, string Body);
+
+    protected override void OnInitialized() => Vault.StateChanged += OnVaultChanged;
+
+    private void OnVaultChanged(object? sender, EventArgs e) => _ = InvokeAsync(StateHasChanged);
+
+    private Task OnUnlockedAsync()
+    {
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private async Task ConnectAsync(HostRecord host)
+    {
+        _connecting = host.Label;
+        _failure = null;
+        StateHasChanged();
+
+        try
+        {
+            // No keys are offered yet: key management has no UI, so this reaches
+            // a host that accepts the prompts the engine raises. Credentials come
+            // from the vault once that screen exists.
+            using var credentials = SshCredentials.None;
+            _connection = await Engine.ConnectAsync(host, credentials, Prompts);
+            var shell = await _connection.OpenShellAsync(80, 24);
+            _session = new SessionState(host, shell);
+        }
+        catch (SshException ex)
+        {
+            // A changed host key is the one failure that must never read as a
+            // routine retry, so it gets its own words.
+            _failure = ex.Failure switch
+            {
+                SshFailure.HostKeyChanged => new("Host key changed", ex.Message),
+                SshFailure.HostKeyUnknown => new("Host not trusted yet", ex.Message),
+                SshFailure.AuthenticationFailed => new("Could not sign in", ex.Message),
+                _ => new("Could not connect", ex.Message),
+            };
+            await DropConnectionAsync();
+        }
+        finally
+        {
+            _connecting = null;
+            StateHasChanged();
+        }
+    }
+
+    private async Task CloseSessionAsync()
+    {
+        if (_session is not null) await _session.Shell.DisposeAsync();
+        _session = null;
+        await DropConnectionAsync();
+    }
+
+    private async Task CloseFilesAsync()
+    {
+        if (_files is not null) await _files.Sftp.DisposeAsync();
+        _files = null;
+    }
+
+    private async Task DropConnectionAsync()
+    {
+        if (_connection is not null) await _connection.DisposeAsync();
+        _connection = null;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        Vault.StateChanged -= OnVaultChanged;
+        await CloseSessionAsync();
+        await CloseFilesAsync();
+    }
+}

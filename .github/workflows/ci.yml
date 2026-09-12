@@ -53,3 +53,50 @@ jobs:
           name: test-results
           path: "**/TestResults/*.trx"
           if-no-files-found: ignore
+
+  # The installable artifact. Kept separate from build-and-test because it needs
+  # the Android workload and SDK, which cost several minutes the test jobs should
+  # not pay for.
+  android-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install the Android workload
+        run: dotnet workload install maui-android
+
+      - name: Build the APK
+        # Debug rather than Release: a debug build is signed with the SDK's own
+        # debug key, so it can be sideloaded. A release build would need a
+        # keystore, which belongs in repository secrets rather than here.
+        # arm64 only, which halves the download and covers every real phone.
+        run: >
+          dotnet publish src/MeowSSH.App/MeowSSH.App.csproj
+          -c Debug -f net10.0-android36.0
+          -p:RuntimeIdentifier=android-arm64
+
+      - name: Check the native binaries survived packaging
+        # AndroidExtractNativeLibraries is what lets these be executed at all, and
+        # a packaging change that dropped them would otherwise only show up as a
+        # connection that fails on a device.
+        run: |
+          APK=$(find src/MeowSSH.App/bin -name "*-Signed.apk" | head -1)
+          unzip -l "$APK" | grep -q "lib/arm64-v8a/libmeowshell.so"
+          unzip -l "$APK" | grep -q "lib/arm64-v8a/libtailcat.so"
+          echo "APK: $APK ($(du -h "$APK" | cut -f1))"
+
+      - name: Upload the APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: meowssh-apk
+          path: src/MeowSSH.App/bin/**/*-Signed.apk
+          if-no-files-found: error

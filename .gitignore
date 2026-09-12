@@ -24,3 +24,8 @@ node_modules/
 *.meowvault
 appsettings.Local.json
 local.settings.json
+
+# Android
+*.apk
+*.aab
+*.keystore

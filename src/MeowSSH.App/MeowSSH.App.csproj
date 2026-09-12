@@ -1,0 +1,70 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-android36.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>MeowSSH.App</RootNamespace>
+    <UseMaui>true</UseMaui>
+    <SingleProject>true</SingleProject>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <ApplicationTitle>MeowSSH</ApplicationTitle>
+    <ApplicationId>dev.sniperlyf3.meowssh</ApplicationId>
+    <ApplicationDisplayVersion>0.1.0</ApplicationDisplayVersion>
+    <ApplicationVersion>1</ApplicationVersion>
+
+    <!--
+      Load-bearing: Meowshell ships tailcat and meowshell as native libraries,
+      and without extraction they stay inside the APK where they can never be
+      executed. The Meowshell package fails the build if this is not set, which
+      is how a runtime mystery was turned into a build error.
+    -->
+    <AndroidExtractNativeLibraries>true</AndroidExtractNativeLibraries>
+
+    <!--
+      API 28 for android.hardware.biometrics.BiometricPrompt. Using the platform
+      class rather than AndroidX.Biometric drops a dependency whose transitive
+      AndroidX constraints conflict with MAUI 10's own. API 28 is Android 9,
+      older than any device this would realistically be installed on.
+    -->
+    <SupportedOSPlatformVersion>28.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+
+  <!--
+    Debug builds are signed with the SDK's own debug key so an APK can be
+    sideloaded without a release keystore. A release build is deliberately left
+    unsigned here; signing keys belong in CI secrets, not in a repo.
+  -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+    <AndroidPackageFormat>apk</AndroidPackageFormat>
+    <AndroidKeyStore>false</AndroidKeyStore>
+    <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <AndroidPackageFormat>apk</AndroidPackageFormat>
+    <RunAOTCompilation>false</RunAOTCompilation>
+    <AndroidLinkMode>SdkOnly</AndroidLinkMode>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- MAUI generates the launcher icon and splash from these; without them
+         the manifest references a mipmap resource that was never produced. -->
+    <MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#0b0e13" />
+    <MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#0b0e13" BaseSize="128,128" />
+    <MauiFont Include="Resources\Fonts\*" />
+    <MauiAsset Include="Resources\Raw\**" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Maui.Controls" Version="10.0.0-*" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebView.Maui" Version="10.0.0-*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MeowSSH.Core\MeowSSH.Core.csproj" />
+    <ProjectReference Include="..\MeowSSH.UI\MeowSSH.UI.csproj" />
+  </ItemGroup>
+
+</Project>
