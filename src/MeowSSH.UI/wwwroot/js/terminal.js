@@ -77,7 +77,12 @@ export function create(elementId, dotNetRef, options) {
         dotNetRef.invokeMethodAsync("OnInputAsync", encoder.encode(data));
 
     terminal.onData(data => {
-        if (pendingCompositionCommit && data === pendingCompositionCommit.data) {
+        // Samsung/xterm may surface the finalized composition together with the
+        // committing key (for example "ls " rather than just "ls"). Exact
+        // string equality is therefore too strict and causes the fallback to
+        // send the same word a second time. Any onData during this settle window
+        // proves xterm did emit the commit path, so suppress the fallback.
+        if (pendingCompositionCommit) {
             pendingCompositionCommit.seen = true;
         }
 
