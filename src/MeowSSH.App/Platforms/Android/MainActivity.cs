@@ -15,33 +15,6 @@ namespace MeowSSH.App;
     WindowSoftInputMode = SoftInput.AdjustResize)]
 public class MainActivity : MauiAppCompatActivity
 {
-    protected override void OnResume()
-    {
-        base.OnResume();
-
-        // While the activity is visible Android already gives this process
-        // foreground priority. The service only needs to exist while the UI is
-        // backgrounded, so remove its persistent notification on return.
-        StopService(new Android.Content.Intent(this, typeof(SessionKeepAliveService)));
-    }
-
-    protected override void OnPause()
-    {
-        // Start while the activity is still in the foreground. Android 12+
-        // rejects most attempts to start a foreground service after the app has
-        // already become backgrounded, which makes OnStop too late for this job.
-        if (!IsChangingConfigurations)
-        {
-            var intent = new Android.Content.Intent(this, typeof(SessionKeepAliveService));
-            if (Build.VERSION.SdkInt >= BuildVersionCodes.O)
-                StartForegroundService(intent);
-            else
-                StartService(intent);
-        }
-
-        base.OnPause();
-    }
-
     protected override void OnCreate(Bundle? savedInstanceState)
     {
         base.OnCreate(savedInstanceState);
