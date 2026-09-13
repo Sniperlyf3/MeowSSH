@@ -53,6 +53,10 @@ else if (_tab == "keys")
 {
     <KeysPage OnTabSelected="SelectTab" />
 }
+else if (_tab == "settings")
+{
+    <SettingsPage OnTabSelected="SelectTab" />
+}
 else
 {
     <HostsPage OnHostSelected="ConnectAsync" OnAddHost="AddHost" OnEditHost="EditHost" OnTabSelected="SelectTab" />
