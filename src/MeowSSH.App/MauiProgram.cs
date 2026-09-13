@@ -39,6 +39,7 @@ public static class MauiProgram
         // and the shell watches it to know what to put on screen.
         builder.Services.AddSingleton<InteractiveSshPrompts>();
         builder.Services.AddSingleton<ISshPrompts>(sp => sp.GetRequiredService<InteractiveSshPrompts>());
+        builder.Services.AddSingleton<IActiveSessionLifetime, AndroidActiveSessionLifetime>();
         builder.Services.AddSingleton<ISshEngine>(_ => new MeowshellSshEngine(
             new MeowshellSshEngineOptions(
                 // App-private storage: the agent needs a writable HOME, and
