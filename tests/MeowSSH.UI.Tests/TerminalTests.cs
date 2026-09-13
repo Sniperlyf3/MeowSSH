@@ -189,4 +189,15 @@ public class TerminalTests(TestHostFixture fixture)
         await Assertions.Expect(page.GetByTestId("terminal-zoom-value")).ToHaveTextAsync("140%");
     }
 
+
+    [Fact]
+    public async Task FilesTabCanBeSelected()
+    {
+        var page = await fixture.NewPageAsync("/");
+        await page.GetByTestId("tab-files").ClickAsync();
+
+        await Assertions.Expect(page.GetByTestId("tab-files")).ToHaveAttributeAsync("aria-current", "page");
+        await Assertions.Expect(page.GetByTestId("files-host-list")).ToBeVisibleAsync();
+    }
+
 }
