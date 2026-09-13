@@ -1,9 +1,11 @@
 @using MeowSSH.Core.Services
 @using MeowSSH.Core.Ssh
+@using MeowSSH.UI.Services
 @implements IAsyncDisposable
 @inject IVaultSession Vault
 @inject ISshEngine Engine
 @inject ISshPrompts Prompts
+@inject InteractiveSshPrompts Questions
 @inject ICredentialResolver Credentials
 
 @*
@@ -54,6 +56,52 @@ else
             <p class="sheet__body">Waiting for the host to answer.</p>
         </div>
     }
+    @if (Questions.PendingHostKey is { } hostKey)
+    {
+        <div class="sheet sheet--danger" role="alertdialog" data-testid="host-key-prompt">
+            <p class="sheet__title">Trust this server?</p>
+            <p class="sheet__body">
+                MeowSSH has not seen <strong>@hostKey.Prompt.Host</strong> before. Check the
+                fingerprint against the server itself before accepting it — if it does not match,
+                something is intercepting the connection.
+            </p>
+            <code class="recovery__code mono" data-testid="host-key-fingerprint">@hostKey.Prompt.Fingerprint</code>
+            <div class="form__actions">
+                <button type="button" class="btn btn--primary btn--block"
+                        data-testid="trust-host-key" @onclick="() => hostKey.Answer(true)">
+                    Trust and connect
+                </button>
+                <button type="button" class="btn btn--ghost btn--block"
+                        data-testid="reject-host-key" @onclick="() => hostKey.Answer(false)">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    }
+    @if (Questions.PendingPassword is { } password)
+    {
+        <div class="sheet" role="alertdialog" data-testid="password-prompt">
+            <p class="sheet__title">Password required</p>
+            <p class="sheet__body">@password.Prompt</p>
+            <div class="form__actions">
+                <label class="field">
+                    <span class="field__label">Password</span>
+                    <input class="field__input mono" type="password" data-testid="password-input"
+                           autocomplete="off" autocapitalize="none" spellcheck="false"
+                           @bind="_password" @bind:event="oninput"
+                           @onkeydown="e => OnPasswordKey(e, password)" />
+                </label>
+                <button type="button" class="btn btn--primary btn--block"
+                        data-testid="submit-password" @onclick="() => SubmitPassword(password)">
+                    Sign in
+                </button>
+                <button type="button" class="btn btn--ghost btn--block"
+                        data-testid="cancel-password" @onclick="() => CancelPassword(password)">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    }
     @if (_failure is not null)
     {
         <div class="sheet sheet--danger" role="alert" data-testid="connect-error">
@@ -74,6 +122,7 @@ else
     private Failure? _failure;
     private ISshConnection? _connection;
     private bool _ready;
+    private string _password = "";
 
     private sealed record SessionState(HostRecord Host, ISshShell Shell);
     private sealed record FilesState(HostRecord Host, ISftpSession Sftp);
@@ -84,6 +133,9 @@ else
     protected override async Task OnInitializedAsync()
     {
         Vault.StateChanged += OnVaultChanged;
+        // The handshake raises its questions on the agent's thread, so the shell
+        // has to be told to repaint rather than noticing on its own.
+        Questions.Changed += OnQuestionsChanged;
         // Nothing is drawn until this answers: a first run and a locked vault are
         // different screens, and showing the wrong one offers a fingerprint that
         // cannot work or a setup flow that would refuse to run.
@@ -92,6 +144,30 @@ else
     }
 
     private void OnVaultChanged(object? sender, EventArgs e) => _ = InvokeAsync(StateHasChanged);
+
+    private void OnQuestionsChanged(object? sender, EventArgs e) => _ = InvokeAsync(StateHasChanged);
+
+    private void SubmitPassword(PasswordRequest request)
+    {
+        var answer = _password;
+        // Cleared before the answer is handed over, so the field is not still
+        // holding it when the sheet closes.
+        _password = "";
+        request.Answer(answer);
+    }
+
+    private void CancelPassword(PasswordRequest request)
+    {
+        _password = "";
+        // Null, not empty: an empty password is an attempt, and the server would
+        // count it as a failed one.
+        request.Answer(null);
+    }
+
+    private void OnPasswordKey(KeyboardEventArgs e, PasswordRequest request)
+    {
+        if (e.Key == "Enter") SubmitPassword(request);
+    }
 
     private Task OnUnlockedAsync()
     {
@@ -172,6 +248,7 @@ else
     public async ValueTask DisposeAsync()
     {
         Vault.StateChanged -= OnVaultChanged;
+        Questions.Changed -= OnQuestionsChanged;
         await CloseSessionAsync();
         await CloseFilesAsync();
     }

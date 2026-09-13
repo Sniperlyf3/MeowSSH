@@ -164,41 +164,68 @@ public class SshEngineTests(SshServerFixture server, ITestOutputHelper output)
     }
 
     [SkippableFact]
-    public async Task AnUnknownHostIsRefusedRatherThanTrustedSilently()
+    public async Task AnUnknownHostIsOfferedToTheUserAndRememberedOnceAccepted()
     {
         Skip.IfNot(SshServerFixture.IsSupported, "No sshd on this machine.");
         server.AuthorizeClientKey();
 
-        var workspace = server.WorkspaceFor(nameof(AnUnknownHostIsRefusedRatherThanTrustedSilently));
-        var knownHosts = Path.Combine(workspace, "empty_known_hosts");
+        var workspace = server.WorkspaceFor(nameof(AnUnknownHostIsOfferedToTheUserAndRememberedOnceAccepted));
+        var knownHosts = Path.Combine(workspace, "known_hosts");
         using var credentials = SshCredentials.FromPrivateKeyFile(server.ClientKeyPath);
         var prompts = new RecordingPrompts { AcceptHostKeys = true };
+
+        await using (var connection = await Engine(workspace, knownHosts).ConnectAsync(Host(), credentials, prompts))
+            Assert.True(connection.IsConnected);
+
+        // Asked, and asked with something the user could act on: a prompt
+        // carrying no fingerprint is not a decision, it is a dialog.
+        var prompt = Assert.Single(prompts.HostKeyPrompts);
+        Assert.NotEmpty(prompt.Fingerprint);
+        output.WriteLine($"prompted for {prompt.Host}: {prompt.Fingerprint}");
+
+        // Accepting has to persist, or every connection asks again and the
+        // question stops meaning anything.
+        Assert.True(File.Exists(knownHosts), "accepting the key did not write a known_hosts entry");
+
+        var second = new RecordingPrompts { AcceptHostKeys = false };
+        await using (var connection = await Engine(workspace, knownHosts).ConnectAsync(Host(), credentials, second))
+            Assert.True(connection.IsConnected);
+
+        // Not asked again, and it connected even though this run would have
+        // refused -- which is what proves the first answer was remembered
+        // rather than the question simply not being asked.
+        Assert.Empty(second.HostKeyPrompts);
+    }
+
+    [SkippableFact]
+    public async Task DecliningAnUnknownHostRefusesTheConnection()
+    {
+        Skip.IfNot(SshServerFixture.IsSupported, "No sshd on this machine.");
+        server.AuthorizeClientKey();
+
+        var workspace = server.WorkspaceFor(nameof(DecliningAnUnknownHostRefusesTheConnection));
+        var knownHosts = Path.Combine(workspace, "known_hosts");
+        using var credentials = SshCredentials.FromPrivateKeyFile(server.ClientKeyPath);
+        var prompts = new RecordingPrompts { AcceptHostKeys = false };
 
         var ex = await Assert.ThrowsAsync<SshException>(
             () => Engine(workspace, knownHosts).ConnectAsync(Host(), credentials, prompts));
 
         output.WriteLine($"{ex.Failure}: {ex.Message}");
-        output.WriteLine($"host key prompts seen: {prompts.HostKeyPrompts.Count}");
 
-        // Refusing is the safe outcome and the assertion that must never weaken:
-        // an unknown host is never trusted silently.
-        Assert.Equal(SshFailure.Unknown, ex.Failure);
-        Assert.Empty(prompts.HostKeyPrompts);
+        // The safe outcome, and the assertion that must never weaken: a host the
+        // user declined is not connected to, and not recorded as trusted.
+        Assert.Equal(SshFailure.HostKeyUnknown, ex.Failure);
+        Assert.Single(prompts.HostKeyPrompts);
 
-        // Both of those record current engine behaviour rather than the desired
-        // behaviour, and both trace to the same cause.
-        //
-        // MeowshellAgentConnection completes its handshake inside ConnectAsync
-        // and exposes its prompts as instance events, so there is no instant at
-        // which a caller can subscribe before the host key question is asked.
-        // With no handler the agent declines, and the resulting "host key
-        // rejected" is not one of the cases it classifies -- so it arrives as
-        // Unknown rather than HostKeyUnknown.
-        //
-        // Trust-on-first-use therefore cannot be offered through this API yet.
-        // When the engine gains a pre-handshake hook, this test should assert
-        // HostKeyUnknown and a prompt count of one, and the failing assertion
-        // is the reminder to make that change.
+        // Contents, not existence. The agent creates the file whether or not it
+        // writes to it, so asserting it is absent tests the agent's bookkeeping
+        // rather than the thing that matters -- which is that nothing was
+        // trusted.
+        var recorded = File.Exists(knownHosts) ? await File.ReadAllTextAsync(knownHosts) : "";
+        output.WriteLine($"known_hosts after declining: {recorded.Length} bytes");
+        Assert.DoesNotContain("127.0.0.1", recorded, StringComparison.Ordinal);
+        Assert.DoesNotContain("ssh-", recorded, StringComparison.Ordinal);
     }
 }
 

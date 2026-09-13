@@ -3,6 +3,7 @@ using MeowSSH.Core.Security;
 using MeowSSH.Core.Services;
 using MeowSSH.Core.Ssh;
 using MeowSSH.Core.Storage;
+using MeowSSH.UI.Services;
 
 namespace MeowSSH.App;
 
@@ -34,7 +35,10 @@ public static class MauiProgram
         builder.Services.AddSingleton<IHostEditor>(sp => sp.GetRequiredService<VaultHostDirectory>());
         builder.Services.AddSingleton<ICredentialResolver>(sp => sp.GetRequiredService<VaultHostDirectory>());
 
-        builder.Services.AddSingleton<ISshPrompts, DecliningPrompts>();
+        // One object, two roles: the engine asks it the handshake's questions,
+        // and the shell watches it to know what to put on screen.
+        builder.Services.AddSingleton<InteractiveSshPrompts>();
+        builder.Services.AddSingleton<ISshPrompts>(sp => sp.GetRequiredService<InteractiveSshPrompts>());
         builder.Services.AddSingleton<ISshEngine>(_ => new MeowshellSshEngine(
             new MeowshellSshEngineOptions(
                 // App-private storage: the agent needs a writable HOME, and

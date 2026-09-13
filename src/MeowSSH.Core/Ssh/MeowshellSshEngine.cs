@@ -49,13 +49,16 @@ public sealed class MeowshellSshEngine(MeowshellSshEngineOptions options) : ISsh
                 jumpHosts: null,
                 knownHostsPath: options.KnownHostsPath,
                 proxyUrl: options.ProxyUrl,
+                // The handshake raises its prompts inside this call and is over
+                // before it returns, so this callback is the only point at which
+                // handlers can be attached in time to be asked. Subscribing to
+                // the returned object is always too late: the host key question
+                // has already been asked and answered by then -- with silence,
+                // which the agent correctly reads as "cancelled" and refuses.
+                configureConnection: connection => Attach(connection, prompts),
                 cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
 
-            // Subscribed after the connection exists, because that is the only
-            // point at which there is an instance to subscribe to. See the note
-            // on ISshPrompts about what this cannot cover.
-            Attach(agent, prompts);
             return new MeowshellSshConnection(host.Id, agent);
         }
         catch (TailcatException ex)

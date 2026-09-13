@@ -1,7 +1,9 @@
 using MeowSSH.Core.Security;
 using MeowSSH.Core.Services;
+using MeowSSH.Core.Ssh;
 using MeowSSH.TestHost.Components;
 using MeowSSH.TestHost.Fakes;
+using MeowSSH.UI.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -23,6 +25,11 @@ builder.Services.AddScoped(_ => new FakeVaultSession(
     VaultState.Locked,
     recoveryCode: MeowSSH.TestHost.TestHostDefaults.RecoveryCode));
 builder.Services.AddScoped<IVaultSession>(sp => sp.GetRequiredService<FakeVaultSession>());
+
+// The same prompts object the Android app uses, so the browser tests drive the
+// real trust-on-first-use flow rather than a stand-in for it.
+builder.Services.AddScoped<InteractiveSshPrompts>();
+builder.Services.AddScoped<ISshPrompts>(sp => sp.GetRequiredService<InteractiveSshPrompts>());
 
 var app = builder.Build();
 

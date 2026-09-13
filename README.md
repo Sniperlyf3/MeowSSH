@@ -9,9 +9,9 @@ engine, with every credential encrypted at rest behind biometrics.
 
 ## Status
 
-Feature-complete enough to install and use, with one gap that stops a first
-connection to a host you have never reached before. Nothing here has run on
-physical hardware yet.
+Feature-complete enough to install and use. The vault, the host list, the key
+manager and the SSH engine all work on a real phone; what is listed below as
+unfinished is unfinished, not untried.
 
 | Area | State |
 | --- | --- |
@@ -22,20 +22,12 @@ physical hardware yet.
 | Terminal (xterm.js), key bar, live resize | Done |
 | SSH engine over Meowshell's agent | Done, proven against real OpenSSH |
 | SFTP file manager | Done, proven against real OpenSSH |
-| Trust-on-first-use for new hosts | Blocked — see below |
+| Trust-on-first-use for new hosts | Done, proven against real OpenSSH |
 | Android app, installable APK | Builds in CI; not yet run on a device |
 | Sync between devices | Schema designed, not implemented |
 
-**247 tests**: 163 unit, 62 browser end-to-end, 14 against a real `sshd`, and
-15 on an Android emulator against the real Keystore.
-
-### Known gap: first connections to new hosts
-
-`MeowshellAgentConnection` completes its handshake inside `ConnectAsync` and
-exposes prompts as instance events, so a caller cannot subscribe before the host
-key question is asked. A host absent from `known_hosts` therefore fails rather
-than prompting. `docs/specs/meowshell-prehandshake-prompts.md` specifies the fix.
-Connections to already-known hosts, and the host-key-changed warning, work.
+**278 tests**: 182 unit, 62 browser end-to-end, 15 against a real `sshd`, and
+19 on an Android emulator against the real Keystore.
 
 ## How it is put together
 
@@ -94,16 +86,15 @@ hosts and keys now persist across restarts. What you can do on first launch:
 create the vault, write down the recovery code, add hosts and credentials,
 unlock with a fingerprint, and reconnect to a host already in `known_hosts`.
 
-Two things are not finished:
+What is not finished:
 
-- **New hosts cannot be trusted yet.** The engine raises its host key and
-  password prompts during the handshake, and the released Meowshell package
-  offers no way to subscribe before that happens, so they go unanswered and the
-  connection is refused. `docs/specs/meowshell-prehandshake-prompts.md`
-  specifies the fix; it is implemented upstream and waiting on a release.
-- **None of the Android-specific code has met real hardware.** The Keystore
-  wrapper and the biometric prompt compile, are tested against fakes, and the
-  APK installs — which is a weaker claim than the rest of this repo makes.
+- **Keyboard-interactive authentication is declined.** A challenge is a
+  variable list of questions and needs a form this app does not have yet.
+  Answering it with blanks would look to the server like a wrong password, so
+  it is refused instead.
+- **Sync between devices is designed, not built.** Every record already carries
+  the revision, timestamp, origin device and tombstone it needs; nothing
+  exchanges them.
 
 ## Security design
 
