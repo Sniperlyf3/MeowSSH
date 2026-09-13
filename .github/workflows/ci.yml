@@ -98,5 +98,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: meowssh-apk
-          path: src/MeowSSH.App/bin/**/*-Signed.apk
+          # The publish directory only, not bin/**: the same APK exists in both,
+          # and the glob was uploading it twice.
+          path: src/MeowSSH.App/bin/Debug/net10.0-android36.0/android-arm64/publish/*-Signed.apk
           if-no-files-found: error

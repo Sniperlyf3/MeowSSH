@@ -30,7 +30,11 @@ public sealed class TestHostFixture : IAsyncLifetime
         var projectDirectory = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../src/MeowSSH.TestHost"));
         _host = Process.Start(new ProcessStartInfo("dotnet")
         {
-            ArgumentList = { "run", "--project", projectDirectory, "--no-build", "--urls", BaseUrl },
+            // -c matters: without it "dotnet run" defaults to Debug and looks for
+            // a binary the Release build never produced. Locally that failed to
+            // show up because stale Debug output was lying around and got used
+            // instead; on a clean CI checkout every UI test died in 87ms.
+            ArgumentList = { "run", "--project", projectDirectory, "-c", BuildConfiguration, "--no-build", "--urls", BaseUrl },
             Environment =
             {
                 ["ASPNETCORE_ENVIRONMENT"] = "Development",
@@ -121,6 +125,21 @@ public sealed class TestHostFixture : IAsyncLifetime
         }
         throw new TimeoutException($"Test host did not become ready at {BaseUrl}.");
     }
+
+    /// <summary>
+    /// The configuration this test assembly was compiled in, which is the one
+    /// the test host was built in too.
+    /// </summary>
+    /// <remarks>
+    /// A compile-time constant rather than something parsed out of a path: it
+    /// cannot disagree with how the assembly was actually built.
+    /// </remarks>
+    private static string BuildConfiguration =>
+#if DEBUG
+        "Debug";
+#else
+        "Release";
+#endif
 
     private static int FindFreePort()
     {
