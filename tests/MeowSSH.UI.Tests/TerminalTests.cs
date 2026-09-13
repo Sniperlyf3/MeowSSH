@@ -198,4 +198,46 @@ public class TerminalTests(TestHostFixture fixture)
         Assert.DoesNotContain("pwdpwd", await ScreenTextAsync(page), StringComparison.Ordinal);
     }
 
+
+    [Fact]
+    public async Task ImeCommitFollowedBySpaceDoesNotDuplicateTheWord()
+    {
+        // Samsung Keyboard commonly commits the current prediction when Space
+        // is pressed. xterm may emit the finalized text and the space in one
+        // onData callback. The fallback must treat that as a successful commit
+        // instead of sending the composed word a second time.
+        var page = await OpenSessionAsync();
+        var textarea = page.Locator(".xterm-helper-textarea");
+
+        await textarea.EvaluateAsync(
+            @"element => {
+                element.focus();
+                element.dispatchEvent(new CompositionEvent('compositionstart', {
+                    bubbles: true,
+                    data: ''
+                }));
+                element.value = 'ls';
+                element.setSelectionRange(2, 2);
+                element.dispatchEvent(new CompositionEvent('compositionupdate', {
+                    bubbles: true,
+                    data: 'ls'
+                }));
+                element.dispatchEvent(new CompositionEvent('compositionend', {
+                    bubbles: true,
+                    data: 'ls'
+                }));
+                element.dispatchEvent(new InputEvent('input', {
+                    bubbles: true,
+                    data: ' ',
+                    inputType: 'insertText'
+                }));
+            }");
+
+        await page.WaitForTimeoutAsync(50);
+        await page.Keyboard.PressAsync("Enter");
+
+        var screen = await ScreenTextAsync(page);
+        Assert.DoesNotContain("lsls", screen, StringComparison.Ordinal);
+    }
+
 }
