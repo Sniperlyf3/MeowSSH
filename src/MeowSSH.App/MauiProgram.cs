@@ -40,7 +40,14 @@ public static class MauiProgram
                 // App-private storage: the agent needs a writable HOME, and
                 // known_hosts must not be readable by other apps.
                 WorkingDirectory: Path.Combine(FileSystem.AppDataDirectory, "agent"),
-                KnownHostsPath: Path.Combine(FileSystem.AppDataDirectory, "agent", "known_hosts"))));
+                KnownHostsPath: Path.Combine(FileSystem.AppDataDirectory, "agent", "known_hosts"),
+                // Required on Android, not an optimisation. An app targeting
+                // API 29 or later may only execute a file from
+                // ApplicationInfo.NativeLibraryDir, and Meowshell's own search
+                // looks beside the assemblies instead -- where, on Android,
+                // nothing executable ever is. Left unset it finds no binaries
+                // and every connection fails before it starts.
+                BinaryDirectory: global::Android.App.Application.Context.ApplicationInfo!.NativeLibraryDir)));
 
 #if DEBUG
         // Lets the WebView be inspected from chrome://inspect on a tethered

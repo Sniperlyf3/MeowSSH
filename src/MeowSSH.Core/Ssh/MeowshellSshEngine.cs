@@ -63,17 +63,30 @@ public sealed class MeowshellSshEngine(MeowshellSshEngineOptions options) : ISsh
             if (agent is not null) await agent.DisposeAsync().ConfigureAwait(false);
             throw Translate(ex);
         }
+        catch (FileNotFoundException ex)
+        {
+            // Its own case, and ahead of IOException because it derives from it:
+            // a missing native binary reported as a storage problem sends anyone
+            // reading it to look in entirely the wrong place. That is exactly
+            // what happened on the first device this ran on.
+            if (agent is not null) await agent.DisposeAsync().ConfigureAwait(false);
+            throw new SshException(
+                SshFailure.Unknown,
+                "MeowSSH could not find the SSH helper binaries it ships with. The app may be packaged incorrectly.",
+                ex);
+        }
         catch (IOException ex)
         {
             // Meowshell validates the agent's HOME before it starts anything and
             // reports a refusal as an IOException, which is outside the typed
             // error model the rest of this method translates. Left to escape it
             // would surface as an unhandled exception on the connect path rather
-            // than as something the UI can explain.
+            // than as something the UI can explain. The message does not name a
+            // cause, because this catch covers more than one.
             if (agent is not null) await agent.DisposeAsync().ConfigureAwait(false);
             throw new SshException(
                 SshFailure.Unknown,
-                "MeowSSH could not prepare its private working directory on this device, so the connection was not attempted.",
+                $"MeowSSH could not set up local storage for the connection: {ex.Message}",
                 ex);
         }
     }

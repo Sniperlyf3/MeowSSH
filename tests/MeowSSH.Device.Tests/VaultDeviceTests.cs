@@ -412,6 +412,33 @@ public static class VaultDeviceTests
             return Task.CompletedTask;
         }),
 
+        new("Agent: the engine is pointed at the directory the binaries are in", () =>
+        {
+            // Being packaged is not the same as being findable. Meowshell's own
+            // search looks beside the assemblies, where on Android nothing
+            // executable ever is, so the engine has to be told
+            // ApplicationInfo.NativeLibraryDir explicitly. It was not, and every
+            // connection failed before it started -- reported, worse, as a
+            // storage problem.
+            var info = global::Android.App.Application.Context.ApplicationInfo!;
+            var nativeDir = info.NativeLibraryDir!;
+
+            Assert.False(
+                string.IsNullOrEmpty(nativeDir),
+                "the platform reported no native library directory to point the engine at");
+
+            // The directory the assemblies load from is not it, which is the
+            // whole reason the default search cannot work here.
+            Assert.NotEqual(
+                Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory),
+                Path.TrimEndingDirectorySeparator(nativeDir));
+
+            foreach (var name in NativeLibraries)
+                Assert.True(File.Exists(Path.Combine(nativeDir, name)), $"{name} is not in {nativeDir}");
+
+            return Task.CompletedTask;
+        }),
+
         new("Agent: its working directory is private to this app", () =>
         {
             // Meowshell refuses a HOME that grants group or other access, and the
