@@ -221,8 +221,37 @@ public sealed class MeowshellSshEngine(MeowshellSshEngineOptions options) : ISsh
         MeowshellErrorCode.PermissionDenied => "The server denied permission.",
         MeowshellErrorCode.NotFound => "Not found on the server.",
         MeowshellErrorCode.Cancelled => "Cancelled.",
-        _ => "The connection failed.",
+
+        // The one case with nothing better to say, and so the one case where
+        // the engine's own words have to be passed through. Replacing them with
+        // "The connection failed." leaves the user with nothing to act on and
+        // whoever is helping them with nothing to go on -- which is worse than a
+        // sentence written for a different audience.
+        _ => Unexplained(ex),
     };
+
+    /// <summary>
+    /// Everything known about a failure MeowSSH has no words of its own for.
+    /// </summary>
+    /// <remarks>
+    /// The agent's stderr is the useful part and is usually the only part: a
+    /// failure with no typed reason is one this app did not anticipate, and the
+    /// process that did the work is the only thing that knows what happened.
+    /// </remarks>
+    private static string Unexplained(TailcatException ex)
+    {
+        var detail = !string.IsNullOrWhiteSpace(ex.Diagnostics) ? ex.Diagnostics.Trim()
+            : !string.IsNullOrWhiteSpace(ex.Message) ? ex.Message.Trim()
+            : null;
+
+        if (detail is null) return "The connection failed.";
+
+        // Long stderr is a wall of text in a dialog. The first lines carry the
+        // cause; the rest is usually a stack of context nobody reads on a phone.
+        var lines = detail.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var summary = string.Join(" ", lines.Take(3));
+        return summary.Length > 300 ? summary[..300] + "…" : summary;
+    }
 }
 
 /// <param name="WorkingDirectory">Writable directory the agent uses as its HOME.</param>
