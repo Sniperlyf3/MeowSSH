@@ -30,7 +30,8 @@ public sealed class NoSuggestionsBlazorWebViewHandler : BlazorWebViewHandler
             // explicit no-suggestions flag.
             inputType &= ~InputTypes.TextFlagAutoCorrect;
             inputType &= ~InputTypes.TextFlagAutoComplete;
-            inputType &= ~InputTypes.TextFlagEnableTextConversionSuggestions;
+            if (OperatingSystem.IsAndroidVersionAtLeast(33))
+                inputType &= ~InputTypes.TextFlagEnableTextConversionSuggestions;
             inputType |= InputTypes.TextFlagNoSuggestions;
 
             // Some OEM IMEs (notably Samsung Keyboard) still compose text even
