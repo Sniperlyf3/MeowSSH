@@ -21,15 +21,7 @@
             <div class="host-list" data-testid="files-host-list">
                 @foreach (var status in _hosts)
                 {
-                    <button type="button" class="host" data-testid="files-host"
-                            @onclick="() => OnHostSelected.InvokeAsync(status.Host)">
-                        <span class="host__avatar" aria-hidden="true"><Icon Name="server" /></span>
-                        <span class="host__text">
-                            <span class="host__label">@status.Host.Label</span>
-                            <span class="host__address mono">@DisplayAddress(status.Host)</span>
-                        </span>
-                        <span class="host__chevron" aria-hidden="true"><Icon Name="chevron" /></span>
-                    </button>
+                    <HostRow Status="status" OnSelected="OnHostSelected" />
                 }
             </div>
         }
@@ -54,11 +46,6 @@
             _hosts = await Directory.GetHostsAsync();
             StateHasChanged();
         });
-
-    private static string DisplayAddress(HostRecord host) =>
-        string.IsNullOrWhiteSpace(host.Username)
-            ? $\"{host.Hostname}:{host.Port}\"
-            : $\"{host.Username}@{host.Hostname}:{host.Port}\";
 
     public void Dispose() => Directory.Changed -= OnDirectoryChanged;
 }
