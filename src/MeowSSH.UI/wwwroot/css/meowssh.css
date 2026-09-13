@@ -846,3 +846,69 @@ h1:focus, h2:focus, h3:focus, [tabindex="-1"]:focus { outline: none; box-shadow:
   font-size: var(--text-xs);
   text-align: center;
 }
+
+
+/* Settings ------------------------------------------------------------- */
+
+.settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-4);
+  padding-bottom: calc(var(--space-8) + env(safe-area-inset-bottom));
+}
+
+.settings__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.setting-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.setting-card__copy {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.setting-card__title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.setting-card__body {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+}
+
+.setting-card__value {
+  flex: none;
+  color: var(--accent);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.range {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.settings__range-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: calc(-1 * var(--space-2));
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+}
