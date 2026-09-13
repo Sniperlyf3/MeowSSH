@@ -58,6 +58,31 @@ export function create(elementId, dotNetRef, options) {
         textarea.setAttribute("enterkeyhint", "send");
     }
 
+    // During IME composition xterm deliberately draws the uncommitted text in
+    // .composition-view on top of the real terminal cursor. The PTY cannot move
+    // its cursor yet because those characters have not been committed/sent.
+    // Samsung Keyboard therefore makes the caret appear frozen or invisible
+    // until Space/Enter commits the prediction.
+    //
+    // Draw a visual caret at the end of xterm's composition overlay. This is
+    // presentation only: it does not send characters early, interfere with
+    // prediction, or lie about the remote PTY state.
+    const compositionView = element.querySelector(".composition-view");
+    const compositionCaretStyle = document.createElement("style");
+    compositionCaretStyle.textContent = `
+        #${CSS.escape(elementId)} .composition-view.active::after {
+            content: "";
+            position: absolute;
+            right: -2px;
+            top: 8%;
+            width: 2px;
+            height: 84%;
+            background: ${options.theme.cursor ?? "#ff8a5b"};
+            pointer-events: none;
+        }
+    `;
+    element.appendChild(compositionCaretStyle);
+
     const encoder = new TextEncoder();
 
     // Some Android IMEs (Samsung Keyboard in particular) can finish a
@@ -148,7 +173,7 @@ export function create(elementId, dotNetRef, options) {
     const viewport = window.visualViewport;
     viewport?.addEventListener("resize", keepFocus);
 
-    sessions.set(elementId, { terminal, fit, observer, viewport, keepFocus, pending: [], frame: 0 });
+    sessions.set(elementId, { terminal, fit, observer, viewport, keepFocus, compositionCaretStyle, pending: [], frame: 0 });
     return { cols: terminal.cols, rows: terminal.rows };
 }
 
@@ -202,6 +227,7 @@ export function dispose(elementId) {
     // visualViewport outlives the page, so a listener left on it holds the
     // disposed terminal alive and refocuses something that no longer exists.
     session.viewport?.removeEventListener("resize", session.keepFocus);
+    session.compositionCaretStyle?.remove();
     session.terminal.dispose();
     sessions.delete(elementId);
 }
