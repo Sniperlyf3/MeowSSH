@@ -275,4 +275,43 @@ public class TerminalTests(TestHostFixture fixture)
         Assert.True(visible, "Expected a visible caret on the active IME composition overlay.");
     }
 
+
+    [Fact]
+    public async Task DelayedImeDashCommitIsNotSentTwice()
+    {
+        // Samsung/WebView may deliver xterm's onData for punctuation a few task
+        // turns after compositionend. The fallback must wait long enough for
+        // that real commit instead of racing it and sending "-" twice.
+        var page = await OpenSessionAsync();
+        var textarea = page.Locator(".xterm-helper-textarea");
+
+        await textarea.EvaluateAsync(
+            @"element => {
+                element.focus();
+                element.dispatchEvent(new CompositionEvent('compositionstart', {
+                    bubbles: true,
+                    data: ''
+                }));
+                element.value = '-';
+                element.setSelectionRange(1, 1);
+                element.dispatchEvent(new CompositionEvent('compositionupdate', {
+                    bubbles: true,
+                    data: '-'
+                }));
+                element.dispatchEvent(new CompositionEvent('compositionend', {
+                    bubbles: true,
+                    data: '-'
+                }));
+            }");
+
+        // If the fallback races xterm, the shell receives "--". Waiting beyond
+        // the fallback window makes the assertion deterministic.
+        await page.WaitForTimeoutAsync(100);
+        await page.Keyboard.TypeAsync("x");
+        await page.Keyboard.PressAsync("Enter");
+
+        var screen = await ScreenTextAsync(page);
+        Assert.DoesNotContain("--x", screen, StringComparison.Ordinal);
+    }
+
 }
