@@ -58,92 +58,14 @@ export function create(elementId, dotNetRef, options) {
         textarea.setAttribute("enterkeyhint", "send");
     }
 
-    // During IME composition xterm deliberately draws the uncommitted text in
-    // .composition-view on top of the real terminal cursor. The PTY cannot move
-    // its cursor yet because those characters have not been committed/sent.
-    // Samsung Keyboard therefore makes the caret appear frozen or invisible
-    // until Space/Enter commits the prediction.
-    //
-    // Draw a visual caret at the end of xterm's composition overlay. This is
-    // presentation only: it does not send characters early, interfere with
-    // prediction, or lie about the remote PTY state.
-    const compositionView = element.querySelector(".composition-view");
-    const compositionCaretStyle = document.createElement("style");
-    compositionCaretStyle.textContent = `
-        #${CSS.escape(elementId)} .composition-view.active::after {
-            content: "";
-            position: absolute;
-            right: -2px;
-            top: 8%;
-            width: 2px;
-            height: 84%;
-            background: ${options.theme.cursor ?? "#ff8a5b"};
-            pointer-events: none;
-        }
-    `;
-    element.appendChild(compositionCaretStyle);
-
     const encoder = new TextEncoder();
-
-    // Some Android IMEs (Samsung Keyboard in particular) can finish a
-    // composition without xterm ever surfacing the committed text through
-    // onData. The composition is then removed from xterm's overlay but never
-    // reaches the PTY, so the visible caret appears to lag behind what the
-    // keyboard showed.
-    //
-    // Do not replace xterm's composition handling: it is correct for the
-    // keyboards that emit normally. Instead, remember the final DOM commit and
-    // verify that the same text appears through onData during xterm's own
-    // settle tick. If it does not, emit that commit once ourselves.
-    let compositionGeneration = 0;
-    let pendingCompositionCommit = null;
-
-    const sendInput = data =>
-        dotNetRef.invokeMethodAsync("OnInputAsync", encoder.encode(data));
-
     terminal.onData(data => {
-        // Samsung/xterm may surface the finalized composition together with the
-        // committing key (for example "ls " rather than just "ls"). Exact
-        // string equality is therefore too strict and causes the fallback to
-        // send the same word a second time. Any onData during this settle window
-        // proves xterm did emit the commit path, so suppress the fallback.
-        if (pendingCompositionCommit) {
-            pendingCompositionCommit.seen = true;
-        }
-
         // The Uint8Array goes across as-is. Blazor has optimized byte-array
         // interop in both directions; Array.from() would turn this into a plain
         // JS array, which does not bind to a byte[] parameter and throws once
         // per keystroke.
-        sendInput(data);
+        dotNetRef.invokeMethodAsync("OnInputAsync", encoder.encode(data));
     });
-
-    if (textarea) {
-        textarea.addEventListener("compositionstart", () => {
-            compositionGeneration++;
-            pendingCompositionCommit = null;
-        });
-
-        textarea.addEventListener("compositionend", event => {
-            const data = event.data ?? "";
-            if (!data) return;
-
-            const generation = compositionGeneration;
-            const pending = { data, seen: false };
-            pendingCompositionCommit = pending;
-
-            // xterm finalizes compositions asynchronously, and Samsung/WebView
-            // can deliver the corresponding onData several task turns later.
-            // A zero-delay fallback races that delivery and double-sends short
-            // commits such as "-". Give xterm a small settle window first.
-            setTimeout(() => {
-                if (compositionGeneration !== generation) return;
-                if (pendingCompositionCommit !== pending) return;
-                pendingCompositionCommit = null;
-                if (!pending.seen) sendInput(data);
-            }, 50);
-        });
-    }
 
     // xterm reports the size it actually achieved after fitting, which is what
     // the remote pty must be told -- not the size we asked for.
@@ -174,7 +96,7 @@ export function create(elementId, dotNetRef, options) {
     const viewport = window.visualViewport;
     viewport?.addEventListener("resize", keepFocus);
 
-    sessions.set(elementId, { terminal, fit, observer, viewport, keepFocus, compositionCaretStyle, pending: [], frame: 0 });
+    sessions.set(elementId, { terminal, fit, observer, viewport, keepFocus, pending: [], frame: 0 });
     return { cols: terminal.cols, rows: terminal.rows };
 }
 
@@ -228,7 +150,6 @@ export function dispose(elementId) {
     // visualViewport outlives the page, so a listener left on it holds the
     // disposed terminal alive and refocuses something that no longer exists.
     session.viewport?.removeEventListener("resize", session.keepFocus);
-    session.compositionCaretStyle?.remove();
     session.terminal.dispose();
     sessions.delete(elementId);
 }
