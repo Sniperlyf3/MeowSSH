@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Components.WebView.Maui;
 using MeowSSH.Android;
 using MeowSSH.Core.Security;
 using MeowSSH.Core.Services;
@@ -12,7 +13,10 @@ public static class MauiProgram
     public static MauiApp CreateMauiApp()
     {
         var builder = MauiApp.CreateBuilder();
-        builder.UseMauiApp<App>();
+        builder
+            .UseMauiApp<App>()
+            .ConfigureMauiHandlers(handlers =>
+                handlers.AddHandler<BlazorWebView, NoSuggestionsBlazorWebViewHandler>());
         builder.Services.AddMauiBlazorWebView();
 
         // Everything the app runs on is the real implementation: the Keystore,
