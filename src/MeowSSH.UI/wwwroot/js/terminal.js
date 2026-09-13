@@ -59,13 +59,60 @@ export function create(elementId, dotNetRef, options) {
     }
 
     const encoder = new TextEncoder();
+
+    // Some Android IMEs (Samsung Keyboard in particular) can finish a
+    // composition without xterm ever surfacing the committed text through
+    // onData. The composition is then removed from xterm's overlay but never
+    // reaches the PTY, so the visible caret appears to lag behind what the
+    // keyboard showed.
+    //
+    // Do not replace xterm's composition handling: it is correct for the
+    // keyboards that emit normally. Instead, remember the final DOM commit and
+    // verify that the same text appears through onData during xterm's own
+    // settle tick. If it does not, emit that commit once ourselves.
+    let compositionGeneration = 0;
+    let pendingCompositionCommit = null;
+
+    const sendInput = data =>
+        dotNetRef.invokeMethodAsync("OnInputAsync", encoder.encode(data));
+
     terminal.onData(data => {
+        if (pendingCompositionCommit && data === pendingCompositionCommit.data) {
+            pendingCompositionCommit.seen = true;
+        }
+
         // The Uint8Array goes across as-is. Blazor has optimized byte-array
         // interop in both directions; Array.from() would turn this into a plain
         // JS array, which does not bind to a byte[] parameter and throws once
         // per keystroke.
-        dotNetRef.invokeMethodAsync("OnInputAsync", encoder.encode(data));
+        sendInput(data);
     });
+
+    if (textarea) {
+        textarea.addEventListener("compositionstart", () => {
+            compositionGeneration++;
+            pendingCompositionCommit = null;
+        });
+
+        textarea.addEventListener("compositionend", event => {
+            const data = event.data ?? "";
+            if (!data) return;
+
+            const generation = compositionGeneration;
+            const pending = { data, seen: false };
+            pendingCompositionCommit = pending;
+
+            // xterm finalizes compositions asynchronously. Run after its own
+            // compositionend handler and only fill the gap if onData did not
+            // deliver this exact commit.
+            setTimeout(() => {
+                if (compositionGeneration !== generation) return;
+                if (pendingCompositionCommit !== pending) return;
+                pendingCompositionCommit = null;
+                if (!pending.seen) sendInput(data);
+            }, 0);
+        });
+    }
 
     // xterm reports the size it actually achieved after fitting, which is what
     // the remote pty must be told -- not the size we asked for.
