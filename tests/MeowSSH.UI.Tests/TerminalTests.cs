@@ -240,4 +240,39 @@ public class TerminalTests(TestHostFixture fixture)
         Assert.DoesNotContain("lsls", screen, StringComparison.Ordinal);
     }
 
+
+    [Fact]
+    public async Task ImeCompositionShowsACaretAtTheEndOfTheOverlay()
+    {
+        var page = await OpenSessionAsync();
+        var textarea = page.Locator(".xterm-helper-textarea");
+
+        await textarea.EvaluateAsync(
+            @"element => {
+                element.focus();
+                element.dispatchEvent(new CompositionEvent('compositionstart', {
+                    bubbles: true,
+                    data: ''
+                }));
+                element.value = 'hello';
+                element.setSelectionRange(5, 5);
+                element.dispatchEvent(new CompositionEvent('compositionupdate', {
+                    bubbles: true,
+                    data: 'hello'
+                }));
+            }");
+
+        var visible = await page.EvaluateAsync<bool>(
+            @"() => {
+                const view = document.querySelector('.composition-view.active');
+                if (!view) return false;
+                const caret = getComputedStyle(view, '::after');
+                return caret.content !== 'none'
+                    && parseFloat(caret.width) > 0
+                    && caret.backgroundColor !== 'rgba(0, 0, 0, 0)';
+            }");
+
+        Assert.True(visible, "Expected a visible caret on the active IME composition overlay.");
+    }
+
 }
