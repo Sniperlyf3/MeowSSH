@@ -137,4 +137,26 @@ public class TerminalTests(TestHostFixture fixture)
 
         Assert.False(overflows, "The session screen scrolls horizontally at 390px wide.");
     }
+
+    [Fact]
+    public async Task TheTerminalInputAsksForAKeyboardThatDoesNotCompose()
+    {
+        // A phone keyboard's predictive text holds the word being typed as
+        // uncommitted composition, draws it over the terminal, and leaves the
+        // real caret one word behind until something commits it. xterm's own
+        // autocorrect and spellcheck attributes do not stop Gboard doing that;
+        // inputmode does, because a URL field is not natural language.
+        var page = await fixture.NewPageAsync("/");
+        await page.GetByTestId("host-row").First.ClickAsync();
+        await Assertions.Expect(page.GetByTestId("terminal")).ToBeVisibleAsync();
+
+        var textarea = page.Locator(".xterm-helper-textarea");
+        await Assertions.Expect(textarea).ToHaveAttributeAsync("inputmode", "url");
+        await Assertions.Expect(textarea).ToHaveAttributeAsync("autocomplete", "off");
+
+        // The ones xterm sets itself, asserted so that an upgrade dropping them
+        // is noticed here rather than on a phone.
+        await Assertions.Expect(textarea).ToHaveAttributeAsync("spellcheck", "false");
+        await Assertions.Expect(textarea).ToHaveAttributeAsync("autocorrect", "off");
+    }
 }

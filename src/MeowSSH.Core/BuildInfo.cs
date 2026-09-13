@@ -18,13 +18,18 @@ public static class BuildInfo
     /// The informational version, which CI stamps with the commit it built.
     /// </summary>
     /// <remarks>
-    /// Read from the entry assembly rather than this one, so the Android app
-    /// reports the app's version rather than the shared library's.
+    /// Read from this assembly, not the entry assembly. Android has no entry
+    /// assembly in the sense .NET means -- the process is started through the
+    /// Java bridge, so <c>GetEntryAssembly</c> returns null -- and the fallback
+    /// was this library anyway, which carried the default 1.0.0 rather than the
+    /// app's number. Every project now shares one version, so reading a fixed
+    /// assembly gives the same answer everywhere and does not depend on how the
+    /// process was launched.
     /// </remarks>
     public static string Version { get; } = Resolve();
 
     private static string Resolve() => Format(
-        (Assembly.GetEntryAssembly() ?? typeof(BuildInfo).Assembly)
+        typeof(BuildInfo).Assembly
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion);
 
     /// <summary>

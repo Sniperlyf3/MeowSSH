@@ -23,6 +23,21 @@
     <NoWarn>$(NoWarn);CS1591</NoWarn>
   </PropertyGroup>
 
+  <!--
+    One version for every assembly, so it does not matter which one is read to
+    answer "which build is this?". Without it the libraries default to 1.0.0
+    while the app head carries its own number, and the lock screen reported the
+    library's: a version that matches nothing and moves for no reason.
+  -->
+  <PropertyGroup>
+    <Version>0.1.0</Version>
+    <!--
+      CI passes the commit here. A local build says so instead of claiming a
+      revision it does not have.
+    -->
+    <SourceRevisionId Condition="'$(SourceRevisionId)' == ''">local</SourceRevisionId>
+  </PropertyGroup>
+
   <PropertyGroup>
     <Authors>Sniperlyf3</Authors>
     <Product>MeowSSH</Product>

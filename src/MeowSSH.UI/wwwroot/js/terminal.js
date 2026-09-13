@@ -40,6 +40,24 @@ export function create(elementId, dotNetRef, options) {
     terminal.open(element);
     fit.fit();
 
+    // xterm already asks for no autocorrect, no autocapitalise and no
+    // spellcheck. Gboard composes anyway: it holds the word being typed as
+    // uncommitted composition text, shows it over the terminal, and leaves the
+    // real cursor at the last committed position -- which is why the caret sat
+    // thin and one word behind until space committed it.
+    //
+    // inputmode is the lever that actually stops it. A URL field is not natural
+    // language, so the keyboard offers no predictions and composes nothing; the
+    // layout stays QWERTY with the space bar intact and gains a "/", which a
+    // shell has more use for than a suggestion strip. Ignored entirely by
+    // physical keyboards, so desktop is unaffected.
+    const textarea = element.querySelector(".xterm-helper-textarea");
+    if (textarea) {
+        textarea.setAttribute("inputmode", "url");
+        textarea.setAttribute("autocomplete", "off");
+        textarea.setAttribute("enterkeyhint", "send");
+    }
+
     const encoder = new TextEncoder();
     terminal.onData(data => {
         // The Uint8Array goes across as-is. Blazor has optimized byte-array
