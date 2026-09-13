@@ -75,20 +75,42 @@ jobs:
         run: dotnet workload install maui-android
 
       - name: Build the APK
-        # Debug rather than Release: a debug build is signed with the SDK's own
-        # debug key, so it can be sideloaded. A release build would need a
-        # keystore, which belongs in repository secrets rather than here.
-        # arm64 only, which halves the download and covers every real phone.
-        #
-        # SourceRevisionId stamps the commit into the informational version, so
-        # the app shows which build it is on its own lock screen. Without it,
-        # "is that fixed in the build you have?" is unanswerable from a phone --
-        # and the answer changes what a symptom means.
-        run: >
-          dotnet publish src/MeowSSH.App/MeowSSH.App.csproj
-          -c Debug -f net10.0-android36.0
-          -p:RuntimeIdentifier=android-arm64
-          -p:SourceRevisionId=${{ github.sha }}
+        # Every CI run gets a monotonically increasing Android versionCode so a
+        # newer artifact can replace an older installed build. If the persistent
+        # signing secrets are configured, the same certificate is also reused
+        # across runners; without that Android may still require an uninstall.
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+        run: |
+          args=(
+            dotnet publish src/MeowSSH.App/MeowSSH.App.csproj
+            -c Debug -f net10.0-android36.0
+            -p:RuntimeIdentifier=android-arm64
+            -p:SourceRevisionId=${{ github.sha }}
+            -p:Version=0.1.${{ github.run_number }}
+            -p:ApplicationDisplayVersion=0.1.${{ github.run_number }}
+            -p:ApplicationVersion=${{ github.run_number }}
+          )
+
+          if [[ -n "$ANDROID_KEYSTORE_BASE64" ]]; then
+            KEYSTORE="$RUNNER_TEMP/meowssh-ci.keystore"
+            printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
+            chmod 600 "$KEYSTORE"
+            args+=(
+              -p:AndroidKeyStore=true
+              "-p:AndroidSigningKeyStore=$KEYSTORE"
+              "-p:AndroidSigningKeyAlias=$ANDROID_KEY_ALIAS"
+              "-p:AndroidSigningKeyPass=$ANDROID_KEY_PASSWORD"
+              "-p:AndroidSigningStorePass=$ANDROID_STORE_PASSWORD"
+            )
+          else
+            echo "::warning::Persistent Android signing secrets are not configured; APK signatures may change between runners and require uninstall/reinstall."
+          fi
+
+          "${args[@]}"
 
       - name: Check the native binaries survived packaging
         # AndroidExtractNativeLibraries is what lets these be executed at all, and

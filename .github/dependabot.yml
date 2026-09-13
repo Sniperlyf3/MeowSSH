@@ -1,0 +1,33 @@
+version: 2
+
+updates:
+  # Keep every third-party GitHub Action used by workflows current.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 20
+    labels:
+      - "dependencies"
+      - "github-actions"
+
+  # NuGet manifests are spread across the application and test projects.
+  # Dependabot's multi-directory form keeps all PackageReference versions in
+  # the repository covered by one update configuration.
+  - package-ecosystem: "nuget"
+    directories:
+      - "/src/MeowSSH.Android"
+      - "/src/MeowSSH.App"
+      - "/src/MeowSSH.Core"
+      - "/src/MeowSSH.TestHost"
+      - "/src/MeowSSH.UI"
+      - "/tests/MeowSSH.Core.Tests"
+      - "/tests/MeowSSH.Device.Tests"
+      - "/tests/MeowSSH.Integration.Tests"
+      - "/tests/MeowSSH.UI.Tests"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 20
+    labels:
+      - "dependencies"
+      - "nuget"

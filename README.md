@@ -66,9 +66,24 @@ adb install -r dev.sniperlyf3.meowssh-Signed.apk
 
 Or copy the APK to the device and open it, allowing installs from that source.
 
-Debug rather than release, because a debug build is signed with the Android
-SDK's own debug key and can therefore be sideloaded at all; a release build
-needs a keystore, which belongs in repository secrets rather than in the repo.
+CI assigns every APK a monotonically increasing Android version code from the
+GitHub Actions run number and a matching display version (`0.1.<run>`). That
+lets Android accept newer builds over older ones.
+
+For reliable in-place updates across different GitHub-hosted runners, configure
+a persistent Android signing keystore in repository secrets. Otherwise the
+runner's generated debug key can change and Android will reject the update even
+when the version is newer.
+
+Required secrets:
+
+- `ANDROID_KEYSTORE_BASE64` — the keystore file, base64 encoded as a single line.
+- `ANDROID_KEY_ALIAS`
+- `ANDROID_KEY_PASSWORD`
+- `ANDROID_STORE_PASSWORD`
+
+Once these are present, CI signs every APK with the same certificate. Do not
+commit the keystore itself to the repository.
 
 To build one locally you need the `maui-android` workload, a JDK, and the
 Android SDK:
