@@ -48,7 +48,7 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-results
           path: "**/TestResults/*.trx"
@@ -123,7 +123,7 @@ jobs:
           echo "APK: $APK ($(du -h "$APK" | cut -f1))"
 
       - name: Upload the APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: meowssh-apk-${{ github.sha }}
           # The publish directory only, not bin/**: the same APK exists in both,
@@ -189,7 +189,7 @@ jobs:
 
       - name: Upload the device test report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: device-test-report
           path: instrumentation.txt
