@@ -1,0 +1,64 @@
+@inject IHostDirectory Directory
+@implements IDisposable
+
+<AppShell Title="Files" ActiveTab="files" OnTabSelected="OnTabSelected">
+    <ChildContent>
+        @if (_hosts is null)
+        {
+            <p class="visually-hidden" role="status">Loading hosts</p>
+        }
+        else if (_hosts.Count == 0)
+        {
+            <div class="empty" data-testid="files-hosts-empty">
+                <span class="empty__glyph"><Icon Name="folder" /></span>
+                <p class="empty__title">No hosts yet</p>
+                <p class="empty__body">Add a host first, then come back here to browse it over SFTP.</p>
+            </div>
+        }
+        else
+        {
+            <h2 class="section-label">Choose a host</h2>
+            <div class="host-list" data-testid="files-host-list">
+                @foreach (var status in _hosts)
+                {
+                    <button type="button" class="host" data-testid="files-host"
+                            @onclick="() => OnHostSelected.InvokeAsync(status.Host)">
+                        <span class="host__avatar" aria-hidden="true"><Icon Name="server" /></span>
+                        <span class="host__text">
+                            <span class="host__label">@status.Host.Label</span>
+                            <span class="host__address mono">@DisplayAddress(status.Host)</span>
+                        </span>
+                        <span class="host__chevron" aria-hidden="true"><Icon Name="chevron" /></span>
+                    </button>
+                }
+            </div>
+        }
+    </ChildContent>
+</AppShell>
+
+@code {
+    private IReadOnlyList<HostStatus>? _hosts;
+
+    [Parameter] public EventCallback<HostRecord> OnHostSelected { get; set; }
+    [Parameter] public EventCallback<string> OnTabSelected { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        Directory.Changed += OnDirectoryChanged;
+        _hosts = await Directory.GetHostsAsync();
+    }
+
+    private void OnDirectoryChanged(object? sender, EventArgs e) =>
+        _ = InvokeAsync(async () =>
+        {
+            _hosts = await Directory.GetHostsAsync();
+            StateHasChanged();
+        });
+
+    private static string DisplayAddress(HostRecord host) =>
+        string.IsNullOrWhiteSpace(host.Username)
+            ? $\"{host.Hostname}:{host.Port}\"
+            : $\"{host.Username}@{host.Hostname}:{host.Port}\";
+
+    public void Dispose() => Directory.Changed -= OnDirectoryChanged;
+}
