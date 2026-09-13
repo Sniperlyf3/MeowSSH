@@ -40,9 +40,17 @@ else if (_editing)
 {
     <HostEditorPage Host="_editTarget" OnSaved="CloseEditor" OnCancelled="CloseEditor" />
 }
+else if (_tab == "files")
+{
+    <FilesLandingPage OnHostSelected="OpenFiles" OnTabSelected="tab => _tab = tab" />
+}
 else if (_tab == "keys")
 {
     <KeysPage OnTabSelected="tab => _tab = tab" />
+}
+else if (_tab == "settings")
+{
+    <SettingsPage OnTabSelected="tab => _tab = tab" />
 }
 else
 {
@@ -92,6 +100,9 @@ else
         _session = new SessionState(host, new FakeSshShell());
         _sessionStarted = false;
     }
+
+    private void OpenFiles(HostRecord host) =>
+        _files = new FilesState(host, new FakeSftpSession());
 
     // The shell is started after a render, so TerminalView has been initialised
     // and is subscribed. Starting it inline would emit the banner into a session
