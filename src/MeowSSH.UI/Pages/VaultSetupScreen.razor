@@ -98,6 +98,15 @@
             if (result.Succeeded) _recoveryCode = result.RecoveryCode;
             else _error = result.Message;
         }
+        catch (Exception ex)
+        {
+            // A platform call that throws something unforeseen must not leave the
+            // button reading "Waiting" for ever. An unhandled exception here stops
+            // the renderer, so nothing repaints and the screen looks frozen --
+            // which is exactly how this failed on a real phone. Catching it is the
+            // difference between a message and a dead screen.
+            _error = $"Setup failed unexpectedly: {ex.Message}";
+        }
         finally { _busy = false; }
     }
 

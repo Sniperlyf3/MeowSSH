@@ -116,6 +116,12 @@
                 if (result.State == VaultState.NeedsRecovery) _showRecovery = true;
             }
         }
+        catch (Exception ex)
+        {
+            // See VaultSetupScreen: an unhandled exception stops the renderer, so
+            // the screen freezes rather than reporting anything.
+            _error = $"Unlock failed unexpectedly: {ex.Message}";
+        }
         finally { _busy = false; }
     }
 
@@ -128,6 +134,10 @@
             var result = await Vault.UnlockWithRecoveryCodeAsync(_recoveryCode);
             if (result.Succeeded) await OnUnlocked.InvokeAsync();
             else _error = result.Message;
+        }
+        catch (Exception ex)
+        {
+            _error = $"Unlock failed unexpectedly: {ex.Message}";
         }
         finally { _busy = false; }
     }

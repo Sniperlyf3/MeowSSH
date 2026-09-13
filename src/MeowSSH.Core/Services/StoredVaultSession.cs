@@ -99,6 +99,15 @@ public sealed class StoredVaultSession(
         {
             return VaultSetupResult.Failed(ex.Message);
         }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // The key store is a platform service reached through bindings, and
+            // it can throw types this layer has never heard of. Creating a vault
+            // is the first thing a user does, so an unrecognised failure has to
+            // become a sentence rather than an unhandled exception that stops
+            // the screen repainting.
+            return VaultSetupResult.Failed($"The vault could not be created on this device: {ex.Message}");
+        }
     }
 
     public async ValueTask<VaultUnlockResult> UnlockAsync(CancellationToken cancellationToken = default)

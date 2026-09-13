@@ -33,6 +33,16 @@ public sealed class AndroidDeviceKeyStore(string keyAlias = AndroidDeviceKeyStor
     private const int TagBits = 128;
     private const int NonceBytes = 12;
 
+    /// <summary>
+    /// How long the key stays usable after the user authenticates.
+    /// </summary>
+    /// <remarks>
+    /// Long enough for one unlock to finish its work -- creating a vault stretches
+    /// a recovery code with Argon2id, which is deliberately slow -- and short
+    /// enough that it is not a standing grant.
+    /// </remarks>
+    private const int AuthenticationWindowSeconds = 30;
+
     public ValueTask<bool> IsAvailableAsync(CancellationToken cancellationToken = default)
     {
         try
@@ -84,6 +94,8 @@ public sealed class AndroidDeviceKeyStore(string keyAlias = AndroidDeviceKeyStor
             .SetUserAuthenticationRequired(requireUserAuthentication)!
             // A new fingerprint must not inherit access to an existing vault.
             .SetInvalidatedByBiometricEnrollment(requireUserAuthentication)!;
+
+        if (requireUserAuthentication) spec = AllowUseShortlyAfterAuthenticating(spec);
 
         // StrongBox is absent on most devices and throws rather than degrading,
         // so it is attempted and then retried without.
@@ -142,14 +154,84 @@ public sealed class AndroidDeviceKeyStore(string keyAlias = AndroidDeviceKeyStor
         || ex.Message?.Contains("enrolled", StringComparison.OrdinalIgnoreCase) == true
         || ex.Message?.Contains("secure lock screen", StringComparison.OrdinalIgnoreCase) == true;
 
+    /// <summary>
+    /// Lets the key be used for a short window after the user authenticates,
+    /// rather than only through a cipher bound to the prompt itself.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is the difference between a working unlock and a frozen screen. A
+    /// key created with <c>setUserAuthenticationRequired(true)</c> and no
+    /// validity window is authenticated <em>per use</em>: the only way to use it
+    /// is to hand the initialised <see cref="Cipher"/> to
+    /// <c>BiometricPrompt</c> inside a <c>CryptoObject</c> and let the prompt
+    /// authorise that exact operation. Calling <c>Cipher.init</c> on such a key
+    /// after an ordinary prompt throws <c>UserNotAuthenticatedException</c>,
+    /// however recently the user authenticated.
+    /// </para>
+    /// <para>
+    /// A window is taken instead of a CryptoObject because the whole point of
+    /// <see cref="IDeviceKeyStore"/> is that authenticating and using the key
+    /// are separate steps: the vault authenticates once and then performs
+    /// several operations. Threading a cipher through the prompt would push
+    /// Android's shape into an interface that has to work on other platforms
+    /// too.
+    /// </para>
+    /// <para>
+    /// The window is short on purpose. It starts at the moment of
+    /// authentication, not at first use, and it exists to cover one unlock --
+    /// not to leave the key usable while the phone sits on a table.
+    /// </para>
+    /// </remarks>
+    private static KeyGenParameterSpec.Builder AllowUseShortlyAfterAuthenticating(KeyGenParameterSpec.Builder spec)
+    {
+        if (OperatingSystem.IsAndroidVersionAtLeast(30))
+        {
+            // Raw constants: the generated bindings do not surface these, and
+            // the values are fixed by the platform rather than by the binding.
+            // AUTH_DEVICE_CREDENTIAL is 1 << 0, AUTH_BIOMETRIC_STRONG is 1 << 1.
+            const int authDeviceCredential = 1 << 0;
+            const int authBiometricStrong = 1 << 1;
+            return spec.SetUserAuthenticationParameters(
+                AuthenticationWindowSeconds, authBiometricStrong | authDeviceCredential)!;
+        }
+
+        // Deprecated from API 30 but the only option on 28 and 29, which is the
+        // range this app still supports.
+#pragma warning disable CA1422
+        return spec.SetUserAuthenticationValidityDurationSeconds(AuthenticationWindowSeconds)!;
+#pragma warning restore CA1422
+    }
+
     public ValueTask<byte[]> WrapAsync(ReadOnlyMemory<byte> masterKey, CancellationToken cancellationToken = default)
     {
         var cipher = Cipher.GetInstance(Transformation)
             ?? throw new DeviceKeyUnavailableException(DeviceKeyUnavailableReason.NotSupported, "AES-GCM is unavailable.");
 
-        cipher.Init(CipherMode.EncryptMode, RequireKey());
-        var sealedKey = cipher.DoFinal(masterKey.ToArray())
-            ?? throw new DeviceKeyUnavailableException(DeviceKeyUnavailableReason.NotProvisioned, "The key store returned nothing.");
+        byte[]? sealedKey;
+        try
+        {
+            cipher.Init(CipherMode.EncryptMode, RequireKey());
+            sealedKey = cipher.DoFinal(masterKey.ToArray());
+        }
+        catch (KeyPermanentlyInvalidatedException ex)
+        {
+            throw new DeviceKeyUnavailableException(
+                DeviceKeyUnavailableReason.BiometricEnrolmentChanged,
+                "The key protecting this vault was retired because the device's biometric enrolment changed.", ex);
+        }
+        catch (UserNotAuthenticatedException ex)
+        {
+            // Sealing needs the same authentication opening does, and this used
+            // to escape as a raw Java exception -- which reached the UI as a
+            // dead screen rather than as anything a user could act on.
+            throw new DeviceKeyUnavailableException(
+                DeviceKeyUnavailableReason.AuthenticationFailed,
+                "Authenticate again, then retry.", ex);
+        }
+
+        if (sealedKey is null)
+            throw new DeviceKeyUnavailableException(DeviceKeyUnavailableReason.NotProvisioned, "The key store returned nothing.");
 
         // The nonce is generated by the OS and is not recoverable from the key,
         // so it is stored alongside the ciphertext.

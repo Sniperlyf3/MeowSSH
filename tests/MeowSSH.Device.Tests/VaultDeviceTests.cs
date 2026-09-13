@@ -318,6 +318,65 @@ public static class VaultDeviceTests
             }
         }),
 
+        new("Keystore: a user-gated key is usable after authenticating, not only through a CryptoObject", async () =>
+        {
+            // The bug this exists for: a key created with
+            // setUserAuthenticationRequired(true) and no validity window is
+            // authenticated per use, and the only way to use it is a Cipher
+            // handed to BiometricPrompt inside a CryptoObject. Cipher.init on
+            // such a key throws UserNotAuthenticatedException however recently
+            // the user authenticated -- which froze the setup screen on a real
+            // phone. Every other check here passes requireUserAuthentication:
+            // false and so could never have seen it.
+            var store = new AndroidDeviceKeyStore(NewAlias());
+            try
+            {
+                if (await new AndroidBiometricGate(() => null).GetAvailabilityAsync() != BiometricAvailability.Available)
+                    return; // Nothing enrolled, so the key cannot be created at all.
+
+                await store.CreateWrappingKeyAsync(requireUserAuthentication: true);
+                using var key = SecretBuffer.Random(VaultCrypto.KeySize);
+
+                // No prompt has been shown in this process. On a per-use key this
+                // throws; on a windowed key it either succeeds or reports that
+                // authentication is needed -- and never a raw Java exception.
+                try
+                {
+                    var wrapped = await store.WrapAsync(key.ReadOnlySpan.ToArray());
+                    Assert.NotEmpty(wrapped);
+                }
+                catch (DeviceKeyUnavailableException error)
+                {
+                    Assert.Equal(DeviceKeyUnavailableReason.AuthenticationFailed, error.Reason);
+                }
+            }
+            finally { await store.DeleteWrappingKeyAsync(); }
+        }),
+
+        new("Keystore: sealing without authenticating reports a typed reason", async () =>
+        {
+            // Whatever the platform does, it must not reach the UI as a Java
+            // exception: that is what stopped the renderer and froze the button.
+            var store = new AndroidDeviceKeyStore(NewAlias());
+            try
+            {
+                if (await new AndroidBiometricGate(() => null).GetAvailabilityAsync() != BiometricAvailability.Available)
+                    return;
+
+                await store.CreateWrappingKeyAsync(requireUserAuthentication: true);
+                using var key = SecretBuffer.Random(VaultCrypto.KeySize);
+
+                Exception? caught = null;
+                try { await store.WrapAsync(key.ReadOnlySpan.ToArray()); }
+                catch (Exception ex) { caught = ex; }
+
+                Assert.True(
+                    caught is null or DeviceKeyUnavailableException,
+                    $"sealing threw {caught?.GetType().FullName} instead of a typed DeviceKeyUnavailableException");
+            }
+            finally { await store.DeleteWrappingKeyAsync(); }
+        }),
+
         new("Keystore: a user-gated key with nothing enrolled reports NotEnrolled", async () =>
         {
             // A CI emulator has no fingerprint, which makes it the right place to
