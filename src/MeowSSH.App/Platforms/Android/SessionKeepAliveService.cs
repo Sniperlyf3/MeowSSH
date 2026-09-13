@@ -47,17 +47,23 @@ public sealed class SessionKeepAliveService : Service
                 launchIntent,
                 PendingIntentFlags.Immutable | PendingIntentFlags.UpdateCurrent);
 
-        var notification = new NotificationCompat.Builder(this, ChannelId)
+        var builder = new NotificationCompat.Builder(this, ChannelId)
             .SetSmallIcon(Resource.Mipmap.appicon)
             .SetContentTitle("MeowSSH session active")
             .SetContentText("Keeping your SSH connection alive in the background")
             .SetOngoing(true)
             .SetOnlyAlertOnce(true)
-            .SetCategory(NotificationCompat.CategoryService)
-            .SetContentIntent(pendingIntent)
-            .Build();
+            .SetCategory(NotificationCompat.CategoryService);
 
-        ServiceCompat.StartForeground(this, NotificationId, notification, (int)ForegroundService.TypeSpecialUse);
+        if (pendingIntent is not null)
+            builder.SetContentIntent(pendingIntent);
+
+        var notification = builder.Build();
+
+        if (Build.VERSION.SdkInt >= BuildVersionCodes.UpsideDownCake)
+            ServiceCompat.StartForeground(this, NotificationId, notification, (int)ForegroundService.TypeSpecialUse);
+        else
+            ServiceCompat.StartForeground(this, NotificationId, notification, 0);
 
         // Restarting this service after Android kills the entire process would
         // be misleading: the SSH subprocess and socket are already gone by then.
