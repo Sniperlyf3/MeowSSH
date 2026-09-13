@@ -46,14 +46,12 @@ export function create(elementId, dotNetRef, options) {
     // real cursor at the last committed position -- which is why the caret sat
     // thin and one word behind until space committed it.
     //
-    // inputmode is the lever that actually stops it. A URL field is not natural
-    // language, so the keyboard offers no predictions and composes nothing; the
-    // layout stays QWERTY with the space bar intact and gains a "/", which a
-    // shell has more use for than a suggestion strip. Ignored entirely by
-    // physical keyboards, so desktop is unaffected.
+    // The vendored xterm helper is a hidden password-style input. Do not set an
+    // inputmode here: on Android/Samsung that can override the password editor
+    // classification and bring IME composition back even when suggestions are
+    // hidden. Let type="password" be the strongest signal to the keyboard.
     const textarea = element.querySelector(".xterm-helper-textarea");
     if (textarea) {
-        textarea.setAttribute("inputmode", "url");
         textarea.setAttribute("autocomplete", "off");
         textarea.setAttribute("enterkeyhint", "send");
     }

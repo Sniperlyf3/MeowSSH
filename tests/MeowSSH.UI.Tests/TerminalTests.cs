@@ -143,16 +143,22 @@ public class TerminalTests(TestHostFixture fixture)
     {
         // A phone keyboard's predictive text holds the word being typed as
         // uncommitted composition, draws it over the terminal, and leaves the
-        // real caret one word behind until something commits it. xterm's own
-        // autocorrect and spellcheck attributes do not stop Gboard doing that;
-        // inputmode does, because a URL field is not natural language.
+        // real caret one word behind until something commits it. The hidden
+        // capture element is password-style so Android treats it as literal
+        // input rather than a normal predictive text field.
         var page = await fixture.NewPageAsync("/");
         await page.GetByTestId("host-row").First.ClickAsync();
         await Assertions.Expect(page.GetByTestId("terminal")).ToBeVisibleAsync();
 
         var textarea = page.Locator(".xterm-helper-textarea");
-        await Assertions.Expect(textarea).ToHaveAttributeAsync("inputmode", "url");
+        await Assertions.Expect(textarea).ToHaveAttributeAsync("type", "password");
+        Assert.Null(await textarea.GetAttributeAsync("inputmode"));
         await Assertions.Expect(textarea).ToHaveAttributeAsync("autocomplete", "off");
+
+        // The hidden capture element is deliberately a password-style input.
+        // Android/Samsung treats that as literal text and disables predictive
+        // composition, while xterm still receives ordinary input events.
+        Assert.Equal("INPUT", await textarea.EvaluateAsync<string>("element => element.tagName"));
 
         // The ones xterm sets itself, asserted so that an upgrade dropping them
         // is noticed here rather than on a phone.
