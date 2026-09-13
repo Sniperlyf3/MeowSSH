@@ -33,6 +33,7 @@
     <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
     <!-- The runner discovers tests by reflection, so nothing may be trimmed. -->
     <AndroidLinkMode>None</AndroidLinkMode>
+    <AndroidManifest>Platforms\Android\AndroidManifest.xml</AndroidManifest>
   </PropertyGroup>
 
   <!--

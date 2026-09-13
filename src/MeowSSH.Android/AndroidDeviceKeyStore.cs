@@ -93,13 +93,54 @@ public sealed class AndroidDeviceKeyStore(string keyAlias = AndroidDeviceKeyStor
             generator.GenerateKey();
             return ValueTask.CompletedTask;
         }
+        catch (Java.Security.InvalidAlgorithmParameterException)
+        {
+            // Falls through to the non-StrongBox attempt below, whose own
+            // failure is the one worth reporting.
+        }
         catch (Exception)
+        {
+        }
+
+        try
         {
             generator.Init(spec.SetIsStrongBoxBacked(false)!.Build());
             generator.GenerateKey();
             return ValueTask.CompletedTask;
         }
+        catch (Java.Security.InvalidAlgorithmParameterException ex)
+        {
+            // Asking for a key gated on the user when nothing is enrolled to
+            // gate it with fails here, not at unlock time. Left as a Java
+            // exception it reaches the UI as an unhandled crash on the first
+            // screen; as a typed reason it becomes a sentence telling the user
+            // to set up a fingerprint. There is also a real race behind this --
+            // enrolment can be removed between the availability check and this
+            // call -- so the caller's earlier check is not enough on its own.
+            throw new DeviceKeyUnavailableException(
+                RequiresEnrolment(ex) ? DeviceKeyUnavailableReason.NotEnrolled : DeviceKeyUnavailableReason.NotSupported,
+                RequiresEnrolment(ex)
+                    ? "Set up a fingerprint, face unlock or a screen lock first, then try again."
+                    : "This device cannot create the key MeowSSH needs to protect your vault.",
+                ex);
+        }
     }
+
+    /// <summary>
+    /// Whether the platform refused because nothing is enrolled, rather than
+    /// because the parameters were wrong.
+    /// </summary>
+    /// <remarks>
+    /// Matched on the message because the platform reports both through the same
+    /// exception type, with the distinction only in the text. Narrow on purpose:
+    /// anything unrecognised is reported as unsupported rather than as something
+    /// the user can fix, since telling someone to enrol a finger they already
+    /// have is worse than admitting the device is the problem.
+    /// </remarks>
+    private static bool RequiresEnrolment(Java.Security.InvalidAlgorithmParameterException ex) =>
+        ex.Message?.Contains("biometric", StringComparison.OrdinalIgnoreCase) == true
+        || ex.Message?.Contains("enrolled", StringComparison.OrdinalIgnoreCase) == true
+        || ex.Message?.Contains("secure lock screen", StringComparison.OrdinalIgnoreCase) == true;
 
     public ValueTask<byte[]> WrapAsync(ReadOnlyMemory<byte> masterKey, CancellationToken cancellationToken = default)
     {

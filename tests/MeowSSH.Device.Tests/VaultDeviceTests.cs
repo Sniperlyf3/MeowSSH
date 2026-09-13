@@ -173,7 +173,7 @@ public static class VaultDeviceTests
             // created it is alive is the bug this whole layer exists to avoid.
             var directory = NewDirectory();
             var alias = NewAlias();
-            var keys = new AndroidDeviceKeyStore(alias);
+            var keys = new UngatedKeyStore(new AndroidDeviceKeyStore(alias));
             var storage = new FileVaultStorage(Path.Combine(directory, "meowssh.vault"));
             try
             {
@@ -201,7 +201,7 @@ public static class VaultDeviceTests
         {
             var directory = NewDirectory();
             var alias = NewAlias();
-            var keys = new AndroidDeviceKeyStore(alias);
+            var keys = new UngatedKeyStore(new AndroidDeviceKeyStore(alias));
             var path = Path.Combine(directory, "meowssh.vault");
             var storage = new FileVaultStorage(path);
             try
@@ -233,7 +233,7 @@ public static class VaultDeviceTests
             // world-readable would not be caught by anything else here.
             var directory = NewDirectory();
             var alias = NewAlias();
-            var keys = new AndroidDeviceKeyStore(alias);
+            var keys = new UngatedKeyStore(new AndroidDeviceKeyStore(alias));
             var path = Path.Combine(directory, "meowssh.vault");
             try
             {
@@ -257,7 +257,7 @@ public static class VaultDeviceTests
         {
             var directory = NewDirectory();
             var alias = NewAlias();
-            var keys = new AndroidDeviceKeyStore(alias);
+            var keys = new UngatedKeyStore(new AndroidDeviceKeyStore(alias));
             var storage = new FileVaultStorage(Path.Combine(directory, "meowssh.vault"));
             try
             {
@@ -291,7 +291,7 @@ public static class VaultDeviceTests
         {
             var directory = NewDirectory();
             var alias = NewAlias();
-            var keys = new AndroidDeviceKeyStore(alias);
+            var keys = new UngatedKeyStore(new AndroidDeviceKeyStore(alias));
             var path = Path.Combine(directory, "meowssh.vault");
             var storage = new FileVaultStorage(path);
             try
@@ -316,6 +316,27 @@ public static class VaultDeviceTests
                 await keys.DeleteWrappingKeyAsync();
                 Directory.Delete(directory, recursive: true);
             }
+        }),
+
+        new("Keystore: a user-gated key with nothing enrolled reports NotEnrolled", async () =>
+        {
+            // A CI emulator has no fingerprint, which makes it the right place to
+            // prove this: the platform refuses, and the refusal has to arrive as
+            // a typed reason rather than as a Java exception reaching the UI.
+            // There is a real race behind it too -- enrolment can be removed
+            // between the availability check and this call.
+            var store = new AndroidDeviceKeyStore(NewAlias());
+            try
+            {
+                var availability = await new AndroidBiometricGate(() => null).GetAvailabilityAsync();
+                if (availability == BiometricAvailability.Available) return; // Something is enrolled; nothing to prove.
+
+                var error = await Assert.ThrowsAsync<DeviceKeyUnavailableException>(
+                    async () => await store.CreateWrappingKeyAsync(requireUserAuthentication: true));
+                Assert.Equal(DeviceKeyUnavailableReason.NotEnrolled, error.Reason);
+                Assert.Contains("Set up a fingerprint", error.Message, StringComparison.Ordinal);
+            }
+            finally { await store.DeleteWrappingKeyAsync(); }
         }),
 
         new("Agent: the native binaries were extracted and are executable", () =>
@@ -350,6 +371,34 @@ public static class VaultDeviceTests
             return Task.CompletedTask;
         }),
     ];
+
+    /// <summary>
+    /// Creates keys that are not gated on the user.
+    /// </summary>
+    /// <remarks>
+    /// A CI emulator has no enrolled fingerprint, and the platform refuses to
+    /// create a key requiring user authentication when there is nothing to
+    /// authenticate with. The checks that wrap this care about persistence and
+    /// the shape of the file on disk, not about the gate -- which has its own
+    /// check below, asserting exactly that refusal.
+    /// </remarks>
+    private sealed class UngatedKeyStore(IDeviceKeyStore inner) : IDeviceKeyStore
+    {
+        public ValueTask<bool> IsAvailableAsync(CancellationToken ct = default) => inner.IsAvailableAsync(ct);
+
+        public ValueTask<bool> IsStrongBoxBackedAsync(CancellationToken ct = default) => inner.IsStrongBoxBackedAsync(ct);
+
+        public ValueTask CreateWrappingKeyAsync(bool requireUserAuthentication, CancellationToken ct = default) =>
+            inner.CreateWrappingKeyAsync(requireUserAuthentication: false, ct);
+
+        public ValueTask<byte[]> WrapAsync(ReadOnlyMemory<byte> masterKey, CancellationToken ct = default) =>
+            inner.WrapAsync(masterKey, ct);
+
+        public ValueTask<SecretBuffer> UnwrapAsync(byte[] wrapped, CancellationToken ct = default) =>
+            inner.UnwrapAsync(wrapped, ct);
+
+        public ValueTask DeleteWrappingKeyAsync(CancellationToken ct = default) => inner.DeleteWrappingKeyAsync(ct);
+    }
 
     private static bool Contains(byte[] haystack, byte[] needle)
     {

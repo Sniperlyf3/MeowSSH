@@ -66,6 +66,16 @@ public enum DeviceKeyUnavailableReason
 
     /// <summary>The platform has no usable hardware-backed key store.</summary>
     NotSupported,
+
+    /// <summary>
+    /// A key gated on the user cannot be created because nothing is enrolled to
+    /// gate it with — no fingerprint, face or screen lock.
+    /// </summary>
+    /// <remarks>
+    /// Distinct from <see cref="NotSupported"/>: the hardware is there and the
+    /// user can fix this in Settings, so the two need different words.
+    /// </remarks>
+    NotEnrolled,
 }
 
 public sealed class DeviceKeyUnavailableException : Exception

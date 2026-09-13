@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+  <!--
+    The test APK needs the same permission the app declares. Without it,
+    BiometricManager.canAuthenticate throws SecurityException rather than
+    returning a status, and the check that exists to prove the API-level guards
+    are right fails for an unrelated reason.
+  -->
+  <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+
+  <application android:allowBackup="false"
+               android:extractNativeLibs="true"
+               android:label="MeowSSH device tests" />
+
+</manifest>
