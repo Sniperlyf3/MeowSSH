@@ -132,15 +132,16 @@ export function create(elementId, dotNetRef, options) {
             const pending = { data, seen: false };
             pendingCompositionCommit = pending;
 
-            // xterm finalizes compositions asynchronously. Run after its own
-            // compositionend handler and only fill the gap if onData did not
-            // deliver this exact commit.
+            // xterm finalizes compositions asynchronously, and Samsung/WebView
+            // can deliver the corresponding onData several task turns later.
+            // A zero-delay fallback races that delivery and double-sends short
+            // commits such as "-". Give xterm a small settle window first.
             setTimeout(() => {
                 if (compositionGeneration !== generation) return;
                 if (pendingCompositionCommit !== pending) return;
                 pendingCompositionCommit = null;
                 if (!pending.seen) sendInput(data);
-            }, 0);
+            }, 50);
         });
     }
 
