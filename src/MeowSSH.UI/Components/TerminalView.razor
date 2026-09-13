@@ -28,6 +28,7 @@
     private IJSObjectReference? _module;
     private DotNetObjectReference<TerminalView>? _self;
     private bool _ctrlArmed;
+    private ISshShell? _subscribedShell;
 
     // Output that arrived before the terminal existed to draw it. Loading the JS
     // module is asynchronous, and a server sends its banner and MOTD the instant
@@ -37,6 +38,7 @@
     private bool _terminalReady;
 
     [Parameter, EditorRequired] public ISshShell Shell { get; set; } = default!;
+    [Parameter] public EventCallback<Exception> OnWriteFailed { get; set; }
 
     private sealed record QuickKey(string Id, string Label, byte[] Bytes);
 
@@ -52,7 +54,16 @@
         new("right", "→", [Escape, (byte)'[', (byte)'C']),
     ];
 
-    protected override void OnInitialized() => Shell.OutputReceived += OnOutput;
+    protected override void OnParametersSet()
+    {
+        if (ReferenceEquals(_subscribedShell, Shell)) return;
+
+        if (_subscribedShell is not null)
+            _subscribedShell.OutputReceived -= OnOutput;
+
+        _subscribedShell = Shell;
+        _subscribedShell.OutputReceived += OnOutput;
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -123,15 +134,44 @@
             _ctrlArmed = false;
             StateHasChanged();
         }
-        await Shell.WriteAsync(data);
+        await WriteAsync(data);
     }
 
     [JSInvokable]
-    public Task OnResizeAsync(int columns, int rows) => Shell.ResizeAsync(columns, rows);
+    public async Task OnResizeAsync(int columns, int rows)
+    {
+        try
+        {
+            await Shell.ResizeAsync(columns, rows);
+        }
+        catch (Exception ex)
+        {
+            await ReportWriteFailureAsync(ex);
+        }
+    }
 
     private void ToggleCtrl() => _ctrlArmed = !_ctrlArmed;
 
-    private Task SendKeyAsync(QuickKey key) => Shell.WriteAsync(key.Bytes);
+    private Task SendKeyAsync(QuickKey key) => WriteAsync(key.Bytes);
+
+    private async Task WriteAsync(ReadOnlyMemory<byte> data)
+    {
+        try
+        {
+            await Shell.WriteAsync(data);
+        }
+        catch (Exception ex)
+        {
+            // JS invokes OnInputAsync without awaiting the returned promise.
+            // Letting a dead pipe escape here turns the failure into an
+            // unobserved browser rejection and leaves the UI claiming the
+            // session is healthy. Report it to the owning session instead.
+            await ReportWriteFailureAsync(ex);
+        }
+    }
+
+    private Task ReportWriteFailureAsync(Exception ex) =>
+        OnWriteFailed.HasDelegate ? OnWriteFailed.InvokeAsync(ex) : Task.CompletedTask;
 
     // Ctrl+A..Z is the letter with its top three bits cleared, so Ctrl+C is 0x03.
     // Anything outside that range passes through unchanged rather than silently
@@ -160,7 +200,7 @@
 
     public async ValueTask DisposeAsync()
     {
-        Shell.OutputReceived -= OnOutput;
+        if (_subscribedShell is not null) _subscribedShell.OutputReceived -= OnOutput;
         if (_module is not null)
         {
             try

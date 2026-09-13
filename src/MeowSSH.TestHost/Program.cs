@@ -26,6 +26,8 @@ builder.Services.AddScoped(_ => new FakeVaultSession(
     recoveryCode: MeowSSH.TestHost.TestHostDefaults.RecoveryCode));
 builder.Services.AddScoped<IVaultSession>(sp => sp.GetRequiredService<FakeVaultSession>());
 
+builder.Services.AddScoped<IActiveSessionLifetime, NoOpActiveSessionLifetime>();
+
 // The same prompts object the Android app uses, so the browser tests drive the
 // real trust-on-first-use flow rather than a stand-in for it.
 builder.Services.AddScoped<InteractiveSshPrompts>();

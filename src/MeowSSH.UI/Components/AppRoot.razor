@@ -7,6 +7,7 @@
 @inject ISshPrompts Prompts
 @inject InteractiveSshPrompts Questions
 @inject ICredentialResolver Credentials
+@inject IActiveSessionLifetime SessionLifetime
 
 @*
     The whole app, composed from services. Both hosts render this: the Android
@@ -31,7 +32,14 @@ else if (Vault.State is not VaultState.Unlocked)
 }
 else if (_session is not null)
 {
-    <SessionPage Host="_session.Host" Shell="_session.Shell" OnClosed="CloseSessionAsync" />
+    <SessionPage Host="_session.Host"
+                 Shell="_session.Shell"
+                 IsConnected="_sessionConnected"
+                 IsReconnecting="_reconnecting"
+                 DisconnectMessage="_sessionStatus"
+                 OnReconnect="ReconnectAsync"
+                 OnWriteFailed="OnShellWriteFailedAsync"
+                 OnClosed="CloseSessionAsync" />
 }
 else if (_files is not null)
 {
@@ -161,6 +169,9 @@ else
     private Failure? _failure;
     private ISshConnection? _connection;
     private bool _ready;
+    private bool _sessionConnected;
+    private bool _reconnecting;
+    private string _sessionStatus = "The SSH session is no longer connected.";
     private string _password = "";
 
     private sealed record SessionState(HostRecord Host, ISshShell Shell);
@@ -251,13 +262,23 @@ else
 
         try
         {
+            // Start the platform lifetime before the handshake. A user can
+            // background the app while authentication is still in progress,
+            // and Android 12+ may reject a foreground-service start attempted
+            // only after the app is already backgrounded.
+            await SessionLifetime.StartAsync();
+
             // Unsealed here and disposed as soon as the handshake is done, so the
             // key exists in memory for the length of one connection rather than
             // for the length of the session.
             using var credentials = await Credentials.ResolveAsync(host);
             _connection = await Engine.ConnectAsync(host, credentials, Prompts);
+            _connection.ConnectionLost += OnConnectionLost;
             var shell = await _connection.OpenShellAsync(80, 24);
+            shell.Exited += OnShellExited;
             _session = new SessionState(host, shell);
+            _sessionConnected = true;
+            _sessionStatus = "Connected.";
         }
         catch (SshException ex)
         {
@@ -271,6 +292,7 @@ else
                 _ => new("Could not connect", ex.Message),
             };
             await DropConnectionAsync();
+            await SessionLifetime.StopAsync();
         }
         finally
         {
@@ -279,11 +301,93 @@ else
         }
     }
 
+    private void OnConnectionLost(object? sender, SshConnectionLost lost) =>
+        _ = InvokeAsync(() => MarkSessionDisconnectedAsync(lost.Message));
+
+    private void OnShellExited(object? sender, int exitCode) =>
+        _ = InvokeAsync(() => MarkSessionDisconnectedAsync(
+            exitCode == 0
+                ? "The remote shell exited."
+                : $"The remote shell exited with status {exitCode}."));
+
+    private Task OnShellWriteFailedAsync(Exception exception) =>
+        MarkSessionDisconnectedAsync("The shell stopped accepting input. Reconnect to continue.");
+
+    private async Task MarkSessionDisconnectedAsync(string? message)
+    {
+        if (_session is null || !_sessionConnected) return;
+
+        _sessionConnected = false;
+        _sessionStatus = string.IsNullOrWhiteSpace(message)
+            ? "The SSH session is no longer connected."
+            : message;
+
+        // There is no live SSH work left to protect. Stop the foreground
+        // service immediately rather than leaving an "active session" notice
+        // attached to a dead connection.
+        await SessionLifetime.StopAsync();
+        StateHasChanged();
+    }
+
+    private async Task ReconnectAsync()
+    {
+        if (_session is null || _reconnecting) return;
+
+        var host = _session.Host;
+        var oldShell = _session.Shell;
+        _reconnecting = true;
+        _sessionConnected = false;
+        _sessionStatus = "Reconnecting…";
+        StateHasChanged();
+
+        try
+        {
+            await SessionLifetime.StartAsync();
+
+            oldShell.Exited -= OnShellExited;
+            await oldShell.DisposeAsync();
+            await DropConnectionAsync();
+
+            using var credentials = await Credentials.ResolveAsync(host);
+            _connection = await Engine.ConnectAsync(host, credentials, Prompts);
+            _connection.ConnectionLost += OnConnectionLost;
+            var shell = await _connection.OpenShellAsync(80, 24);
+            shell.Exited += OnShellExited;
+
+            // TerminalView swaps its event subscription when this parameter
+            // changes but keeps the existing xterm instance, so scrollback from
+            // the failed session remains visible above the fresh prompt.
+            _session = new SessionState(host, shell);
+            _sessionConnected = true;
+            _sessionStatus = "Connected.";
+        }
+        catch (Exception ex) when (ex is SshException or IOException or ObjectDisposedException)
+        {
+            _sessionConnected = false;
+            _sessionStatus = ex is SshException ssh
+                ? ssh.Message
+                : "Could not reconnect the SSH session.";
+            await DropConnectionAsync();
+            await SessionLifetime.StopAsync();
+        }
+        finally
+        {
+            _reconnecting = false;
+            StateHasChanged();
+        }
+    }
+
     private async Task CloseSessionAsync()
     {
-        if (_session is not null) await _session.Shell.DisposeAsync();
+        if (_session is not null)
+        {
+            _session.Shell.Exited -= OnShellExited;
+            await _session.Shell.DisposeAsync();
+        }
         _session = null;
+        _sessionConnected = false;
         await DropConnectionAsync();
+        await SessionLifetime.StopAsync();
     }
 
     private async Task CloseFilesAsync()
@@ -294,7 +398,11 @@ else
 
     private async Task DropConnectionAsync()
     {
-        if (_connection is not null) await _connection.DisposeAsync();
+        if (_connection is not null)
+        {
+            _connection.ConnectionLost -= OnConnectionLost;
+            await _connection.DisposeAsync();
+        }
         _connection = null;
     }
 
