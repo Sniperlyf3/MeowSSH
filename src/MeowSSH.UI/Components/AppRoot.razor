@@ -264,7 +264,12 @@ else
         return Task.CompletedTask;
     }
 
-    private void SelectTab(string tab) => _tab = tab;
+    private Task SelectTab(string tab)
+    {
+        _tab = tab;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
 
     private void AddHost() => _editing = new EditorState(null);
 
