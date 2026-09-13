@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The Android half of the platform abstractions in MeowSSH.Core: a hardware
+    key store and a biometric prompt.
+
+    A library rather than files inside the app head, because the device tests
+    need the same code, and an app head cannot be referenced by another app
+    head: they resolve different runtime identifiers and the build collapses. It
+    also keeps the rule honest that nothing in Core knows what platform it is on.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-android36.0</TargetFramework>
+    <RootNamespace>MeowSSH.Android</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+
+    <!-- API 28 for android.hardware.biometrics.BiometricPrompt; see the app. -->
+    <SupportedOSPlatformVersion>28.0</SupportedOSPlatformVersion>
+
+    <!--
+      Meowshell's build check asks for AndroidExtractNativeLibraries, which only
+      means anything in a project that produces an APK. This one produces a
+      library; the heads that package it set the property for real.
+    -->
+    <MeowshellSkipExtractNativeLibsCheck>true</MeowshellSkipExtractNativeLibsCheck>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MeowSSH.Core\MeowSSH.Core.csproj" />
+  </ItemGroup>
+
+</Project>

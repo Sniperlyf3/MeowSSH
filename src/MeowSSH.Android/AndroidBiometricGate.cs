@@ -1,10 +1,9 @@
 using Android.Hardware.Biometrics;
 using Android.OS;
-using AndroidX.Core.Content;
 using MeowSSH.Core.Security;
 using JavaObject = Java.Lang.Object;
 
-namespace MeowSSH.App.Platforms.Android;
+namespace MeowSSH.Android;
 
 /// <summary>
 /// The system biometric prompt.
@@ -14,7 +13,12 @@ namespace MeowSSH.App.Platforms.Android;
 /// transitive AndroidX constraints conflict with MAUI's own. The platform class
 /// needs API 28, which is older than any device this would be installed on.
 /// </remarks>
-internal sealed class AndroidBiometricGate : IBiometricGate
+/// <param name="currentActivity">
+/// Supplies the activity the prompt is shown over. Injected rather than read
+/// from MAUI's <c>Platform.CurrentActivity</c> so this library does not depend
+/// on MAUI, and so a test can drive it with no activity at all.
+/// </param>
+public sealed class AndroidBiometricGate(Func<global::Android.App.Activity?> currentActivity) : IBiometricGate
 {
     // Raw platform constants rather than the generated enums: the .NET bindings
     // do not surface BiometricManager.Authenticators, and these values are fixed
@@ -39,7 +43,7 @@ internal sealed class AndroidBiometricGate : IBiometricGate
         if (!OperatingSystem.IsAndroidVersionAtLeast(29))
             return ValueTask.FromResult(BiometricAvailability.Available);
 
-        var context = Platform.CurrentActivity ?? (global::Android.Content.Context?)global::Android.App.Application.Context;
+        var context = (global::Android.Content.Context?)currentActivity() ?? global::Android.App.Application.Context;
         if (context is null) return ValueTask.FromResult(BiometricAvailability.NoHardware);
 
         var manager = (BiometricManager?)context.GetSystemService(global::Android.Content.Context.BiometricService);
@@ -63,7 +67,10 @@ internal sealed class AndroidBiometricGate : IBiometricGate
         BiometricPromptOptions options, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(options);
-        var activity = Platform.CurrentActivity;
+        var activity = currentActivity();
+        // No activity means nothing can be shown over anything: the app is in the
+        // background, and reporting failure is more honest than a prompt nobody
+        // will ever see.
         if (activity is null) return BiometricResult.Failed;
 
         var builder = new BiometricPrompt.Builder(activity)
@@ -81,21 +88,40 @@ internal sealed class AndroidBiometricGate : IBiometricGate
         {
             // Without a device-credential fallback the prompt must offer its own
             // way out, or it cannot be dismissed at all.
+            // Context.MainExecutor rather than AndroidX's ContextCompat: the
+            // compat shim exists for API levels below 28, and 28 is this app's
+            // minimum, so it would only add a dependency to reach the same looper.
             builder = builder.SetNegativeButton("Cancel",
-                ContextCompat.GetMainExecutor(activity)!,
+                activity.MainExecutor!,
                 new DialogClickListener())!;
         }
 
-        var completion = new TaskCompletionSource<BiometricResult>();
+        // RunContinuationsAsynchronously is load-bearing, not a precaution. The
+        // executor below is the main looper, so TrySetResult runs on the UI
+        // thread; without this flag everything awaiting this call resumes inline
+        // on that thread, inside the Java callback. What resumes here is vault
+        // creation -- Argon2id over 64 MiB, then key store work -- and running it
+        // there freezes the UI with the prompt still up and the button still
+        // reading "Waiting", which is exactly what a user reports as a hang.
+        var completion = new TaskCompletionSource<BiometricResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+
         using var cancellation = new CancellationSignal();
         using var registration = cancellationToken.Register(cancellation.Cancel);
 
-        builder.Build().Authenticate(
-            cancellation,
-            ContextCompat.GetMainExecutor(activity)!,
-            new Callback(completion));
+        // Held in a local that outlives the call rather than passed as a
+        // temporary: the callback is a managed peer of a Java object, and the
+        // only thing keeping it alive across the wait is a reference from here.
+        var callback = new Callback(completion);
+        builder.Build().Authenticate(cancellation, activity.MainExecutor!, callback);
 
-        return await completion.Task.ConfigureAwait(false);
+        try
+        {
+            return await completion.Task.ConfigureAwait(false);
+        }
+        finally
+        {
+            GC.KeepAlive(callback);
+        }
     }
 
     private sealed class Callback(TaskCompletionSource<BiometricResult> completion)

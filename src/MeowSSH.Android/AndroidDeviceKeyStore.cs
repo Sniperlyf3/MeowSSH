@@ -4,7 +4,7 @@ using Javax.Crypto;
 using Javax.Crypto.Spec;
 using MeowSSH.Core.Security;
 
-namespace MeowSSH.App.Platforms.Android;
+namespace MeowSSH.Android;
 
 /// <summary>
 /// Wraps the vault master key with a key held in the Android Keystore, gated on
@@ -24,7 +24,7 @@ namespace MeowSSH.App.Platforms.Android;
 /// this key cannot be the only way in, which is why the recovery code exists.
 /// </para>
 /// </remarks>
-internal sealed class AndroidDeviceKeyStore(string keyAlias = AndroidDeviceKeyStore.DefaultAlias) : IDeviceKeyStore
+public sealed class AndroidDeviceKeyStore(string keyAlias = AndroidDeviceKeyStore.DefaultAlias) : IDeviceKeyStore
 {
     public const string DefaultAlias = "meowssh.vault.kek";
 

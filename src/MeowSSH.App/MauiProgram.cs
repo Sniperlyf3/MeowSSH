@@ -1,4 +1,4 @@
-using MeowSSH.App.Platforms.Android;
+using MeowSSH.Android;
 using MeowSSH.Core.Security;
 using MeowSSH.Core.Services;
 using MeowSSH.Core.Ssh;
@@ -18,7 +18,7 @@ public static class MauiProgram
         // the biometric prompt, the encrypted vault on disk, and the Meowshell
         // agent.
         builder.Services.AddSingleton<IDeviceKeyStore>(_ => new AndroidDeviceKeyStore());
-        builder.Services.AddSingleton<IBiometricGate, AndroidBiometricGate>();
+        builder.Services.AddSingleton<IBiometricGate>(_ => new AndroidBiometricGate(() => Platform.CurrentActivity));
 
         builder.Services.AddSingleton<IVaultStorage>(_ =>
             new FileVaultStorage(Path.Combine(FileSystem.AppDataDirectory, "meowssh.vault")));

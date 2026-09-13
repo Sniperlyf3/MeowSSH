@@ -102,3 +102,78 @@ jobs:
           # and the glob was uploading it twice.
           path: src/MeowSSH.App/bin/Debug/net10.0-android36.0/android-arm64/publish/*-Signed.apk
           if-no-files-found: error
+
+  # The layer Playwright cannot reach: a real Keystore, a real filesystem, real
+  # API-level guards. Everything above it is proven on Linux in seconds; this
+  # job exists for the handful of claims that have no desktop equivalent and
+  # were previously only ever checked by installing the APK and looking.
+  device-tests:
+    runs-on: ubuntu-latest
+    # An emulator boot plus the run; well clear of both, so a genuine hang is
+    # still reported as a failure rather than running until the job limit.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install the Android workload
+        run: dotnet workload install maui-android
+
+      # The runner has KVM but does not expose it to the user by default, and
+      # without it the emulator falls back to software rendering and times out.
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Build the device test APK
+        run: >
+          dotnet build tests/MeowSSH.Device.Tests/MeowSSH.Device.Tests.csproj
+          -c Debug -f net10.0-android36.0
+
+      - name: Run the device tests on an emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          # 34 rather than 36: the API the app targets is not the one it must
+          # run on, and 34 has a stable system image with a working Keystore.
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          # A snapshot would carry Keystore state between runs, and these tests
+          # assert on what a key store does when a key is absent.
+          disable-animations: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          script: |
+            set -o pipefail
+            APK=$(find tests/MeowSSH.Device.Tests/bin -name "*.devicetests-Signed.apk" | head -1)
+            echo "installing $APK"
+            adb install -r "$APK"
+
+            # -w blocks until the instrumentation finishes and turns its result
+            # code into this command's exit status, so a failing check fails the
+            # job without anything having to parse a log.
+            adb shell am instrument -w \
+              dev.sniperlyf3.meowssh.devicetests/dev.sniperlyf3.meowssh.devicetests.TestInstrumentation \
+              | tee instrumentation.txt
+
+            # am instrument exits 0 even when the run reported failure, so the
+            # report itself is the source of truth.
+            grep -q "device tests passed" instrumentation.txt
+
+      - name: Upload the device test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: device-test-report
+          path: instrumentation.txt
+          if-no-files-found: ignore

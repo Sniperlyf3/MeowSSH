@@ -1,0 +1,54 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Tests that run on a real Android runtime rather than against a fake.
+
+    Everything in MeowSSH.Core is provable on Linux, and is. What is not is the
+    layer underneath it: the Keystore refusing to export a key, a wrapped key
+    surviving a process restart, the app's own dependency graph resolving. Those
+    have no desktop equivalent, so until this project existed they were only
+    ever tested by installing the APK and looking.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-android36.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>MeowSSH.Device.Tests</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+
+    <!-- Matches the app: these tests exercise the app's own platform code. -->
+    <SupportedOSPlatformVersion>28.0</SupportedOSPlatformVersion>
+    <ApplicationId>dev.sniperlyf3.meowssh.devicetests</ApplicationId>
+    <ApplicationVersion>1</ApplicationVersion>
+    <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+
+    <!--
+      Set for real here, not skipped: one of the checks asserts the native
+      binaries were extracted, which is what this property controls.
+    -->
+    <AndroidExtractNativeLibraries>true</AndroidExtractNativeLibraries>
+    <AndroidPackageFormat>apk</AndroidPackageFormat>
+    <AndroidKeyStore>false</AndroidKeyStore>
+    <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
+    <!-- The runner discovers tests by reflection, so nothing may be trimmed. -->
+    <AndroidLinkMode>None</AndroidLinkMode>
+  </PropertyGroup>
+
+  <!--
+    Assertions only, no runner. The device-test runners live on a dotnet-eng
+    feed rather than nuget.org, and adding a feed to pull one in is a bigger
+    decision than this needs: Android already has a test entry point in
+    Instrumentation, and "am instrument -w" gives CI a real exit code without
+    anything having to parse a log.
+  -->
+  <ItemGroup>
+    <PackageReference Include="xunit.assert" Version="2.9.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\MeowSSH.Android\MeowSSH.Android.csproj" />
+    <ProjectReference Include="..\..\src\MeowSSH.Core\MeowSSH.Core.csproj" />
+  </ItemGroup>
+
+</Project>

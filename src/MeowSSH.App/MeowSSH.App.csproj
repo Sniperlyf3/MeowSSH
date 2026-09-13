@@ -63,6 +63,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\MeowSSH.Android\MeowSSH.Android.csproj" />
     <ProjectReference Include="..\MeowSSH.Core\MeowSSH.Core.csproj" />
     <ProjectReference Include="..\MeowSSH.UI\MeowSSH.UI.csproj" />
   </ItemGroup>

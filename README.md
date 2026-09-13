@@ -26,7 +26,8 @@ physical hardware yet.
 | Android app, installable APK | Builds in CI; not yet run on a device |
 | Sync between devices | Schema designed, not implemented |
 
-**232 tests**: 163 unit, 55 browser end-to-end, 14 against a real `sshd`.
+**247 tests**: 163 unit, 62 browser end-to-end, 14 against a real `sshd`, and
+15 on an Android emulator against the real Keystore.
 
 ### Known gap: first connections to new hosts
 
@@ -41,14 +42,21 @@ Connections to already-known hosts, and the host-key-changed warning, work.
 ```
 src/MeowSSH.Core       Domain, vault crypto, platform abstractions. No UI, no Android.
 src/MeowSSH.UI         Razor components and the design system. Shared by both hosts below.
+src/MeowSSH.Android    The Android half of Core's abstractions: Keystore, biometric prompt.
 src/MeowSSH.TestHost   Blazor Server host with fakes. Runs on Linux so CI can drive the UI.
 src/MeowSSH.App        MAUI Blazor Hybrid Android app.
 ```
 
-`MeowSSH.App` is deliberately **not** in `MeowSSH.slnx`. It needs the
-`maui-android` workload and the Android SDK, several minutes of setup the unit
-and browser test jobs should not pay for. CI builds it by path in its own job;
-`dotnet build` at the root stays fast and workload-free.
+`MeowSSH.App`, `MeowSSH.Android` and `MeowSSH.Device.Tests` are deliberately
+**not** in `MeowSSH.slnx`. They need the `maui-android` workload and the Android
+SDK, several minutes of setup the unit and browser test jobs should not pay for.
+CI builds them by path in their own jobs; `dotnet build` at the root stays fast
+and workload-free.
+
+The platform code lives in `MeowSSH.Android` rather than inside the app for a
+practical reason as well as a tidy one: the device tests are themselves an
+Android app, and one app head cannot reference another — they resolve different
+runtime identifiers and the build collapses.
 
 The split exists for one reason: the Android app's UI is ordinary Razor
 components in a WebView, so the *same components* can be hosted in a Blazor
@@ -150,6 +158,23 @@ dotnet test tests/MeowSSH.Core.Tests          # unit tests
 dotnet test tests/MeowSSH.UI.Tests            # Playwright end-to-end tests
 sudo -E dotnet test tests/MeowSSH.Integration.Tests   # against a real sshd
 ```
+
+The device tests need the Android workload, an SDK and a running emulator, so
+they are not part of `dotnet test`. With a device or emulator attached:
+
+```sh
+dotnet build tests/MeowSSH.Device.Tests/MeowSSH.Device.Tests.csproj -c Debug
+adb install -r tests/MeowSSH.Device.Tests/bin/Debug/net10.0-android36.0/*.devicetests-Signed.apk
+adb shell am instrument -w \
+  dev.sniperlyf3.meowssh.devicetests/dev.sniperlyf3.meowssh.devicetests.TestInstrumentation
+```
+
+They cover what has no desktop equivalent: that the Keystore really refuses to
+export a key, that a vault written on the device is unreadable on disk, that a
+deleted key cannot open what it sealed, and that the API-level guards around
+`BiometricManager` and `KeyInfo.SecurityLevel` hold. The interactive prompt
+itself is not covered — that needs a person, or UI automation this does not
+have.
 
 The integration tests start their own OpenSSH server on a free port with its own
 host key, and skip where `sshd` is not installed. They need root to create the
