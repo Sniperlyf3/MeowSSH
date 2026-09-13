@@ -7,6 +7,7 @@
 @inject ISshPrompts Prompts
 @inject InteractiveSshPrompts Questions
 @inject ICredentialResolver Credentials
+@inject IActiveSessionLifetime SessionLifetime
 
 @*
     The whole app, composed from services. Both hosts render this: the Android
@@ -261,6 +262,12 @@ else
 
         try
         {
+            // Start the platform lifetime before the handshake. A user can
+            // background the app while authentication is still in progress,
+            // and Android 12+ may reject a foreground-service start attempted
+            // only after the app is already backgrounded.
+            await SessionLifetime.StartAsync();
+
             // Unsealed here and disposed as soon as the handshake is done, so the
             // key exists in memory for the length of one connection rather than
             // for the length of the session.
@@ -285,6 +292,7 @@ else
                 _ => new("Could not connect", ex.Message),
             };
             await DropConnectionAsync();
+            await SessionLifetime.StopAsync();
         }
         finally
         {
@@ -294,21 +302,18 @@ else
     }
 
     private void OnConnectionLost(object? sender, SshConnectionLost lost) =>
-        _ = InvokeAsync(() => MarkSessionDisconnected(lost.Message));
+        _ = InvokeAsync(() => MarkSessionDisconnectedAsync(lost.Message));
 
     private void OnShellExited(object? sender, int exitCode) =>
-        _ = InvokeAsync(() => MarkSessionDisconnected(
+        _ = InvokeAsync(() => MarkSessionDisconnectedAsync(
             exitCode == 0
                 ? "The remote shell exited."
                 : $"The remote shell exited with status {exitCode}."));
 
-    private Task OnShellWriteFailedAsync(Exception exception)
-    {
-        MarkSessionDisconnected("The shell stopped accepting input. Reconnect to continue.");
-        return Task.CompletedTask;
-    }
+    private Task OnShellWriteFailedAsync(Exception exception) =>
+        MarkSessionDisconnectedAsync("The shell stopped accepting input. Reconnect to continue.");
 
-    private void MarkSessionDisconnected(string? message)
+    private async Task MarkSessionDisconnectedAsync(string? message)
     {
         if (_session is null || !_sessionConnected) return;
 
@@ -316,6 +321,11 @@ else
         _sessionStatus = string.IsNullOrWhiteSpace(message)
             ? "The SSH session is no longer connected."
             : message;
+
+        // There is no live SSH work left to protect. Stop the foreground
+        // service immediately rather than leaving an "active session" notice
+        // attached to a dead connection.
+        await SessionLifetime.StopAsync();
         StateHasChanged();
     }
 
@@ -332,6 +342,8 @@ else
 
         try
         {
+            await SessionLifetime.StartAsync();
+
             oldShell.Exited -= OnShellExited;
             await oldShell.DisposeAsync();
             await DropConnectionAsync();
@@ -356,6 +368,7 @@ else
                 ? ssh.Message
                 : "Could not reconnect the SSH session.";
             await DropConnectionAsync();
+            await SessionLifetime.StopAsync();
         }
         finally
         {
@@ -374,6 +387,7 @@ else
         _session = null;
         _sessionConnected = false;
         await DropConnectionAsync();
+        await SessionLifetime.StopAsync();
     }
 
     private async Task CloseFilesAsync()
