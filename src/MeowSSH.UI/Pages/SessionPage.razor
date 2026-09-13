@@ -12,16 +12,38 @@
             <span class="session__address">@Host.DisplayAddress</span>
         </span>
 
-        <StatusBadge Label="Connected" Variant="ok" ShowDot="true" />
+        <StatusBadge Label="@(IsConnected ? "Connected" : "Disconnected")"
+                     Variant="@(IsConnected ? "ok" : "danger")"
+                     ShowDot="true" />
     </header>
 
-    <TerminalView Shell="Shell" />
+    <TerminalView Shell="Shell" OnWriteFailed="OnWriteFailed" />
+
+    @if (!IsConnected)
+    {
+        <div class="sheet sheet--danger" role="alert" data-testid="session-disconnected">
+            <p class="sheet__title">Session disconnected</p>
+            <p class="sheet__body">@DisconnectMessage</p>
+            <button type="button" class="btn btn--primary btn--block"
+                    disabled="@IsReconnecting"
+                    data-testid="session-reconnect"
+                    @onclick="ReconnectAsync">
+                @(IsReconnecting ? "Reconnecting…" : "Reconnect")
+            </button>
+        </div>
+    }
 </div>
 
 @code {
     [Parameter, EditorRequired] public HostRecord Host { get; set; } = default!;
     [Parameter, EditorRequired] public ISshShell Shell { get; set; } = default!;
+    [Parameter] public bool IsConnected { get; set; } = true;
+    [Parameter] public bool IsReconnecting { get; set; }
+    [Parameter] public string DisconnectMessage { get; set; } = "The SSH session is no longer connected.";
+    [Parameter] public EventCallback OnReconnect { get; set; }
+    [Parameter] public EventCallback<Exception> OnWriteFailed { get; set; }
     [Parameter] public EventCallback OnClosed { get; set; }
 
     private Task OnClose() => OnClosed.InvokeAsync();
+    private Task ReconnectAsync() => OnReconnect.InvokeAsync();
 }
