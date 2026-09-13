@@ -102,6 +102,45 @@ else
             </div>
         </div>
     }
+    @if (Questions.PendingChallenge is { } challenge)
+    {
+        <div class="sheet" role="alertdialog" data-testid="challenge-prompt">
+            <p class="sheet__title">@(string.IsNullOrWhiteSpace(challenge.Prompt.Name) ? "Sign in" : challenge.Prompt.Name)</p>
+            @if (!string.IsNullOrWhiteSpace(challenge.Prompt.Instruction))
+            {
+                <p class="sheet__body">@challenge.Prompt.Instruction</p>
+            }
+
+            <div class="form__actions">
+                @for (var i = 0; i < challenge.Prompt.Questions.Count; i++)
+                {
+                    // Captured per iteration: the lambdas below outlive the loop,
+                    // and sharing the counter would make every field write to the
+                    // last answer.
+                    var index = i;
+                    <label class="field">
+                        <span class="field__label">@challenge.Prompt.Questions[index]</span>
+                        <input class="field__input mono"
+                               data-testid="@($"challenge-answer-{index}")"
+                               type="@(challenge.Echoes(index) ? "text" : "password")"
+                               autocomplete="off" autocapitalize="none" spellcheck="false"
+                               value="@challenge.Answers[index]"
+                               @oninput="e => challenge.Answers[index] = e.Value?.ToString() ?? string.Empty"
+                               @onkeydown="e => OnChallengeKey(e, challenge)" />
+                    </label>
+                }
+
+                <button type="button" class="btn btn--primary btn--block"
+                        data-testid="submit-challenge" @onclick="() => SubmitChallenge(challenge)">
+                    Sign in
+                </button>
+                <button type="button" class="btn btn--ghost btn--block"
+                        data-testid="cancel-challenge" @onclick="() => challenge.Answer(null)">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    }
     @if (_failure is not null)
     {
         <div class="sheet sheet--danger" role="alert" data-testid="connect-error">
@@ -167,6 +206,20 @@ else
     private void OnPasswordKey(KeyboardEventArgs e, PasswordRequest request)
     {
         if (e.Key == "Enter") SubmitPassword(request);
+    }
+
+    private static void SubmitChallenge(ChallengeRequest request)
+    {
+        // Every question gets an answer, empty or not: the server counts them,
+        // and a short list is refused as malformed rather than as wrong.
+        var answers = request.Answers.Select(a => a ?? string.Empty).ToArray();
+        Array.Clear(request.Answers);
+        request.Answer(answers);
+    }
+
+    private static void OnChallengeKey(KeyboardEventArgs e, ChallengeRequest request)
+    {
+        if (e.Key == "Enter") SubmitChallenge(request);
     }
 
     private Task OnUnlockedAsync()

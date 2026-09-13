@@ -38,6 +38,26 @@ public sealed class PasswordRequest(string prompt) : SshPromptRequest<string?>
 }
 
 /// <summary>
+/// A keyboard-interactive challenge: one or more questions from the server.
+/// </summary>
+/// <remarks>
+/// This is how most servers actually ask for a password, so it is not an exotic
+/// path to be declined -- declining it is what produced "incorrect number of
+/// answers from keyboard-interactive callback 0 (expected 1)".
+/// </remarks>
+public sealed class ChallengeRequest(KeyboardInteractivePrompt prompt)
+    : SshPromptRequest<IReadOnlyList<string>?>
+{
+    public KeyboardInteractivePrompt Prompt { get; } = prompt;
+
+    /// <summary>One answer per question, edited in place by the form.</summary>
+    public string[] Answers { get; } = new string[prompt.Questions.Count];
+
+    /// <summary>Whether the answer to <paramref name="index"/> may be shown as it is typed.</summary>
+    public bool Echoes(int index) => index < Prompt.Echo.Count && Prompt.Echo[index];
+}
+
+/// <summary>
 /// Puts the handshake's questions on screen and waits for a person.
 /// </summary>
 /// <remarks>
@@ -64,6 +84,9 @@ public sealed class InteractiveSshPrompts : ISshPrompts, IDisposable
 
     /// <summary>The password being asked for, if any.</summary>
     public PasswordRequest? PendingPassword { get; private set; }
+
+    /// <summary>The challenge awaiting answers, if any.</summary>
+    public ChallengeRequest? PendingChallenge { get; private set; }
 
     /// <summary>Raised when a question appears or is answered.</summary>
     public event EventHandler? Changed;
@@ -107,14 +130,24 @@ public sealed class InteractiveSshPrompts : ISshPrompts, IDisposable
     public Task<SecretBuffer?> RequestKeyPassphraseAsync(CancellationToken cancellationToken = default) =>
         Task.FromResult<SecretBuffer?>(null);
 
-    /// <summary>
-    /// Declined for now. A challenge is a variable list of questions, which
-    /// needs a form this app does not have yet; answering it with nothing is
-    /// honest, where answering with blanks would look like a wrong password.
-    /// </summary>
-    public Task<IReadOnlyList<string>?> AnswerChallengeAsync(
-        KeyboardInteractivePrompt prompt, CancellationToken cancellationToken = default) =>
-        Task.FromResult<IReadOnlyList<string>?>(null);
+    public async Task<IReadOnlyList<string>?> AnswerChallengeAsync(
+        KeyboardInteractivePrompt prompt, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(prompt);
+
+        // A challenge with no questions is the server probing what this client
+        // supports, not something to put on screen. The correct answer is an
+        // empty list, and showing an empty dialog instead would be baffling.
+        if (prompt.Questions.Count == 0) return [];
+
+        var request = new ChallengeRequest(prompt);
+        return await AskAsync<ChallengeRequest, IReadOnlyList<string>?>(
+            request,
+            r => PendingChallenge = r,
+            () => PendingChallenge = null,
+            declined: null,
+            cancellationToken).ConfigureAwait(false);
+    }
 
     private async Task<T> AskAsync<TRequest, T>(
         TRequest request,

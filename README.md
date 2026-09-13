@@ -26,7 +26,7 @@ unfinished is unfinished, not untried.
 | Android app, installable APK | Builds in CI; not yet run on a device |
 | Sync between devices | Schema designed, not implemented |
 
-**278 tests**: 182 unit, 62 browser end-to-end, 15 against a real `sshd`, and
+**284 tests**: 182 unit, 68 browser end-to-end, 15 against a real `sshd`, and
 19 on an Android emulator against the real Keystore.
 
 ## How it is put together
@@ -88,10 +88,6 @@ unlock with a fingerprint, and reconnect to a host already in `known_hosts`.
 
 What is not finished:
 
-- **Keyboard-interactive authentication is declined.** A challenge is a
-  variable list of questions and needs a form this app does not have yet.
-  Answering it with blanks would look to the server like a wrong password, so
-  it is refused instead.
 - **Sync between devices is designed, not built.** Every record already carries
   the revision, timestamp, origin device and tombstone it needs; nothing
   exchanges them.
