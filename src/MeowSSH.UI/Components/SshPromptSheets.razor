@@ -1,0 +1,122 @@
+@using MeowSSH.Core.Ssh
+@using MeowSSH.UI.Services
+
+@if (Questions.PendingHostKey is { } hostKey)
+{
+    <div class="sheet sheet--danger" role="alertdialog" data-testid="host-key-prompt">
+        <p class="sheet__title">Trust this server?</p>
+        <p class="sheet__body">
+            MeowSSH has not seen <strong>@hostKey.Prompt.Host</strong> before. Check the
+            fingerprint against the server itself before accepting it.
+        </p>
+        <code class="recovery__code mono" data-testid="host-key-fingerprint">@hostKey.Prompt.Fingerprint</code>
+        <div class="form__actions">
+            <button type="button" class="btn btn--primary btn--block"
+                    data-testid="trust-host-key" @onclick="() => hostKey.Answer(true)">
+                Trust and connect
+            </button>
+            <button type="button" class="btn btn--ghost btn--block"
+                    data-testid="reject-host-key" @onclick="() => hostKey.Answer(false)">
+                Cancel
+            </button>
+        </div>
+    </div>
+}
+
+@if (Questions.PendingPassword is { } password)
+{
+    <div class="sheet" role="alertdialog" data-testid="password-prompt">
+        <p class="sheet__title">Password required</p>
+        <p class="sheet__body">@password.Prompt</p>
+        <div class="form__actions">
+            <label class="field">
+                <span class="field__label">Password</span>
+                <input class="field__input mono" type="password" data-testid="password-input"
+                       autocomplete="off" autocapitalize="none" spellcheck="false"
+                       @bind="_password" @bind:event="oninput"
+                       @onkeydown="e => OnPasswordKey(e, password)" />
+            </label>
+            <button type="button" class="btn btn--primary btn--block"
+                    data-testid="submit-password" @onclick="() => SubmitPassword(password)">
+                Sign in
+            </button>
+            <button type="button" class="btn btn--ghost btn--block"
+                    data-testid="cancel-password" @onclick="() => CancelPassword(password)">
+                Cancel
+            </button>
+        </div>
+    </div>
+}
+
+@if (Questions.PendingChallenge is { } challenge)
+{
+    <div class="sheet" role="alertdialog" data-testid="challenge-prompt">
+        <p class="sheet__title">@(string.IsNullOrWhiteSpace(challenge.Prompt.Name) ? "Sign in" : challenge.Prompt.Name)</p>
+        @if (!string.IsNullOrWhiteSpace(challenge.Prompt.Instruction))
+        {
+            <p class="sheet__body">@challenge.Prompt.Instruction</p>
+        }
+
+        <div class="form__actions">
+            @for (var i = 0; i < challenge.Prompt.Questions.Count; i++)
+            {
+                var index = i;
+                <label class="field">
+                    <span class="field__label">@challenge.Prompt.Questions[index]</span>
+                    <input class="field__input mono"
+                           data-testid="@($"challenge-answer-{index}")"
+                           type="@(challenge.Echoes(index) ? "text" : "password")"
+                           autocomplete="off" autocapitalize="none" spellcheck="false"
+                           value="@challenge.Answers[index]"
+                           @oninput="e => challenge.Answers[index] = e.Value?.ToString() ?? string.Empty"
+                           @onkeydown="e => OnChallengeKey(e, challenge)" />
+                </label>
+            }
+
+            <button type="button" class="btn btn--primary btn--block"
+                    data-testid="submit-challenge" @onclick="() => SubmitChallenge(challenge)">
+                Sign in
+            </button>
+            <button type="button" class="btn btn--ghost btn--block"
+                    data-testid="cancel-challenge" @onclick="() => challenge.Answer(null)">
+                Cancel
+            </button>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public InteractiveSshPrompts Questions { get; set; } = default!;
+
+    private string _password = "";
+
+    private void SubmitPassword(PasswordRequest request)
+    {
+        var answer = _password;
+        _password = "";
+        request.Answer(answer);
+    }
+
+    private void CancelPassword(PasswordRequest request)
+    {
+        _password = "";
+        request.Answer(null);
+    }
+
+    private void OnPasswordKey(KeyboardEventArgs e, PasswordRequest request)
+    {
+        if (e.Key == "Enter") SubmitPassword(request);
+    }
+
+    private static void SubmitChallenge(ChallengeRequest request)
+    {
+        var answers = request.Answers.Select(a => a ?? string.Empty).ToArray();
+        Array.Clear(request.Answers);
+        request.Answer(answers);
+    }
+
+    private static void OnChallengeKey(KeyboardEventArgs e, ChallengeRequest request)
+    {
+        if (e.Key == "Enter") SubmitChallenge(request);
+    }
+}

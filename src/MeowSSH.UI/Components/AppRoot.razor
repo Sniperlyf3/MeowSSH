@@ -69,6 +69,7 @@ else if (_tab == "files")
                     data-testid="dismiss-error" @onclick="() => _failure = null">Dismiss</button>
         </div>
     }
+    <SshPromptSheets Questions="Questions" />
 }
 else if (_tab == "keys")
 {
@@ -292,6 +293,7 @@ else
 
         try
         {
+            await SessionLifetime.StartAsync();
             using var credentials = await Credentials.ResolveAsync(host);
             _connection = await Engine.ConnectAsync(host, credentials, Prompts);
             _connection.ConnectionLost += OnConnectionLost;
@@ -308,6 +310,7 @@ else
                 _ => new("Could not open files", ex.Message),
             };
             await DropConnectionAsync();
+            await SessionLifetime.StopAsync();
         }
         finally
         {
@@ -457,6 +460,7 @@ else
         if (_files is not null) await _files.Sftp.DisposeAsync();
         _files = null;
         await DropConnectionAsync();
+        await SessionLifetime.StopAsync();
     }
 
     private async Task DropConnectionAsync()
