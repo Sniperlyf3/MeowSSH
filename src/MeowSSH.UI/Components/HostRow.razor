@@ -1,3 +1,9 @@
+@*
+    The row is one button, so editing cannot be a control nested inside it: a
+    button inside a button is invalid, and the browsers that tolerate it fire
+    both. The edit affordance is a sibling instead.
+*@
+<div class="host-wrap">
 <button type="button" class="host @StateClass" @onclick="OnActivate" data-testid="host-row" data-host-id="@Status.Host.Id">
     <span class="host__rail"></span>
 
@@ -31,9 +37,21 @@
     </span>
 </button>
 
+@if (OnEdit.HasDelegate)
+{
+    <button type="button" class="host__edit" data-testid="edit-host"
+            aria-label="@($"Edit {Status.Host.Label}")" @onclick="OnEditClicked">
+        <Icon Name="settings" />
+    </button>
+}
+</div>
+
 @code {
     [Parameter, EditorRequired] public HostStatus Status { get; set; } = default!;
     [Parameter] public EventCallback<HostRecord> OnSelected { get; set; }
+
+    /// <summary>Opens this host's settings. Omitted where editing makes no sense.</summary>
+    [Parameter] public EventCallback<HostRecord> OnEdit { get; set; }
 
     private string StateClass => Status.State switch
     {
@@ -65,4 +83,6 @@
     };
 
     private Task OnActivate() => OnSelected.InvokeAsync(Status.Host);
+
+    private Task OnEditClicked() => OnEdit.InvokeAsync(Status.Host);
 }

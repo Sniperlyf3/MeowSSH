@@ -13,10 +13,16 @@ builder.Services.AddRazorComponents()
 // The fakes stand in for Android's Keystore, BiometricPrompt and the Meowshell
 // agent, none of which exist on Linux. Everything above them is the same code
 // the Android build runs, which is the point: the UI can be driven in CI.
-builder.Services.AddScoped<IHostDirectory>(_ => new FakeHostDirectory());
-builder.Services.AddScoped<IVaultSession>(_ => new FakeVaultSession(
+builder.Services.AddScoped<FakeHostDirectory>();
+builder.Services.AddScoped<IHostDirectory>(sp => sp.GetRequiredService<FakeHostDirectory>());
+builder.Services.AddScoped<IHostEditor>(sp => sp.GetRequiredService<FakeHostDirectory>());
+// Registered concretely as well as behind the interface: the playground picks
+// its scenario from the query string and needs to put the vault into a state
+// the interface deliberately has no way to ask for.
+builder.Services.AddScoped(_ => new FakeVaultSession(
     VaultState.Locked,
     recoveryCode: MeowSSH.TestHost.TestHostDefaults.RecoveryCode));
+builder.Services.AddScoped<IVaultSession>(sp => sp.GetRequiredService<FakeVaultSession>());
 
 var app = builder.Build();
 
@@ -26,3 +32,4 @@ app.UseAntiforgery();
 app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
 
 app.Run();
+

@@ -32,6 +32,23 @@ public interface IVaultSession
     /// <summary>How long the app may sit in the background before it locks itself.</summary>
     TimeSpan AutoLockAfter { get; }
 
+    /// <summary>
+    /// Works out whether a vault exists on this device, before anything is shown.
+    /// </summary>
+    /// <remarks>
+    /// The lock screen cannot draw itself until it knows the difference between a
+    /// first run, a locked vault and one whose device key was retired; those are
+    /// three different screens, and guessing wrong shows a returning user a setup
+    /// flow that would refuse to run.
+    /// </remarks>
+    ValueTask InitializeAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Creates the vault on first run and returns the recovery code, which is the
+    /// only time it can be read.
+    /// </summary>
+    ValueTask<VaultSetupResult> CreateAsync(CancellationToken cancellationToken = default);
+
     /// <summary>Prompts for biometrics and unlocks the vault.</summary>
     ValueTask<VaultUnlockResult> UnlockAsync(CancellationToken cancellationToken = default);
 
@@ -54,4 +71,16 @@ public sealed record VaultUnlockResult(bool Succeeded, VaultState State, string?
 {
     public static VaultUnlockResult Success() => new(true, VaultState.Unlocked);
     public static VaultUnlockResult Failed(VaultState state, string message) => new(false, state, message);
+}
+
+/// <param name="Succeeded">Whether the vault now exists and is open.</param>
+/// <param name="RecoveryCode">
+/// The code to write down. Present exactly once, on the call that created the
+/// vault: it is not stored anywhere it could be read back.
+/// </param>
+/// <param name="Message">What to tell the user when setup did not work.</param>
+public sealed record VaultSetupResult(bool Succeeded, string? RecoveryCode = null, string? Message = null)
+{
+    public static VaultSetupResult Success(string recoveryCode) => new(true, recoveryCode);
+    public static VaultSetupResult Failed(string message) => new(false, Message: message);
 }

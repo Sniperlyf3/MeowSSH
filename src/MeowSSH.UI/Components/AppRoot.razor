@@ -4,6 +4,7 @@
 @inject IVaultSession Vault
 @inject ISshEngine Engine
 @inject ISshPrompts Prompts
+@inject ICredentialResolver Credentials
 
 @*
     The whole app, composed from services. Both hosts render this: the Android
@@ -12,7 +13,17 @@
     into testing something the app does not do.
 *@
 
-@if (Vault.State is not VaultState.Unlocked)
+@if (!_ready)
+{
+    <div class="lock" data-testid="app-loading">
+        <p class="visually-hidden" role="status">Starting MeowSSH</p>
+    </div>
+}
+else if (Vault.State == VaultState.NotCreated)
+{
+    <VaultSetupScreen OnReady="OnUnlockedAsync" />
+}
+else if (Vault.State is not VaultState.Unlocked)
 {
     <VaultLockScreen OnUnlocked="OnUnlockedAsync" />
 }
@@ -24,9 +35,17 @@ else if (_files is not null)
 {
     <FilesPage Host="_files.Host" Sftp="_files.Sftp" OnClosed="CloseFilesAsync" />
 }
+else if (_editing is not null)
+{
+    <HostEditorPage Host="_editing.Host" OnSaved="CloseEditorAsync" OnCancelled="CancelEditor" />
+}
+else if (_tab == "keys")
+{
+    <KeysPage OnTabSelected="SelectTab" />
+}
 else
 {
-    <HostsPage OnHostSelected="ConnectAsync" />
+    <HostsPage OnHostSelected="ConnectAsync" OnAddHost="AddHost" OnEditHost="EditHost" OnTabSelected="SelectTab" />
 
     @if (_connecting is not null)
     {
@@ -49,20 +68,48 @@ else
 @code {
     private SessionState? _session;
     private FilesState? _files;
+    private EditorState? _editing;
+    private string _tab = "hosts";
     private string? _connecting;
     private Failure? _failure;
     private ISshConnection? _connection;
+    private bool _ready;
 
     private sealed record SessionState(HostRecord Host, ISshShell Shell);
     private sealed record FilesState(HostRecord Host, ISftpSession Sftp);
+    /// <summary>Null Host means the editor is adding rather than changing one.</summary>
+    private sealed record EditorState(HostRecord? Host);
     private sealed record Failure(string Title, string Body);
 
-    protected override void OnInitialized() => Vault.StateChanged += OnVaultChanged;
+    protected override async Task OnInitializedAsync()
+    {
+        Vault.StateChanged += OnVaultChanged;
+        // Nothing is drawn until this answers: a first run and a locked vault are
+        // different screens, and showing the wrong one offers a fingerprint that
+        // cannot work or a setup flow that would refuse to run.
+        await Vault.InitializeAsync();
+        _ready = true;
+    }
 
     private void OnVaultChanged(object? sender, EventArgs e) => _ = InvokeAsync(StateHasChanged);
 
     private Task OnUnlockedAsync()
     {
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private void SelectTab(string tab) => _tab = tab;
+
+    private void AddHost() => _editing = new EditorState(null);
+
+    private void EditHost(HostRecord host) => _editing = new EditorState(host);
+
+    private void CancelEditor() => _editing = null;
+
+    private Task CloseEditorAsync()
+    {
+        _editing = null;
         StateHasChanged();
         return Task.CompletedTask;
     }
@@ -75,10 +122,10 @@ else
 
         try
         {
-            // No keys are offered yet: key management has no UI, so this reaches
-            // a host that accepts the prompts the engine raises. Credentials come
-            // from the vault once that screen exists.
-            using var credentials = SshCredentials.None;
+            // Unsealed here and disposed as soon as the handshake is done, so the
+            // key exists in memory for the length of one connection rather than
+            // for the length of the session.
+            using var credentials = await Credentials.ResolveAsync(host);
             _connection = await Engine.ConnectAsync(host, credentials, Prompts);
             var shell = await _connection.OpenShellAsync(80, 24);
             _session = new SessionState(host, shell);

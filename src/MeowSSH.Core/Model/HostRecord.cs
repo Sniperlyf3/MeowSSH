@@ -68,6 +68,16 @@ public sealed record HostRecord
     /// <summary>Id of the host this one is reached through, if it sits behind a bastion.</summary>
     public Guid? JumpHostId { get; init; }
 
+    /// <summary>
+    /// The credential this host signs in with, if one has been chosen.
+    /// </summary>
+    /// <remarks>
+    /// A reference rather than the secret itself: one deploy key across a fleet is
+    /// the normal case, and copying it into every host would mean rotating it in
+    /// as many places as there are servers.
+    /// </remarks>
+    public Guid? CredentialId { get; init; }
+
     public DateTimeOffset? LastConnectedAt { get; init; }
 
     // Sync bookkeeping ----------------------------------------------------

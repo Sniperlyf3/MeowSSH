@@ -1,0 +1,238 @@
+@inject IHostEditor Editor
+
+@*
+    Adding and editing a host. One screen for both, because the fields are the
+    same and a separate "edit" screen is a second place for a field to be
+    forgotten.
+*@
+
+<AppShell Title="@(IsNew ? "New host" : "Edit host")" ActiveTab="hosts">
+    <Actions>
+        <button type="button" class="btn btn--icon" aria-label="Cancel"
+                data-testid="cancel-host" @onclick="OnCancelled">
+            <Icon Name="close" />
+        </button>
+    </Actions>
+
+    <ChildContent>
+        <div class="form" data-testid="host-editor">
+            <label class="field">
+                <span class="field__label">Name</span>
+                <input class="field__input" type="text" data-testid="host-label"
+                       placeholder="build-01" autocomplete="off" spellcheck="false"
+                       @bind="_label" @bind:event="oninput" />
+                <span class="field__hint">What you will call this host in the list.</span>
+            </label>
+
+            <fieldset class="field">
+                <legend class="field__label">How to reach it</legend>
+                <div class="segmented" role="radiogroup" aria-label="Transport">
+                    @foreach (var option in Transports)
+                    {
+                        <button type="button"
+                                class="segmented__option @(_transport == option.Value ? "segmented__option--on" : "")"
+                                role="radio"
+                                aria-checked="@(_transport == option.Value ? "true" : "false")"
+                                data-testid="@($"transport-{option.Value}")"
+                                @onclick="() => SetTransport(option.Value)">
+                            @option.Label
+                        </button>
+                    }
+                </div>
+                <span class="field__hint">@TransportHint</span>
+            </fieldset>
+
+            <label class="field">
+                <span class="field__label">@AddressLabel</span>
+                <input class="field__input mono" type="text" data-testid="host-address"
+                       placeholder="@AddressPlaceholder" autocomplete="off"
+                       autocapitalize="none" spellcheck="false"
+                       @bind="_address" @bind:event="oninput" />
+            </label>
+
+            @if (_transport != SshTransport.Tailcat)
+            {
+                <div class="form__row">
+                    <label class="field field--grow">
+                        <span class="field__label">Username</span>
+                        <input class="field__input mono" type="text" data-testid="host-username"
+                               placeholder="deploy" autocomplete="off"
+                               autocapitalize="none" spellcheck="false"
+                               @bind="_username" @bind:event="oninput" />
+                    </label>
+
+                    <label class="field field--narrow">
+                        <span class="field__label">Port</span>
+                        <input class="field__input mono" type="number" inputmode="numeric"
+                               min="1" max="65535" data-testid="host-port"
+                               @bind="_port" @bind:event="oninput" />
+                    </label>
+                </div>
+            }
+
+            @if (_transport != SshTransport.TailscaleSsh)
+            {
+                <label class="field">
+                    <span class="field__label">Sign in with</span>
+                    <select class="field__input" data-testid="host-credential" @bind="_credentialId">
+                        <option value="">Ask me each time</option>
+                        @foreach (var credential in _credentials)
+                        {
+                            <option value="@credential.Id">@credential.Label — @credential.DisplayHint</option>
+                        }
+                    </select>
+                    <span class="field__hint">
+                        @(_credentials.Count == 0
+                            ? "No saved keys or passwords yet. Add one on the Keys tab."
+                            : "Stored in the vault and unsealed only while connecting.")
+                    </span>
+                </label>
+            }
+            else
+            {
+                <p class="note" data-testid="tailscale-note">
+                    <Icon Name="shield" />
+                    Tailscale SSH authenticates with your tailnet identity, so there is no key to
+                    choose. Tailscale must be connected on this device.
+                </p>
+            }
+
+            @if (_error is not null)
+            {
+                <p class="lock__error" role="alert" data-testid="host-error">@_error</p>
+            }
+
+            <div class="form__actions">
+                <button type="button" class="btn btn--primary btn--block"
+                        disabled="@(_busy || !IsComplete)" data-testid="save-host" @onclick="SaveAsync">
+                    @(_busy ? "Saving…" : "Save host")
+                </button>
+
+                @if (!IsNew)
+                {
+                    <button type="button" class="btn btn--danger btn--block"
+                            disabled="@_busy" data-testid="delete-host" @onclick="DeleteAsync">
+                        <Icon Name="trash" /> Delete host
+                    </button>
+                }
+            </div>
+        </div>
+    </ChildContent>
+</AppShell>
+
+@code {
+    private string _label = "";
+    private string _address = "";
+    private string _username = "";
+    private int _port = 22;
+    private string _credentialId = "";
+    private SshTransport _transport = SshTransport.Tcp;
+    private IReadOnlyList<CredentialSummary> _credentials = [];
+    private string? _error;
+    private bool _busy;
+
+    /// <summary>The host being edited, or null to add a new one.</summary>
+    [Parameter] public HostRecord? Host { get; set; }
+
+    [Parameter] public EventCallback OnSaved { get; set; }
+
+    [Parameter] public EventCallback OnCancelled { get; set; }
+
+    private bool IsNew => Host is null;
+
+    private static (SshTransport Value, string Label)[] Transports =>
+    [
+        (SshTransport.Tcp, "SSH"),
+        (SshTransport.Tailcat, "tailcat"),
+        (SshTransport.TailscaleSsh, "Tailscale"),
+    ];
+
+    private string TransportHint => _transport switch
+    {
+        SshTransport.Tailcat =>
+            "A tailcat address is the credential: the machine needs no open port, and nothing has to be forwarded.",
+        SshTransport.TailscaleSsh =>
+            "Reached across your tailnet. Identity comes from Tailscale rather than from an SSH key.",
+        _ => "An ordinary SSH server reached over TCP.",
+    };
+
+    private string AddressLabel => _transport == SshTransport.Tailcat ? "tailcat address" : "Hostname or IP";
+
+    private string AddressPlaceholder => _transport switch
+    {
+        SshTransport.Tailcat => "tc…",
+        SshTransport.TailscaleSsh => "100.84.12.7",
+        _ => "build.example.com",
+    };
+
+    // A host with no address cannot be connected to, and one with no name is a
+    // blank row in the list. Everything else has a sensible default.
+    private bool IsComplete =>
+        !string.IsNullOrWhiteSpace(_label)
+        && !string.IsNullOrWhiteSpace(_address)
+        && _port is > 0 and <= 65535;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Host is { } host)
+        {
+            _label = host.Label;
+            _address = host.Address;
+            _username = host.Username ?? "";
+            _port = host.Port;
+            _transport = host.Transport;
+            _credentialId = host.CredentialId?.ToString() ?? "";
+        }
+
+        _credentials = await Editor.GetCredentialsAsync();
+    }
+
+    private void SetTransport(SshTransport transport)
+    {
+        _transport = transport;
+        // A tailcat address carries its own identity, so a username left over
+        // from an SSH host would be sent nowhere and read as a setting that works.
+        if (transport == SshTransport.Tailcat) _username = "";
+    }
+
+    private async Task SaveAsync()
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            await Editor.SaveHostAsync(new HostRecord
+            {
+                Id = Host?.Id ?? Guid.NewGuid(),
+                Label = _label.Trim(),
+                Address = _address.Trim(),
+                Port = _port,
+                Username = string.IsNullOrWhiteSpace(_username) ? null : _username.Trim(),
+                Transport = _transport,
+                Tags = Host?.Tags ?? [],
+                JumpHostId = Host?.JumpHostId,
+                CredentialId = Guid.TryParse(_credentialId, out var id) ? id : null,
+                LastConnectedAt = Host?.LastConnectedAt,
+            });
+            await OnSaved.InvokeAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            // The vault locked while this screen was open. Saying so beats a
+            // silent no-op that looks like the button is broken.
+            _error = ex.Message;
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task DeleteAsync()
+    {
+        _busy = true;
+        try
+        {
+            await Editor.DeleteHostAsync(Host!.Id);
+            await OnSaved.InvokeAsync();
+        }
+        finally { _busy = false; }
+    }
+}

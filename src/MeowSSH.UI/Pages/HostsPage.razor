@@ -1,12 +1,13 @@
 @inject IHostDirectory Directory
 @implements IDisposable
 
-<AppShell Title="Hosts" ActiveTab="hosts">
+<AppShell Title="Hosts" ActiveTab="hosts" OnTabSelected="OnTabSelected">
     <Actions>
         <button type="button" class="btn btn--icon" aria-label="Search hosts" data-testid="search">
             <Icon Name="search" />
         </button>
-        <button type="button" class="btn btn--icon" aria-label="Add host" data-testid="add-host">
+        <button type="button" class="btn btn--icon" aria-label="Add host" data-testid="add-host"
+                @onclick="OnAddHost">
             <Icon Name="plus" />
         </button>
     </Actions>
@@ -25,7 +26,8 @@
                     Add a server you connect to over SSH, or paste a tailcat address to reach
                     a machine that has no open port at all.
                 </p>
-                <button type="button" class="btn btn--primary">
+                <button type="button" class="btn btn--primary" data-testid="add-first-host"
+                        @onclick="OnAddHost">
                     <Icon Name="plus" /> Add your first host
                 </button>
             </div>
@@ -41,7 +43,7 @@
                 <div class="host-list" data-testid="host-list">
                     @foreach (var status in group)
                     {
-                        <HostRow Status="status" OnSelected="Connect" />
+                        <HostRow Status="status" OnSelected="Connect" OnEdit="OnEditHost" />
                     }
                 </div>
             }
@@ -53,6 +55,12 @@
     private IReadOnlyList<HostStatus>? _hosts;
 
     [Parameter] public EventCallback<HostRecord> OnHostSelected { get; set; }
+
+    [Parameter] public EventCallback OnAddHost { get; set; }
+
+    [Parameter] public EventCallback<HostRecord> OnEditHost { get; set; }
+
+    [Parameter] public EventCallback<string> OnTabSelected { get; set; }
 
     protected override async Task OnInitializedAsync()
     {

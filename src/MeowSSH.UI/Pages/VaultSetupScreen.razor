@@ -1,0 +1,134 @@
+@inject IVaultSession Vault
+@implements IAsyncDisposable
+
+@*
+    First run. Two steps, and the second one is not skippable by accident: the
+    recovery code exists for the day the device key is gone, and a user who taps
+    past it has a vault that one system setting can destroy.
+*@
+
+<div class="lock" data-testid="setup-screen">
+    <div class="lock__panel">
+        @if (_recoveryCode is null)
+        {
+            <div class="lock__mark" aria-hidden="true"><Icon Name="shield" /></div>
+
+            <div class="lock__copy">
+                <h1 class="lock__title">Set up MeowSSH</h1>
+                <p class="lock__body">
+                    Your hosts, keys and passwords are encrypted on this device with a key your
+                    phone's secure hardware holds. Nothing leaves the device, and nothing — including
+                    MeowSSH — can read the vault without you.
+                </p>
+            </div>
+
+            @if (_error is not null)
+            {
+                <p class="lock__error" role="alert" data-testid="setup-error">@_error</p>
+            }
+
+            <div class="lock__form">
+                <button type="button" class="btn btn--primary btn--block"
+                        disabled="@_busy" data-testid="create-vault" @onclick="CreateAsync">
+                    <Icon Name="fingerprint" />
+                    @(_busy ? "Waiting…" : "Create my vault")
+                </button>
+            </div>
+
+            <p class="lock__footnote">
+                <Icon Name="lock" />
+                You will be asked for a fingerprint, face or screen lock.
+            </p>
+        }
+        else
+        {
+            <div class="lock__mark" aria-hidden="true"><Icon Name="key" /></div>
+
+            <div class="lock__copy">
+                <h1 class="lock__title">Write this down</h1>
+                <p class="lock__body">
+                    This is the only way back into your vault if you add a fingerprint, reset your
+                    screen lock, or move to a new phone. It is shown once and is not stored anywhere
+                    it could be read back — not on this device, and not by us.
+                </p>
+            </div>
+
+            <div class="recovery" data-testid="recovery-code">
+                <code class="recovery__code mono">@_recoveryCode</code>
+                <button type="button" class="btn btn--ghost btn--block"
+                        data-testid="copy-recovery" @onclick="CopyAsync">
+                    <Icon Name="copy" /> @(_copied ? "Copied" : "Copy code")
+                </button>
+            </div>
+
+            <div class="lock__form">
+                <label class="check" data-testid="confirm-written-down">
+                    <input type="checkbox" @bind="_writtenDown" />
+                    <span>I have written this code down somewhere safe.</span>
+                </label>
+
+                <button type="button" class="btn btn--primary btn--block"
+                        disabled="@(!_writtenDown)" data-testid="finish-setup" @onclick="FinishAsync">
+                    Continue
+                </button>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private bool _busy;
+    private bool _copied;
+    private bool _writtenDown;
+    private string? _recoveryCode;
+    private string? _error;
+    private IJSObjectReference? _clipboard;
+
+    [Inject] private IJSRuntime Js { get; set; } = default!;
+
+    [Parameter] public EventCallback OnReady { get; set; }
+
+    private async Task CreateAsync()
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            var result = await Vault.CreateAsync();
+            if (result.Succeeded) _recoveryCode = result.RecoveryCode;
+            else _error = result.Message;
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task CopyAsync()
+    {
+        // Best effort. Embedded web views can refuse the clipboard outright, and
+        // the code is on screen either way, so a failure here is not worth
+        // interrupting setup for -- it just does not claim to have copied.
+        try
+        {
+            _clipboard ??= await Js.InvokeAsync<IJSObjectReference>("import", "./_content/MeowSSH.UI/js/clipboard.js");
+            _copied = await _clipboard.InvokeAsync<bool>("copyText", _recoveryCode);
+        }
+        catch (JSException)
+        {
+            _copied = false;
+        }
+    }
+
+    private Task FinishAsync()
+    {
+        // Dropped rather than kept in a field: the vault is open, and holding the
+        // code past this screen keeps it in memory for nothing.
+        _recoveryCode = null;
+        return OnReady.InvokeAsync();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_clipboard is null) return;
+        try { await _clipboard.DisposeAsync(); }
+        catch (JSDisconnectedException) { /* The page went away first. */ }
+    }
+}

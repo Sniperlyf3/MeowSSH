@@ -20,7 +20,11 @@
     <span data-testid="interactive" hidden></span>
 }
 
-@if (!_unlocked)
+@if (_setup)
+{
+    <VaultSetupScreen OnReady="() => { _setup = false; _unlocked = true; }" />
+}
+else if (!_unlocked)
 {
     <VaultLockScreen OnUnlocked="() => _unlocked = true" />
 }
@@ -32,15 +36,31 @@ else if (_session is not null)
 {
     <SessionPage Host="_session.Host" Shell="_session.Shell" OnClosed="CloseSession" />
 }
+else if (_editing)
+{
+    <HostEditorPage Host="_editTarget" OnSaved="CloseEditor" OnCancelled="CloseEditor" />
+}
+else if (_tab == "keys")
+{
+    <KeysPage OnTabSelected="tab => _tab = tab" />
+}
 else
 {
-    <HostsPage OnHostSelected="OpenSession" />
+    <HostsPage OnHostSelected="OpenSession"
+               OnAddHost="() => { _editTarget = null; _editing = true; }"
+               OnEditHost="host => { _editTarget = host; _editing = true; }"
+               OnTabSelected="tab => _tab = tab" />
 }
 
 @code {
     [Inject] private NavigationManager Navigation { get; set; } = default!;
+    [Inject] private FakeVaultSession Vault { get; set; } = default!;
 
     private bool _unlocked;
+    private bool _setup;
+    private bool _editing;
+    private string _tab = "hosts";
+    private HostRecord? _editTarget;
     private SessionState? _session;
     private FilesState? _files;
 
@@ -51,7 +71,16 @@ else
     protected override void OnInitialized()
     {
         var query = new Uri(Navigation.Uri).Query;
-        _unlocked = !query.Contains("locked", StringComparison.OrdinalIgnoreCase);
+        _setup = query.Contains("setup", StringComparison.OrdinalIgnoreCase);
+        // The session has to agree with the screen: rendering the setup screen
+        // against a vault that reports itself as merely locked makes "create"
+        // answer "a vault already exists" and the flow dead-ends.
+        Vault.Reset(_setup ? VaultState.NotCreated : VaultState.Locked);
+        // "locked" and "setup" are separate scenarios: one is a returning user,
+        // the other a first run, and they are different screens.
+        _unlocked = !_setup && !query.Contains("locked", StringComparison.OrdinalIgnoreCase);
+        if (query.Contains("keys", StringComparison.OrdinalIgnoreCase)) _tab = "keys";
+        if (query.Contains("newhost", StringComparison.OrdinalIgnoreCase)) _editing = true;
         if (query.Contains("files", StringComparison.OrdinalIgnoreCase))
             _files = new FilesState(SampleHost, new FakeSftpSession());
     }
@@ -81,6 +110,12 @@ else
     }
 
     private void CloseFiles() => _files = null;
+
+    private void CloseEditor()
+    {
+        _editing = false;
+        _editTarget = null;
+    }
 
     /// <summary>The host the file browser opens against when driven by URL.</summary>
     private static HostRecord SampleHost => new()

@@ -1,0 +1,223 @@
+@using System.Text
+@inject IHostEditor Editor
+
+@*
+    Saved keys and passwords. The list is built from summaries that have nowhere
+    to put a secret, so drawing this screen cannot unseal one -- the rule is
+    enforced by the type rather than by remembering.
+*@
+
+<AppShell Title="Keys" ActiveTab="keys" OnTabSelected="OnTabSelected">
+    <Actions>
+        @if (!_adding)
+        {
+            <button type="button" class="btn btn--icon" aria-label="Add key"
+                    data-testid="add-credential" @onclick="StartAdding">
+                <Icon Name="plus" />
+            </button>
+        }
+    </Actions>
+
+    <ChildContent>
+        @if (_adding)
+        {
+            <div class="form" data-testid="credential-editor">
+                <label class="field">
+                    <span class="field__label">Name</span>
+                    <input class="field__input" type="text" data-testid="credential-label"
+                           placeholder="deploy key" autocomplete="off"
+                           @bind="_label" @bind:event="oninput" />
+                </label>
+
+                <fieldset class="field">
+                    <legend class="field__label">Kind</legend>
+                    <div class="segmented" role="radiogroup" aria-label="Credential kind">
+                        <button type="button"
+                                class="segmented__option @(_kind == CredentialKind.PrivateKey ? "segmented__option--on" : "")"
+                                role="radio" aria-checked="@(_kind == CredentialKind.PrivateKey ? "true" : "false")"
+                                data-testid="kind-key" @onclick="() => _kind = CredentialKind.PrivateKey">
+                            Private key
+                        </button>
+                        <button type="button"
+                                class="segmented__option @(_kind == CredentialKind.Password ? "segmented__option--on" : "")"
+                                role="radio" aria-checked="@(_kind == CredentialKind.Password ? "true" : "false")"
+                                data-testid="kind-password" @onclick="() => _kind = CredentialKind.Password">
+                            Password
+                        </button>
+                    </div>
+                </fieldset>
+
+                <label class="field">
+                    <span class="field__label">Username</span>
+                    <input class="field__input mono" type="text" data-testid="credential-username"
+                           placeholder="deploy" autocomplete="off" autocapitalize="none" spellcheck="false"
+                           @bind="_username" @bind:event="oninput" />
+                    <span class="field__hint">Optional. Used when a host does not name its own.</span>
+                </label>
+
+                @if (_kind == CredentialKind.PrivateKey)
+                {
+                    <label class="field">
+                        <span class="field__label">Private key</span>
+                        <textarea class="field__input field__input--code mono" rows="6"
+                                  data-testid="credential-secret"
+                                  placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"
+                                  autocomplete="off" autocapitalize="none" spellcheck="false"
+                                  @bind="_secret" @bind:event="oninput"></textarea>
+                        <span class="field__hint">
+                            Pasted as-is and sealed immediately. It is never written to a file the
+                            rest of the phone can read.
+                        </span>
+                    </label>
+
+                    <label class="field">
+                        <span class="field__label">Key passphrase</span>
+                        <input class="field__input mono" type="password" data-testid="credential-passphrase"
+                               autocomplete="off" @bind="_passphrase" @bind:event="oninput" />
+                        <span class="field__hint">Leave blank if the key has none.</span>
+                    </label>
+                }
+                else
+                {
+                    <label class="field">
+                        <span class="field__label">Password</span>
+                        <div class="field__with-action">
+                            <input class="field__input mono" data-testid="credential-secret"
+                                   type="@(_revealed ? "text" : "password")"
+                                   autocomplete="off" autocapitalize="none" spellcheck="false"
+                                   @bind="_secret" @bind:event="oninput" />
+                            <button type="button" class="btn btn--icon"
+                                    aria-label="@(_revealed ? "Hide password" : "Show password")"
+                                    data-testid="reveal-secret" @onclick="() => _revealed = !_revealed">
+                                <Icon Name="@(_revealed ? "eye-off" : "eye")" />
+                            </button>
+                        </div>
+                    </label>
+                }
+
+                <div class="form__actions">
+                    <button type="button" class="btn btn--primary btn--block"
+                            disabled="@(_busy || !IsComplete)" data-testid="save-credential"
+                            @onclick="SaveAsync">
+                        @(_busy ? "Saving…" : "Save to vault")
+                    </button>
+                    <button type="button" class="btn btn--ghost btn--block"
+                            data-testid="cancel-credential" @onclick="StopAdding">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        }
+        else if (_credentials.Count == 0)
+        {
+            <div class="empty" data-testid="keys-empty">
+                <span class="empty__glyph"><Icon Name="key" /></span>
+                <p class="empty__title">No saved keys</p>
+                <p class="empty__body">
+                    Add a private key or a password once, then point as many hosts at it as you
+                    like. Everything here is encrypted with the vault key your phone's secure
+                    hardware holds.
+                </p>
+                <button type="button" class="btn btn--primary" @onclick="StartAdding">
+                    <Icon Name="plus" /> Add a key
+                </button>
+            </div>
+        }
+        else
+        {
+            <div class="host-list" data-testid="credential-list">
+                @foreach (var credential in _credentials)
+                {
+                    <div class="host-row" data-testid="credential-row">
+                        <span class="host-row__avatar" aria-hidden="true">
+                            <Icon Name="@(credential.Kind == CredentialKind.Password ? "lock" : "key")" />
+                        </span>
+                        <span class="host-row__text">
+                            <span class="host-row__label">@credential.Label</span>
+                            <span class="host-row__address mono">@credential.DisplayHint</span>
+                        </span>
+                        <button type="button" class="btn btn--icon"
+                                aria-label="@($"Delete {credential.Label}")"
+                                data-testid="delete-credential"
+                                @onclick="() => DeleteAsync(credential)">
+                            <Icon Name="trash" />
+                        </button>
+                    </div>
+                }
+            </div>
+
+            <p class="note">
+                <Icon Name="shield" />
+                Deleting a key wipes its secret from the vault file straight away, and clears it
+                from any host that used it.
+            </p>
+        }
+    </ChildContent>
+</AppShell>
+
+@code {
+    private IReadOnlyList<CredentialSummary> _credentials = [];
+    private bool _adding;
+    private bool _busy;
+    private bool _revealed;
+    private string _label = "";
+    private string _username = "";
+    private string _secret = "";
+    private string _passphrase = "";
+    private CredentialKind _kind = CredentialKind.PrivateKey;
+
+    [Parameter] public EventCallback<string> OnTabSelected { get; set; }
+
+    private bool IsComplete => !string.IsNullOrWhiteSpace(_label) && _secret.Length > 0;
+
+    protected override Task OnInitializedAsync() => ReloadAsync();
+
+    private async Task ReloadAsync() => _credentials = await Editor.GetCredentialsAsync();
+
+    private void StartAdding()
+    {
+        _adding = true;
+        _label = _username = _secret = _passphrase = "";
+        _kind = CredentialKind.PrivateKey;
+        _revealed = false;
+    }
+
+    private void StopAdding()
+    {
+        _adding = false;
+        // Cleared rather than left for the next visit: a half-typed private key
+        // sitting in a field is a secret nobody meant to keep.
+        _secret = _passphrase = "";
+    }
+
+    private async Task SaveAsync()
+    {
+        _busy = true;
+        try
+        {
+            await Editor.SaveCredentialAsync(new CredentialRecord
+            {
+                Id = Guid.NewGuid(),
+                Label = _label.Trim(),
+                Kind = _kind,
+                Username = string.IsNullOrWhiteSpace(_username) ? null : _username.Trim(),
+                Secret = Encoding.UTF8.GetBytes(_secret),
+                Passphrase = _passphrase.Length == 0 ? null : Encoding.UTF8.GetBytes(_passphrase),
+                // The public half is left unset: deriving it means parsing the
+                // OpenSSH key format, and the list reads fine without it. It
+                // matters when there is a screen that copies a key into a
+                // server's authorized_keys, which there is not yet.
+            });
+
+            StopAdding();
+            await ReloadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task DeleteAsync(CredentialSummary credential)
+    {
+        await Editor.DeleteCredentialAsync(credential.Id);
+        await ReloadAsync();
+    }
+}

@@ -14,7 +14,9 @@ public sealed class FakeVaultSession : IVaultSession
     public FakeVaultSession(VaultState initialState = VaultState.Locked, string recoveryCode = "")
     {
         State = initialState;
-        _recoveryCode = recoveryCode;
+        // A blank code would make the setup screen render an empty panel, which
+        // is the one thing the first-run flow must never do.
+        _recoveryCode = string.IsNullOrEmpty(recoveryCode) ? RecoveryCode.Generate() : recoveryCode;
     }
 
     public VaultState State { get; private set; }
@@ -25,6 +27,37 @@ public sealed class FakeVaultSession : IVaultSession
     public BiometricResult NextBiometricResult { get; set; } = BiometricResult.Succeeded;
 
     public event EventHandler? StateChanged;
+
+    public ValueTask InitializeAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+
+    /// <summary>
+    /// Puts the vault into a starting state for a scenario.
+    /// </summary>
+    /// <remarks>
+    /// Not on <see cref="IVaultSession"/>, and it should not be: nothing in the
+    /// app may decide the vault has stopped existing. The playground needs it
+    /// because a first run and a returning user are different screens and a
+    /// browser test reaches either by navigating.
+    /// </remarks>
+    public void Reset(VaultState state)
+    {
+        if (State == state) return;
+        State = state;
+        StateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public ValueTask<VaultSetupResult> CreateAsync(CancellationToken cancellationToken = default)
+    {
+        if (State != VaultState.NotCreated)
+            return ValueTask.FromResult(VaultSetupResult.Failed("A vault already exists on this device."));
+
+        if (NextBiometricResult != BiometricResult.Succeeded)
+            return ValueTask.FromResult(VaultSetupResult.Failed("Unlock cancelled."));
+
+        State = VaultState.Unlocked;
+        StateChanged?.Invoke(this, EventArgs.Empty);
+        return ValueTask.FromResult(VaultSetupResult.Success(_recoveryCode));
+    }
 
     public ValueTask<VaultUnlockResult> UnlockAsync(CancellationToken cancellationToken = default)
     {

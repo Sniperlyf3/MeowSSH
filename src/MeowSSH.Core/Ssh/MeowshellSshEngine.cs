@@ -24,7 +24,7 @@ public sealed class MeowshellSshEngine(MeowshellSshEngineOptions options) : ISsh
         ArgumentNullException.ThrowIfNull(credentials);
         ArgumentNullException.ThrowIfNull(prompts);
 
-        Directory.CreateDirectory(options.WorkingDirectory);
+        EnsurePrivateWorkingDirectory(options.WorkingDirectory);
 
         var clientOptions = new TailcatClientOptions
         {
@@ -63,6 +63,57 @@ public sealed class MeowshellSshEngine(MeowshellSshEngineOptions options) : ISsh
             if (agent is not null) await agent.DisposeAsync().ConfigureAwait(false);
             throw Translate(ex);
         }
+        catch (IOException ex)
+        {
+            // Meowshell validates the agent's HOME before it starts anything and
+            // reports a refusal as an IOException, which is outside the typed
+            // error model the rest of this method translates. Left to escape it
+            // would surface as an unhandled exception on the connect path rather
+            // than as something the UI can explain.
+            if (agent is not null) await agent.DisposeAsync().ConfigureAwait(false);
+            throw new SshException(
+                SshFailure.Unknown,
+                "MeowSSH could not prepare its private working directory on this device, so the connection was not attempted.",
+                ex);
+        }
+    }
+
+    /// <summary>
+    /// Creates the agent's HOME so that only this user can reach it.
+    /// </summary>
+    /// <remarks>
+    /// The mode is set explicitly rather than left to the process umask. This
+    /// directory becomes the agent's HOME, which is where known_hosts and any
+    /// session key material live, and Meowshell refuses to launch against a HOME
+    /// that grants group or other access -- correctly, since another local user
+    /// able to write there could redirect host-key verification. Under the usual
+    /// umask of 022 the default would be 0755 and every connection would fail.
+    /// </remarks>
+    private static void EnsurePrivateWorkingDirectory(string path)
+    {
+        const UnixFileMode ownerOnly =
+            UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
+
+        if (OperatingSystem.IsWindows())
+        {
+            Directory.CreateDirectory(path);
+            return;
+        }
+
+        if (!Directory.Exists(path))
+        {
+            Directory.CreateDirectory(path, ownerOnly);
+            return;
+        }
+
+        // An existing directory from an older build was created with the umask
+        // applied, so it may be 0755. Narrowing it is safe and is what the user
+        // would want; leaving it would make every connection fail from here on.
+        var mode = File.GetUnixFileMode(path);
+        const UnixFileMode sharedAccess =
+            UnixFileMode.GroupRead | UnixFileMode.GroupWrite | UnixFileMode.GroupExecute |
+            UnixFileMode.OtherRead | UnixFileMode.OtherWrite | UnixFileMode.OtherExecute;
+        if ((mode & sharedAccess) != 0) File.SetUnixFileMode(path, mode & ~sharedAccess);
     }
 
     private MeowshellAgentConfigureOptions Configure(SshCredentials credentials) => new()

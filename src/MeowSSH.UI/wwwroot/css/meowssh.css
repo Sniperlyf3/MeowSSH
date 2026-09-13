@@ -437,7 +437,20 @@ h1:focus, h2:focus, h3:focus, [tabindex="-1"]:focus { outline: none; box-shadow:
 
 .field__input::placeholder { color: var(--text-faint); }
 .field__input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-wash); }
-.field__input.mono { font-family: var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase; }
+/* Monospace alone. The uppercasing below belongs to the recovery code and
+   nothing else: applied here it would mangle a hostname as it was typed and
+   silently corrupt a pasted private key. */
+.field__input.mono { font-family: var(--font-mono); }
+.field__input--otp { letter-spacing: 0.06em; text-transform: uppercase; }
+.field__input--code {
+  text-transform: none;
+  letter-spacing: 0;
+  line-height: 1.45;
+  resize: vertical;
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow-x: auto;
+}
 
 .field__hint { color: var(--text-faint); font-size: var(--text-xs); }
 
@@ -696,3 +709,95 @@ h1:focus, h2:focus, h3:focus, [tabindex="-1"]:focus { outline: none; box-shadow:
 .sheet__title { font-size: var(--text-base); font-weight: 600; }
 .sheet__body { color: var(--text-muted); font-size: var(--text-sm); line-height: 1.5; }
 .sheet--danger .sheet__title { color: var(--danger); }
+
+
+/* Forms ------------------------------------------------------------------ */
+
+.form { display: flex; flex-direction: column; gap: var(--space-5); }
+.form__row { display: flex; gap: var(--space-3); align-items: flex-end; }
+.field--grow { flex: 1 1 auto; min-width: 0; }
+/* Wide enough for five digits and no wider: a port field the size of a
+   hostname field invites someone to type a hostname into it. */
+.field--narrow { flex: 0 0 6.5rem; }
+.form__actions { display: flex; flex-direction: column; gap: var(--space-3); margin-top: var(--space-2); }
+
+.field__with-action { display: flex; gap: var(--space-2); align-items: center; }
+.field__with-action .field__input { flex: 1 1 auto; min-width: 0; }
+
+.segmented {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--border);
+  border-radius: var(--radius-md);
+}
+.segmented__option {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: calc(var(--radius-md) - 2px);
+  background: var(--surface);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+.segmented__option--on { background: var(--accent); color: var(--text-on-accent); font-weight: 600; }
+.segmented__option:focus-visible { outline: none; box-shadow: var(--ring); }
+
+.check { display: flex; gap: var(--space-3); align-items: flex-start; font-size: var(--text-sm); cursor: pointer; }
+/* Sized up from the browser default: this is the one checkbox in the app whose
+   answer cannot be taken back, and it is tapped with a thumb. */
+.check input { width: 1.15rem; height: 1.15rem; margin-top: 0.1rem; accent-color: var(--accent); flex: none; }
+
+.note {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  text-align: left;
+}
+.note .icon { flex: none; color: var(--text-faint); }
+
+/* The recovery code, shown once ------------------------------------------ */
+
+.recovery { display: flex; flex-direction: column; gap: var(--space-3); }
+.recovery__code {
+  display: block;
+  padding: var(--space-4);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  font-family: var(--font-mono);
+  font-size: var(--text-lg);
+  letter-spacing: 0.14em;
+  text-align: center;
+  /* Selectable on purpose: the clipboard is not available in every web view,
+     and a code you cannot copy or select is a code you will mistype. */
+  user-select: all;
+  overflow-wrap: anywhere;
+}
+
+/* A host row with an edit affordance beside it --------------------------- */
+
+.host-wrap { display: flex; align-items: stretch; background: var(--surface); min-width: 0; }
+.host-wrap .host { flex: 1 1 auto; min-width: 0; }
+.host__edit {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 3rem;
+  border: 0;
+  border-left: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+.host__edit:hover { background: var(--surface-raised); color: var(--text); }
+.host__edit:focus-visible { outline: none; box-shadow: inset var(--ring); }
