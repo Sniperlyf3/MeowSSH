@@ -801,3 +801,40 @@ h1:focus, h2:focus, h3:focus, [tabindex="-1"]:focus { outline: none; box-shadow:
 }
 .host__edit:hover { background: var(--surface-raised); color: var(--text); }
 .host__edit:focus-visible { outline: none; box-shadow: inset var(--ring); }
+
+/* The framework's unhandled-error bar ------------------------------------ */
+
+/*
+  Blazor renders this element into the page unconditionally and reveals it by
+  setting display:block when something throws. The rule that matters is the
+  hidden default: without it the bar sits in normal flow at the foot of the
+  document, permanently, and anyone who scrolls far enough is told the app has
+  crashed when nothing has happened at all.
+
+  It lives here rather than in either host's shell so both get it, and so the
+  browser tests exercise the same rule the Android app ships.
+*/
+#blazor-error-ui {
+  display: none;
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 100;
+  padding: var(--space-4);
+  padding-bottom: calc(var(--space-4) + env(safe-area-inset-bottom));
+  background: var(--danger);
+  color: #fff;
+  font-size: var(--text-sm);
+  text-align: left;
+  /* Above the tab bar, which is the only other fixed thing at this edge. A
+     message about the app having failed is not one to hide behind navigation. */
+  box-shadow: 0 -8px 24px rgb(0 0 0 / 28%);
+}
+
+#blazor-error-ui .reload,
+#blazor-error-ui .dismiss {
+  color: #fff;
+  margin-inline-start: var(--space-3);
+  text-decoration: underline;
+  cursor: pointer;
+}
