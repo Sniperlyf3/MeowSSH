@@ -13,10 +13,10 @@ namespace MeowSSH.App;
 /// </summary>
 public sealed class NoSuggestionsBlazorWebViewHandler : BlazorWebViewHandler
 {
-    protected override object CreatePlatformView() =>
+    protected override global::Android.Webkit.WebView CreatePlatformView() =>
         new NoSuggestionsWebView(Context!);
 
-    private sealed class NoSuggestionsWebView(Context context) : WebView(context)
+    private sealed class NoSuggestionsWebView(Context context) : global::Android.Webkit.WebView(context)
     {
         public override IInputConnection? OnCreateInputConnection(EditorInfo? outAttrs)
         {
