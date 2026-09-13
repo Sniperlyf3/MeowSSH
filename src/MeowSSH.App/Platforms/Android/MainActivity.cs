@@ -1,11 +1,18 @@
 using Android.App;
 using Android.Content.PM;
 using Android.OS;
+using Android.Views;
 using AndroidX.Core.View;
 
 namespace MeowSSH.App;
 
-[Activity(Theme = "@style/Maui.SplashTheme", MainLauncher = true, ConfigurationChanges = ConfigChanges.ScreenSize | ConfigChanges.Orientation | ConfigChanges.UiMode | ConfigChanges.ScreenLayout | ConfigChanges.SmallestScreenSize | ConfigChanges.Density)]
+[Activity(Theme = "@style/Maui.SplashTheme", MainLauncher = true, ConfigurationChanges = ConfigChanges.ScreenSize | ConfigChanges.Orientation | ConfigChanges.UiMode | ConfigChanges.ScreenLayout | ConfigChanges.SmallestScreenSize | ConfigChanges.Density,
+    // The window shrinks for the keyboard rather than being panned up under it.
+    // Panning moves the whole page without telling the web view its size
+    // changed, so the terminal keeps sizing itself to a viewport that is no
+    // longer visible and its cursor ends up drawn somewhere the user is not
+    // looking.
+    WindowSoftInputMode = SoftInput.AdjustResize)]
 public class MainActivity : MauiAppCompatActivity
 {
     protected override void OnCreate(Bundle? savedInstanceState)
@@ -41,7 +48,17 @@ public class MainActivity : MauiAppCompatActivity
             if (view is null || insets is null) return insets ?? WindowInsetsCompat.Consumed!;
 
             var bars = insets.GetInsets(WindowInsetsCompat.Type.SystemBars() | WindowInsetsCompat.Type.DisplayCutout());
-            if (bars is not null) view.SetPadding(bars.Left, bars.Top, bars.Right, view.PaddingBottom);
+
+            // The keyboard is its own inset, and it is the one that has to reach
+            // the bottom padding: shrinking the web view is what makes the page
+            // re-lay-out, which is what makes the terminal refit to the space it
+            // can actually be seen in. Nothing else is applied at the bottom --
+            // the stylesheet handles the navigation bar -- so the two do not
+            // stack.
+            var keyboard = insets.GetInsets(WindowInsetsCompat.Type.Ime());
+
+            if (bars is not null)
+                view.SetPadding(bars.Left, bars.Top, bars.Right, keyboard?.Bottom ?? 0);
 
             // Returned rather than consumed: something else may still need to
             // know where the system bars are, and swallowing them here would

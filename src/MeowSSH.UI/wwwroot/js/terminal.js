@@ -60,7 +60,25 @@ export function create(elementId, dotNetRef, options) {
     });
     observer.observe(element);
 
-    sessions.set(elementId, { terminal, fit, observer, pending: [], frame: 0 });
+    // A soft keyboard opening resizes the window, and on the way through that
+    // the terminal can end up blurred -- at which point xterm draws the thin
+    // inactive cursor and stops moving it, so the caret sits where it was before
+    // you started typing even though the characters arrive. Refocusing after the
+    // layout settles keeps the caret where the text is.
+    //
+    // Only when the terminal already had focus: stealing it back from a dialog
+    // that opened over the session would be worse than a misdrawn cursor.
+    const keepFocus = () => {
+        if (!element.contains(document.activeElement)) return;
+        requestAnimationFrame(() => terminal.focus());
+    };
+
+    // visualViewport is what actually reports a keyboard on Android; a resize
+    // event on window does not fire reliably when the window is only panned.
+    const viewport = window.visualViewport;
+    viewport?.addEventListener("resize", keepFocus);
+
+    sessions.set(elementId, { terminal, fit, observer, viewport, keepFocus, pending: [], frame: 0 });
     return { cols: terminal.cols, rows: terminal.rows };
 }
 
@@ -111,6 +129,9 @@ export function dispose(elementId) {
     if (!session) return;
     if (session.frame !== 0) cancelAnimationFrame(session.frame);
     session.observer.disconnect();
+    // visualViewport outlives the page, so a listener left on it holds the
+    // disposed terminal alive and refocuses something that no longer exists.
+    session.viewport?.removeEventListener("resize", session.keepFocus);
     session.terminal.dispose();
     sessions.delete(elementId);
 }
