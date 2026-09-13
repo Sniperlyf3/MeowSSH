@@ -49,6 +49,27 @@ else if (_editing is not null)
 {
     <HostEditorPage Host="_editing.Host" OnSaved="CloseEditorAsync" OnCancelled="CancelEditor" />
 }
+else if (_tab == "files")
+{
+    <FilesLandingPage OnHostSelected="OpenFilesAsync" OnTabSelected="SelectTab" />
+
+    @if (_connecting is not null)
+    {
+        <div class="sheet" role="status" data-testid="connecting">
+            <p class="sheet__title">Opening files on @_connecting</p>
+            <p class="sheet__body">Connecting to the host and starting SFTP.</p>
+        </div>
+    }
+    @if (_failure is not null)
+    {
+        <div class="sheet sheet--danger" role="alert" data-testid="connect-error">
+            <p class="sheet__title">@_failure.Title</p>
+            <p class="sheet__body">@_failure.Body</p>
+            <button type="button" class="btn btn--ghost btn--block"
+                    data-testid="dismiss-error" @onclick="() => _failure = null">Dismiss</button>
+        </div>
+    }
+}
 else if (_tab == "keys")
 {
     <KeysPage OnTabSelected="SelectTab" />
@@ -258,6 +279,38 @@ else
         return Task.CompletedTask;
     }
 
+    private async Task OpenFilesAsync(HostRecord host)
+    {
+        _connecting = host.Label;
+        _failure = null;
+        StateHasChanged();
+
+        try
+        {
+            using var credentials = await Credentials.ResolveAsync(host);
+            _connection = await Engine.ConnectAsync(host, credentials, Prompts);
+            _connection.ConnectionLost += OnConnectionLost;
+            var sftp = await _connection.OpenSftpAsync();
+            _files = new FilesState(host, sftp);
+        }
+        catch (SshException ex)
+        {
+            _failure = ex.Failure switch
+            {
+                SshFailure.HostKeyChanged => new("Host key changed", ex.Message),
+                SshFailure.HostKeyUnknown => new("Host not trusted yet", ex.Message),
+                SshFailure.AuthenticationFailed => new("Could not sign in", ex.Message),
+                _ => new("Could not open files", ex.Message),
+            };
+            await DropConnectionAsync();
+        }
+        finally
+        {
+            _connecting = null;
+            StateHasChanged();
+        }
+    }
+
     private async Task ConnectAsync(HostRecord host)
     {
         _connecting = host.Label;
@@ -398,6 +451,7 @@ else
     {
         if (_files is not null) await _files.Sftp.DisposeAsync();
         _files = null;
+        await DropConnectionAsync();
     }
 
     private async Task DropConnectionAsync()
