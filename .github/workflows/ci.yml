@@ -79,10 +79,16 @@ jobs:
         # debug key, so it can be sideloaded. A release build would need a
         # keystore, which belongs in repository secrets rather than here.
         # arm64 only, which halves the download and covers every real phone.
+        #
+        # SourceRevisionId stamps the commit into the informational version, so
+        # the app shows which build it is on its own lock screen. Without it,
+        # "is that fixed in the build you have?" is unanswerable from a phone --
+        # and the answer changes what a symptom means.
         run: >
           dotnet publish src/MeowSSH.App/MeowSSH.App.csproj
           -c Debug -f net10.0-android36.0
           -p:RuntimeIdentifier=android-arm64
+          -p:SourceRevisionId=${{ github.sha }}
 
       - name: Check the native binaries survived packaging
         # AndroidExtractNativeLibraries is what lets these be executed at all, and
@@ -97,7 +103,7 @@ jobs:
       - name: Upload the APK
         uses: actions/upload-artifact@v4
         with:
-          name: meowssh-apk
+          name: meowssh-apk-${{ github.sha }}
           # The publish directory only, not bin/**: the same APK exists in both,
           # and the glob was uploading it twice.
           path: src/MeowSSH.App/bin/Debug/net10.0-android36.0/android-arm64/publish/*-Signed.apk

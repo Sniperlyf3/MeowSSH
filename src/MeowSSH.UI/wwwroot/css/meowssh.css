@@ -838,3 +838,11 @@ h1:focus, h2:focus, h3:focus, [tabindex="-1"]:focus { outline: none; box-shadow:
   text-decoration: underline;
   cursor: pointer;
 }
+
+/* Quiet enough to ignore, present enough to read out when reporting a bug. */
+.lock__build {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  text-align: center;
+}
