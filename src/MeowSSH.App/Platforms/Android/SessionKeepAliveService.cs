@@ -47,20 +47,25 @@ public sealed class SessionKeepAliveService : Service
                 launchIntent,
                 PendingIntentFlags.Immutable | PendingIntentFlags.UpdateCurrent);
 
-        var builder = new NotificationCompat.Builder(this, ChannelId)
-            .SetSmallIcon(Resource.Mipmap.appicon)
-            .SetContentTitle("MeowSSH session active")
-            .SetContentText("Keeping your SSH connection alive in the background")
-            .SetOngoing(true)
-            .SetOnlyAlertOnce(true)
-            .SetCategory(NotificationCompat.CategoryService);
+        // AndroidX's fluent builder methods are annotated as nullable even
+        // though they mutate and return this. Avoid chaining them so nullable
+        // flow analysis does not interpret every step as a possible null
+        // dereference when warnings are treated as errors.
+        var builder = new NotificationCompat.Builder(this, ChannelId);
+        builder.SetSmallIcon(Resource.Mipmap.appicon);
+        builder.SetContentTitle("MeowSSH session active");
+        builder.SetContentText("Keeping your SSH connection alive in the background");
+        builder.SetOngoing(true);
+        builder.SetOnlyAlertOnce(true);
+        builder.SetCategory(NotificationCompat.CategoryService);
 
         if (pendingIntent is not null)
             builder.SetContentIntent(pendingIntent);
 
-        var notification = builder.Build();
+        var notification = builder.Build()
+            ?? throw new InvalidOperationException("Android could not create the foreground-service notification.");
 
-        if (Build.VERSION.SdkInt >= BuildVersionCodes.UpsideDownCake)
+        if (OperatingSystem.IsAndroidVersionAtLeast(34))
             ServiceCompat.StartForeground(this, NotificationId, notification, (int)ForegroundService.TypeSpecialUse);
         else
             ServiceCompat.StartForeground(this, NotificationId, notification, 0);
