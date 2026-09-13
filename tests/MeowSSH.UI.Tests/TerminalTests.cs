@@ -165,4 +165,28 @@ public class TerminalTests(TestHostFixture fixture)
         await Assertions.Expect(textarea).ToHaveAttributeAsync("spellcheck", "false");
         await Assertions.Expect(textarea).ToHaveAttributeAsync("autocorrect", "off");
     }
+
+    [Fact]
+    public async Task SettingsTabPersistsTerminalZoom()
+    {
+        var page = await fixture.NewPageAsync("/");
+        await page.GetByTestId("tab-settings").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("settings-page")).ToBeVisibleAsync();
+
+        var slider = page.GetByTestId("terminal-zoom");
+        await slider.EvaluateAsync(
+            @"element => {
+                element.value = '140';
+                element.dispatchEvent(new Event('input', { bubbles: true }));
+            }");
+
+        await Assertions.Expect(page.GetByTestId("terminal-zoom-value")).ToHaveTextAsync("140%");
+        Assert.Equal("140", await page.EvaluateAsync<string>(
+            "() => localStorage.getItem('meowssh.terminal.zoom')"));
+
+        await page.ReloadAsync();
+        await page.GetByTestId("tab-settings").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("terminal-zoom-value")).ToHaveTextAsync("140%");
+    }
+
 }
