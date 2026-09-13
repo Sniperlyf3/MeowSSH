@@ -1,5 +1,6 @@
 using Android.App;
 using Android.Content;
+using Android.Content.PM;
 using Android.OS;
 using AndroidX.Core.App;
 
@@ -13,9 +14,6 @@ namespace MeowSSH.App;
     Name = "dev.sniperlyf3.meowssh.SessionKeepAliveService",
     Exported = false,
     ForegroundServiceType = ForegroundService.TypeSpecialUse)]
-[MetaData(
-    "android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE",
-    Value = "Keeps a user-initiated SSH session alive while MeowSSH is backgrounded")]
 public sealed class SessionKeepAliveService : Service
 {
     private const string ChannelId = "active-ssh-session";
@@ -59,7 +57,7 @@ public sealed class SessionKeepAliveService : Service
             .SetContentIntent(pendingIntent)
             .Build();
 
-        StartForeground(NotificationId, notification);
+        ServiceCompat.StartForeground(this, NotificationId, notification, (int)ForegroundService.TypeSpecialUse);
 
         // Restarting this service after Android kills the entire process would
         // be misleading: the SSH subprocess and socket are already gone by then.
