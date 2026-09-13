@@ -151,8 +151,14 @@ public class TerminalTests(TestHostFixture fixture)
         await Assertions.Expect(page.GetByTestId("terminal")).ToBeVisibleAsync();
 
         var textarea = page.Locator(".xterm-helper-textarea");
+        await Assertions.Expect(textarea).ToHaveAttributeAsync("type", "password");
         await Assertions.Expect(textarea).ToHaveAttributeAsync("inputmode", "url");
         await Assertions.Expect(textarea).ToHaveAttributeAsync("autocomplete", "off");
+
+        // The hidden capture element is deliberately a password-style input.
+        // Android/Samsung treats that as literal text and disables predictive
+        // composition, while xterm still receives ordinary input events.
+        Assert.Equal("INPUT", await textarea.EvaluateAsync<string>("element => element.tagName"));
 
         // The ones xterm sets itself, asserted so that an upgrade dropping them
         // is noticed here rather than on a phone.
