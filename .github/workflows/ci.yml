@@ -89,6 +89,9 @@ jobs:
           -c Debug -f net10.0-android36.0
           -p:RuntimeIdentifier=android-arm64
           -p:SourceRevisionId=${{ github.sha }}
+          -p:Version=0.1.${{ github.run_number }}
+          -p:ApplicationDisplayVersion=0.1.${{ github.run_number }}
+          -p:ApplicationVersion=${{ github.run_number }}
 
       - name: Check the native binaries survived packaging
         # AndroidExtractNativeLibraries is what lets these be executed at all, and
