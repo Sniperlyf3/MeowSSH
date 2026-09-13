@@ -15,6 +15,12 @@
                android:label="MeowSSH"
                android:roundIcon="@mipmap/appicon_round"
                android:supportsRtl="true">
+    <service android:name="dev.sniperlyf3.meowssh.SessionKeepAliveService"
+             android:exported="false"
+             android:foregroundServiceType="specialUse">
+      <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keeps a user-initiated SSH session alive while MeowSSH is backgrounded" />
+    </service>
   </application>
 
 </manifest>
