@@ -153,33 +153,11 @@ jobs:
           # assert on what a key store does when a key is absent.
           disable-animations: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
-          # Runs under dash, not bash: no pipefail, no bashisms. "set -eu" is
-          # portable and is what stops a failed install from being followed by a
-          # confusing instrumentation error.
-          script: |
-            set -eu
-
-            APK=$(find tests/MeowSSH.Device.Tests/bin -name "*.devicetests-Signed.apk" | head -1)
-            if [ -z "$APK" ]; then
-              echo "no device test APK was built"
-              exit 1
-            fi
-            echo "installing $APK"
-            adb install -r "$APK"
-
-            # -w blocks until the instrumentation calls Finish. Its own exit
-            # status is 0 whatever the tests did, so the report it prints is the
-            # source of truth and is what the job is gated on below.
-            adb shell am instrument -w \
-              dev.sniperlyf3.meowssh.devicetests/dev.sniperlyf3.meowssh.devicetests.TestInstrumentation \
-              > instrumentation.txt 2>&1 || true
-
-            cat instrumentation.txt
-
-            if ! grep -q "device tests passed" instrumentation.txt; then
-              echo "device tests did not report success"
-              exit 1
-            fi
+          # One line, deliberately. This action runs its script one line at a
+          # time, each in its own "sh -c", so nothing carries between lines --
+          # not a variable, not "set -eu", not an "if". Everything real lives in
+          # the script, which is then also runnable against a plugged-in phone.
+          script: ./scripts/run-device-tests.sh
 
       - name: Upload the device test report
         if: always()
