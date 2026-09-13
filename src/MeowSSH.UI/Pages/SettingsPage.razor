@@ -53,8 +53,9 @@
     {
         try
         {
-            _zoom = await Js.InvokeAsync<int>("localStorage.getItem", "meowssh.terminal.zoom") is var raw
-                ? raw
+            var raw = await Js.InvokeAsync<string?>("localStorage.getItem", "meowssh.terminal.zoom");
+            _zoom = int.TryParse(raw, out var value)
+                ? Math.Clamp(value, 80, 160)
                 : DefaultZoom;
         }
         catch
