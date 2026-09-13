@@ -9,21 +9,24 @@ engine, with every credential encrypted at rest behind biometrics.
 
 ## Status
 
-Early. The vault security core and the host list are in place and tested;
-the terminal, file manager and Android host are next.
+Feature-complete enough to install and use, with one gap that stops a first
+connection to a host you have never reached before. Nothing here has run on
+physical hardware yet.
 
 | Area | State |
 | --- | --- |
 | Vault: key hierarchy, sealing, backups, recovery codes | Done |
-| Host list and vault unlock UI | Done |
+| Encrypted storage for hosts and keys, surviving a restart | Done |
+| First-run setup, vault unlock, recovery on device | Done |
+| Host list, host editor, key management UI | Done |
 | Terminal (xterm.js), key bar, live resize | Done |
 | SSH engine over Meowshell's agent | Done, proven against real OpenSSH |
-| Trust-on-first-use for new hosts | Blocked — see below |
 | SFTP file manager | Done, proven against real OpenSSH |
+| Trust-on-first-use for new hosts | Blocked — see below |
 | Android app, installable APK | Builds in CI; not yet run on a device |
-| Encrypted storage for hosts and keys | Next |
+| Sync between devices | Schema designed, not implemented |
 
-**153 tests**: 108 unit, 31 browser end-to-end, 14 against a real `sshd`.
+**232 tests**: 163 unit, 55 browser end-to-end, 14 against a real `sshd`.
 
 ### Known gap: first connections to new hosts
 
@@ -78,16 +81,21 @@ dotnet publish src/MeowSSH.App/MeowSSH.App.csproj \
 
 ### What the first build can and cannot do
 
-The vault, the terminal, the file browser and the SSH engine are all real. Two
-things are not finished, and both are visible immediately:
+The vault, the terminal, the file browser and the SSH engine are all real, and
+hosts and keys now persist across restarts. What you can do on first launch:
+create the vault, write down the recovery code, add hosts and credentials,
+unlock with a fingerprint, and reconnect to a host already in `known_hosts`.
 
-- **Nothing is persisted.** Hosts live in memory and the vault is created fresh
-  each launch. The encrypted store is the next piece of work.
+Two things are not finished:
+
 - **New hosts cannot be trusted yet.** The engine raises its host key and
   password prompts during the handshake, and the released Meowshell package
   offers no way to subscribe before that happens, so they go unanswered and the
-  connection is refused. `docs/specs/meowshell-prehandshake-prompts.md` specifies
-  the fix; it is implemented upstream and waiting on a release.
+  connection is refused. `docs/specs/meowshell-prehandshake-prompts.md`
+  specifies the fix; it is implemented upstream and waiting on a release.
+- **None of the Android-specific code has met real hardware.** The Keystore
+  wrapper and the biometric prompt compile, are tested against fakes, and the
+  APK installs — which is a weaker claim than the rest of this repo makes.
 
 ## Security design
 
@@ -111,7 +119,26 @@ restating the mechanism. In short:
   is a true restore. The Argon2id cost parameters live in the header and are
   authenticated, so they cannot be rewritten down to something brute-forceable.
 - **Secrets are pinned, explicitly zeroed buffers**, never `string` — a .NET
-  string cannot be overwritten once written.
+  string cannot be overwritten once written. The vault is serialized by hand
+  rather than through JSON for the same reason: a private key routed through a
+  serializer exists as an interned base64 string that can never be cleared.
+
+The file on disk adds four properties of its own:
+
+- **Hosts and credentials are sealed as separate sections**, under keys derived
+  for different purposes, so drawing the host list never derives the key that
+  opens a password. Whole sections rather than row-per-row, because per-row
+  ciphertext publishes how many hosts exist and roughly how long each label is.
+- **Each section is bound to the save counter**, so an attacker holding
+  yesterday's copy of the file cannot splice its host section into today's — the
+  tag fails to verify. Sections are bound to their own name too, so the two
+  cannot be swapped for each other.
+- **Saves are atomic**: written beside the vault, flushed to disk, then renamed
+  over it, so a phone killed mid-save has either the old vault or the new one and
+  never half of either.
+- **Deleting a credential wipes the secret from the bytes on the next save**,
+  not whenever a tombstone is eventually pruned. A deleted password still
+  readable on disk is the whole problem with deletion.
 
 ## Building
 
@@ -134,8 +161,19 @@ To see the UI without an Android device:
 dotnet run --project src/MeowSSH.TestHost
 ```
 
-Append `?locked` for the vault unlock screen, and `?theme=light` or
-`?theme=dark` to pin a palette.
+Scenarios are query parameters, so each browser test is a plain navigation
+rather than a setup script:
+
+| Query | Screen |
+| --- | --- |
+| *(none)* | Host list |
+| `?setup` | First run: create the vault, show the recovery code |
+| `?locked` | Vault unlock, including the recovery-code path |
+| `?newhost` | The host editor, adding |
+| `?keys` | Saved keys and passwords |
+| `?files` | The SFTP file browser |
+
+`?theme=light` or `?theme=dark` pins a palette so both can be driven.
 
 If your machine already has a Chromium that Playwright did not install, point
 the suite at it with `MEOWSSH_CHROMIUM=/path/to/chrome` instead of downloading
