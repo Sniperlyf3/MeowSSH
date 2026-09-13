@@ -159,4 +159,43 @@ public class TerminalTests(TestHostFixture fixture)
         await Assertions.Expect(textarea).ToHaveAttributeAsync("spellcheck", "false");
         await Assertions.Expect(textarea).ToHaveAttributeAsync("autocorrect", "off");
     }
+    [Fact]
+    public async Task ImeCompositionCommitIsSentExactlyOnce()
+    {
+        // Samsung Keyboard keeps predictive text in an IME composition and may
+        // only commit it when the prediction is accepted. Exercise the DOM
+        // composition path directly: whether xterm emits the commit itself or
+        // MeowSSH's fallback has to do it, the shell must receive one "pwd".
+        var page = await OpenSessionAsync();
+        var textarea = page.Locator(".xterm-helper-textarea");
+
+        await textarea.EvaluateAsync(
+            @"element => {
+                element.focus();
+                element.dispatchEvent(new CompositionEvent('compositionstart', {
+                    bubbles: true,
+                    data: ''
+                }));
+                element.value = 'pwd';
+                element.setSelectionRange(3, 3);
+                element.dispatchEvent(new CompositionEvent('compositionupdate', {
+                    bubbles: true,
+                    data: 'pwd'
+                }));
+                element.dispatchEvent(new CompositionEvent('compositionend', {
+                    bubbles: true,
+                    data: 'pwd'
+                }));
+            }");
+
+        // Let xterm's asynchronous composition finalizer and our fallback settle
+        // before Enter. A duplicate commit would execute "pwdpwd" instead.
+        await page.WaitForTimeoutAsync(50);
+        await page.Keyboard.PressAsync("Enter");
+
+        await Assertions.Expect(page.Locator(".xterm-rows"))
+            .ToContainTextAsync("/home/deploy", new() { Timeout = 10_000 });
+        Assert.DoesNotContain("pwdpwd", await ScreenTextAsync(page), StringComparison.Ordinal);
+    }
+
 }
