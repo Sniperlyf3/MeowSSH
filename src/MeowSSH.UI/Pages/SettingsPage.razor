@@ -1,0 +1,83 @@
+@inject IJSRuntime Js
+
+<AppShell Title="Settings" ActiveTab="settings" OnTabSelected="OnTabSelected">
+    <ChildContent>
+        <section class="settings" data-testid="settings-page">
+            <div class="settings__section">
+                <h2 class="section-label">Terminal</h2>
+
+                <label class="setting-card" for="terminal-zoom">
+                    <span class="setting-card__copy">
+                        <span class="setting-card__title">Zoom level</span>
+                        <span class="setting-card__body">
+                            Changes the terminal text size. New sessions use this value.
+                        </span>
+                    </span>
+                    <span class="setting-card__value mono" data-testid="terminal-zoom-value">@_zoom%</span>
+                </label>
+
+                <input id="terminal-zoom"
+                       class="range"
+                       type="range"
+                       min="80"
+                       max="160"
+                       step="10"
+                       value="@_zoom"
+                       data-testid="terminal-zoom"
+                       @oninput="OnZoomChangedAsync" />
+
+                <div class="settings__range-labels" aria-hidden="true">
+                    <span>80%</span>
+                    <span>160%</span>
+                </div>
+
+                <button type="button"
+                        class="btn btn--ghost"
+                        data-testid="terminal-zoom-reset"
+                        disabled="@(_zoom == 100)"
+                        @onclick="ResetZoomAsync">
+                    Reset to 100%
+                </button>
+            </div>
+        </section>
+    </ChildContent>
+</AppShell>
+
+@code {
+    private const int DefaultZoom = 100;
+    private int _zoom = DefaultZoom;
+
+    [Parameter] public EventCallback<string> OnTabSelected { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        try
+        {
+            var raw = await Js.InvokeAsync<string?>("localStorage.getItem", "meowssh.terminal.zoom");
+            _zoom = int.TryParse(raw, out var value)
+                ? Math.Clamp(value, 80, 160)
+                : DefaultZoom;
+        }
+        catch
+        {
+            _zoom = DefaultZoom;
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task OnZoomChangedAsync(ChangeEventArgs e)
+    {
+        if (!int.TryParse(e.Value?.ToString(), out var value)) return;
+        _zoom = Math.Clamp(value, 80, 160);
+        await Js.InvokeVoidAsync("localStorage.setItem", "meowssh.terminal.zoom", _zoom.ToString());
+    }
+
+    private async Task ResetZoomAsync()
+    {
+        _zoom = DefaultZoom;
+        await Js.InvokeVoidAsync("localStorage.setItem", "meowssh.terminal.zoom", DefaultZoom.ToString());
+    }
+}

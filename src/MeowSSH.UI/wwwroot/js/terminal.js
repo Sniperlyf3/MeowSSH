@@ -17,6 +17,11 @@
 
 const sessions = new Map();
 
+function readZoomPercent() {
+    const raw = Number.parseInt(localStorage.getItem("meowssh.terminal.zoom") ?? "100", 10);
+    return Number.isFinite(raw) ? Math.min(160, Math.max(80, raw)) : 100;
+}
+
 export function create(elementId, dotNetRef, options) {
     const element = document.getElementById(elementId);
     if (!element) throw new Error(`Terminal container "${elementId}" is not in the document.`);
@@ -27,7 +32,7 @@ export function create(elementId, dotNetRef, options) {
         // Match the app's own mono face so the terminal does not read as a
         // foreign widget dropped into the page.
         fontFamily: options.fontFamily,
-        fontSize: options.fontSize,
+        fontSize: options.fontSize * readZoomPercent() / 100,
         letterSpacing: 0,
         scrollback: 5000,
         theme: options.theme,
