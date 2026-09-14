@@ -18,7 +18,7 @@ public sealed class FakeTailcatHubService : ITailcatHubService
         cancellationToken.ThrowIfCancellationRequested();
         _server = new TailcatServerSnapshot(
             "tc-test-address", DateTimeOffset.UtcNow + request.Lifetime,
-            request.EnableShell, request.EnableFiles, request.EnableExitNode, request.AllowAnyClient,
+            request.EnableShell, request.EnableFiles, request.EnableExitNode, request.AllowAnyClient, request.UseTailcatCredentialForShell,
             request.SharedFolder, request.FileMode);
         RaiseChanged();
         return Task.CompletedTask;
