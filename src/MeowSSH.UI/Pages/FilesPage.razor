@@ -1,4 +1,7 @@
+@using System.Text
 @using MeowSSH.Core.Ssh
+@using MeowSSH.UI.Services
+@inject ILocalFileTransferService LocalFiles
 @implements IDisposable
 
 <div class="files" data-testid="files">
@@ -13,6 +16,10 @@
             <span class="session__address">@Host.Label</span>
         </span>
 
+        <button type="button" class="btn btn--icon" aria-label="Upload file"
+                data-testid="upload-file" @onclick="UploadAsync">
+            <Icon Name="upload" />
+        </button>
         <button type="button" class="btn btn--icon" aria-label="Show hidden files"
                 aria-pressed="@(_showHidden ? "true" : "false")"
                 data-testid="toggle-hidden" @onclick="ToggleHidden">
@@ -24,9 +31,6 @@
         </button>
     </header>
 
-    @* A path can be far wider than a phone. It scrolls horizontally on its own
-       rather than being truncated, because the deepest segments are the ones the
-       user needs and an ellipsis in the middle hides exactly those. *@
     <nav class="crumbs" aria-label="Path" data-testid="crumbs">
         @foreach (var (label, path) in RemotePath.Breadcrumbs(_path))
         {
@@ -90,7 +94,7 @@
             <ul class="filelist" data-testid="filelist">
                 @foreach (var entry in Visible)
                 {
-                    <li>
+                    <li class="fileitem-row">
                         <button type="button" class="fileitem" data-testid="file-entry"
                                 data-file-name="@entry.Name"
                                 @onclick="() => ActivateAsync(entry)">
@@ -115,6 +119,12 @@
                                 <span class="fileitem__chevron" aria-hidden="true"><Icon Name="chevron" /></span>
                             }
                         </button>
+                        <button type="button" class="fileitem__menu btn btn--icon"
+                                aria-label="Actions for @entry.Name"
+                                data-testid="file-actions" data-file-name="@entry.Name"
+                                @onclick="() => ShowActions(entry)">
+                            <Icon Name="more" />
+                        </button>
                     </li>
                 }
             </ul>
@@ -122,23 +132,142 @@
     </div>
 </div>
 
+@if (_transferStatus is not null)
+{
+    <div class="sheet" role="status" data-testid="transfer-status">
+        <p class="sheet__title">@_transferStatus</p>
+        @if (_transferFraction is not null)
+        {
+            <progress class="transfer-progress" max="1" value="@_transferFraction.Value"></progress>
+            <p class="sheet__body">@($"{_transferFraction.Value:P0}")</p>
+        }
+    </div>
+}
+
+@if (_notice is not null)
+{
+    <div class="sheet" role="status" data-testid="file-notice">
+        <p class="sheet__title">@_notice</p>
+        <button type="button" class="btn btn--primary btn--block" @onclick="() => _notice = null">OK</button>
+    </div>
+}
+
+@if (_selected is { } selected)
+{
+    <div class="sheet" role="dialog" aria-label="File actions" data-testid="file-actions-sheet">
+        <p class="sheet__title">@selected.Name</p>
+        <p class="sheet__body mono">@selected.PermissionString · @ModeText(selected.Mode)</p>
+        <div class="form__actions">
+            @if (!selected.IsDirectory)
+            {
+                <button type="button" class="btn btn--primary btn--block"
+                        data-testid="view-text" @onclick="() => OpenTextAsync(selected)">View as text</button>
+                <button type="button" class="btn btn--ghost btn--block"
+                        data-testid="download-file" @onclick="() => DownloadAsync(selected)">
+                    <Icon Name="download" /> Download
+                </button>
+            }
+            <button type="button" class="btn btn--ghost btn--block"
+                    data-testid="change-permissions" @onclick="() => StartPermissions(selected)">
+                Change permissions
+            </button>
+            <button type="button" class="btn btn--danger btn--block"
+                    data-testid="delete-file" @onclick="() => ConfirmDelete(selected)">
+                <Icon Name="trash" /> Delete
+            </button>
+            <button type="button" class="btn btn--ghost btn--block" @onclick="() => _selected = null">Cancel</button>
+        </div>
+    </div>
+}
+
+@if (_deleteTarget is { } deleteTarget)
+{
+    <div class="sheet sheet--danger" role="alertdialog" data-testid="delete-confirm">
+        <p class="sheet__title">Delete @deleteTarget.Name?</p>
+        <p class="sheet__body">
+            @(deleteTarget.IsDirectory
+                ? "Only an empty directory can be deleted. This cannot be undone."
+                : "This file will be removed from the server. This cannot be undone.")
+        </p>
+        <div class="form__actions">
+            <button type="button" class="btn btn--danger btn--block"
+                    data-testid="confirm-delete" @onclick="DeleteAsync">Delete</button>
+            <button type="button" class="btn btn--ghost btn--block" @onclick="() => _deleteTarget = null">Cancel</button>
+        </div>
+    </div>
+}
+
+@if (_permissionsTarget is { } permissionsTarget)
+{
+    <div class="sheet" role="dialog" data-testid="permissions-sheet">
+        <p class="sheet__title">Permissions for @permissionsTarget.Name</p>
+        <p class="sheet__body">Enter an octal mode such as 0644 or 0755.</p>
+        <label class="field">
+            <span class="field__label">Mode</span>
+            <input class="field__input mono" inputmode="numeric" maxlength="4"
+                   data-testid="permission-mode" @bind="_permissionText" @bind:event="oninput" />
+        </label>
+        @if (_permissionError is not null)
+        {
+            <p class="field__error" role="alert">@_permissionError</p>
+        }
+        <div class="form__actions">
+            <button type="button" class="btn btn--primary btn--block"
+                    data-testid="save-permissions" @onclick="SavePermissionsAsync">Apply</button>
+            <button type="button" class="btn btn--ghost btn--block" @onclick="CancelPermissions">Cancel</button>
+        </div>
+    </div>
+}
+
+@if (_textTarget is { } textTarget)
+{
+    <div class="text-viewer" role="dialog" aria-label="Text file" data-testid="text-viewer">
+        <header class="topbar">
+            <button type="button" class="btn btn--icon" aria-label="Close text viewer" @onclick="CloseTextViewer">
+                <Icon Name="back" />
+            </button>
+            <span class="session__title">
+                <span class="session__host">@textTarget.Name</span>
+                <span class="session__address mono">@textTarget.Path</span>
+            </span>
+            <button type="button" class="btn btn--primary" data-testid="save-text"
+                    disabled="@(_textContent == _textOriginal || _textSaving)" @onclick="SaveTextAsync">
+                Save
+            </button>
+        </header>
+        <textarea class="text-editor mono" data-testid="text-content"
+                  autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false"
+                  @bind="_textContent" @bind:event="oninput"></textarea>
+    </div>
+}
+
 @code {
+    private const long MaxTextBytes = 1_500_000;
+
     private string _path = "/";
     private IReadOnlyList<RemoteFile>? _entries;
     private ErrorNotice? _error;
     private bool _showHidden;
     private string? _newFolder;
+    private RemoteFile? _selected;
+    private RemoteFile? _deleteTarget;
+    private RemoteFile? _permissionsTarget;
+    private string _permissionText = "";
+    private string? _permissionError;
+    private RemoteFile? _textTarget;
+    private string _textContent = "";
+    private string _textOriginal = "";
+    private bool _textSaving;
+    private string? _transferStatus;
+    private double? _transferFraction;
+    private string? _notice;
 
     [Parameter, EditorRequired] public HostRecord Host { get; set; } = default!;
     [Parameter, EditorRequired] public ISftpSession Sftp { get; set; } = default!;
     [Parameter] public EventCallback OnClosed { get; set; }
-    [Parameter] public EventCallback<RemoteFile> OnFileSelected { get; set; }
 
     private sealed record ErrorNotice(string Title, string Body);
 
-    // Directories first, then by name. A flat alphabetical list mixes the things
-    // you navigate with the things you act on, and on a phone that means
-    // scrolling past files to reach a folder.
     private IReadOnlyList<RemoteFile> Visible =>
         _entries is null
             ? []
@@ -149,8 +278,6 @@
 
     protected override async Task OnInitializedAsync()
     {
-        // SFTP has no "home directory" request; resolving "." gives the directory
-        // the session opened in, which is where a user expects to start.
         try
         {
             _path = await Sftp.ResolveAsync(".");
@@ -166,6 +293,7 @@
     {
         _path = path;
         _newFolder = null;
+        _selected = null;
         await LoadAsync();
     }
 
@@ -179,9 +307,6 @@
         }
         catch (SshException ex)
         {
-            // Typed failures earn their keep here: "that folder is gone" and
-            // "you cannot read that" need different words, and a raw protocol
-            // message needs none of them.
             _error = ex.Failure switch
             {
                 SshFailure.NotFound => new("Folder not found", $"{_path} no longer exists on this host."),
@@ -192,8 +317,224 @@
         }
     }
 
-    private Task ActivateAsync(RemoteFile entry) =>
-        entry.IsDirectory ? NavigateAsync(entry.Path) : OnFileSelected.InvokeAsync(entry);
+    private Task ActivateAsync(RemoteFile entry)
+    {
+        if (entry.IsDirectory) return NavigateAsync(entry.Path);
+        ShowActions(entry);
+        return Task.CompletedTask;
+    }
+
+    private void ShowActions(RemoteFile entry)
+    {
+        _selected = entry;
+        _error = null;
+    }
+
+    private void ConfirmDelete(RemoteFile entry)
+    {
+        _selected = null;
+        _deleteTarget = entry;
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (_deleteTarget is null) return;
+        var target = _deleteTarget;
+        _deleteTarget = null;
+        try
+        {
+            await Sftp.DeleteAsync(target);
+            await LoadAsync();
+        }
+        catch (SshException ex)
+        {
+            _error = new("Could not delete", ex.Message);
+        }
+    }
+
+    private void StartPermissions(RemoteFile entry)
+    {
+        _selected = null;
+        _permissionsTarget = entry;
+        _permissionText = ModeText(entry.Mode);
+        _permissionError = null;
+    }
+
+    private void CancelPermissions()
+    {
+        _permissionsTarget = null;
+        _permissionError = null;
+    }
+
+    private async Task SavePermissionsAsync()
+    {
+        if (_permissionsTarget is null) return;
+        var modeText = _permissionText.Trim();
+        if (modeText.Length is < 3 or > 4 || modeText.Any(c => c is < '0' or > '7'))
+        {
+            _permissionError = "Use 3 or 4 octal digits (0–7), for example 644 or 0755.";
+            return;
+        }
+
+        var mode = Convert.ToUInt32(modeText, 8);
+        try
+        {
+            await Sftp.SetPermissionsAsync(_permissionsTarget.Path, mode);
+            _permissionsTarget = null;
+            _permissionError = null;
+            await LoadAsync();
+        }
+        catch (SshException ex)
+        {
+            _permissionError = ex.Message;
+        }
+    }
+
+    private async Task UploadAsync()
+    {
+        LocalFileSelection? picked = null;
+        try
+        {
+            picked = await LocalFiles.PickFileAsync();
+            if (picked is null) return;
+
+            BeginTransfer($"Uploading {picked.Name}");
+            await Sftp.UploadAsync(
+                picked.TemporaryPath,
+                RemotePath.Join(_path, picked.Name),
+                TransferProgressReporter());
+            EndTransfer();
+            await LoadAsync();
+        }
+        catch (Exception ex) when (ex is SshException or IOException or UnauthorizedAccessException)
+        {
+            EndTransfer();
+            _error = new("Upload failed", ex.Message);
+        }
+        finally
+        {
+            if (picked is not null) LocalFiles.DeleteTemporaryFile(picked.TemporaryPath);
+        }
+    }
+
+    private async Task DownloadAsync(RemoteFile entry)
+    {
+        _selected = null;
+        var temporaryPath = LocalFiles.CreateTemporaryPath(entry.Name);
+        try
+        {
+            BeginTransfer($"Downloading {entry.Name}");
+            await Sftp.DownloadAsync(entry.Path, temporaryPath, TransferProgressReporter());
+            var destination = await LocalFiles.PublishDownloadAsync(temporaryPath, entry.Name);
+            EndTransfer();
+            _notice = $"Saved to {destination}";
+        }
+        catch (Exception ex) when (ex is SshException or IOException or UnauthorizedAccessException)
+        {
+            EndTransfer();
+            _error = new("Download failed", ex.Message);
+        }
+        finally
+        {
+            LocalFiles.DeleteTemporaryFile(temporaryPath);
+        }
+    }
+
+    private async Task OpenTextAsync(RemoteFile entry)
+    {
+        _selected = null;
+        if (entry.Size > MaxTextBytes)
+        {
+            _error = new("File is too large to open as text", "Use Download for files larger than 1.5 MB.");
+            return;
+        }
+
+        var temporaryPath = LocalFiles.CreateTemporaryPath(entry.Name);
+        try
+        {
+            BeginTransfer($"Opening {entry.Name}");
+            await Sftp.DownloadAsync(entry.Path, temporaryPath, TransferProgressReporter());
+            var bytes = await File.ReadAllBytesAsync(temporaryPath);
+            if (bytes.Contains((byte)0))
+                throw new InvalidDataException("This file appears to be binary, so it cannot be shown as text.");
+
+            var text = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true)
+                .GetString(bytes);
+            _textTarget = entry;
+            _textContent = text;
+            _textOriginal = text;
+            EndTransfer();
+        }
+        catch (DecoderFallbackException)
+        {
+            EndTransfer();
+            _error = new("Not a UTF-8 text file", "Download the file instead of opening it in the text viewer.");
+        }
+        catch (Exception ex) when (ex is SshException or IOException or InvalidDataException)
+        {
+            EndTransfer();
+            _error = new("Could not open as text", ex.Message);
+        }
+        finally
+        {
+            LocalFiles.DeleteTemporaryFile(temporaryPath);
+        }
+    }
+
+    private async Task SaveTextAsync()
+    {
+        if (_textTarget is null || _textSaving) return;
+        _textSaving = true;
+        var temporaryPath = LocalFiles.CreateTemporaryPath(_textTarget.Name);
+        try
+        {
+            await File.WriteAllTextAsync(temporaryPath, _textContent, new UTF8Encoding(false));
+            BeginTransfer($"Saving {_textTarget.Name}");
+            await Sftp.UploadAsync(temporaryPath, _textTarget.Path, TransferProgressReporter());
+            _textOriginal = _textContent;
+            EndTransfer();
+            _notice = "Saved.";
+            await LoadAsync();
+        }
+        catch (Exception ex) when (ex is SshException or IOException or UnauthorizedAccessException)
+        {
+            EndTransfer();
+            _error = new("Could not save file", ex.Message);
+        }
+        finally
+        {
+            LocalFiles.DeleteTemporaryFile(temporaryPath);
+            _textSaving = false;
+        }
+    }
+
+    private void CloseTextViewer()
+    {
+        _textTarget = null;
+        _textContent = "";
+        _textOriginal = "";
+    }
+
+    private IProgress<TransferProgress> TransferProgressReporter() =>
+        new Progress<TransferProgress>(progress =>
+        {
+            _transferFraction = progress.Fraction;
+            _ = InvokeAsync(StateHasChanged);
+        });
+
+    private void BeginTransfer(string status)
+    {
+        _transferStatus = status;
+        _transferFraction = null;
+        StateHasChanged();
+    }
+
+    private void EndTransfer()
+    {
+        _transferStatus = null;
+        _transferFraction = null;
+        StateHasChanged();
+    }
 
     private async Task ToggleHidden()
     {
@@ -220,7 +561,9 @@
         await LoadAsync();
     }
 
-    /// <summary>A modification time as something readable at a glance.</summary>
+    private static string ModeText(uint mode) =>
+        Convert.ToString(mode & 0xFFF, 8).PadLeft(4, '0');
+
     private static string Relative(DateTimeOffset when)
     {
         var age = DateTimeOffset.UtcNow - when;
