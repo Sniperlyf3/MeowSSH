@@ -375,7 +375,7 @@
             _credentialId = host.CredentialId?.ToString() ?? "";
         }
 
-        _credentials = await Editor.GetCredentialsAsync();
+        _credentials = [.. (await Editor.GetCredentialsAsync()).Where(c => c.Kind != CredentialKind.PublicKey)];
         var statuses = await Hosts.GetHostsAsync();
         _jumpHosts = [.. statuses
             .Select(status => status.Host)
