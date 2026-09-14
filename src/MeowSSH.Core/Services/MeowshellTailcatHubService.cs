@@ -282,7 +282,7 @@ public sealed class MeowshellTailcatHubService : ITailcatHubService
         var resolved = await TailcatClient.ResolveAsync(options, address.Trim()).ConfigureAwait(false);
         var parsed = await TailcatClient.ParseAsync(options, resolved).ConfigureAwait(false);
         var ping = await TailcatClient.PingAsync(options, resolved.ToString(), waitForDirect, TimeSpan.FromSeconds(15)).ConfigureAwait(false);
-        var region = parsed.Region?.FirstOrDefault();
+        var region = parsed.Region is { Count: > 0 } regions ? regions[0] : null;
         return new TailcatDiagnosticResult(
             resolved.ToString(), ping.Success,
             ping.Pong?.Latency, ping.Pong?.Direct, ping.Pong?.Via,
