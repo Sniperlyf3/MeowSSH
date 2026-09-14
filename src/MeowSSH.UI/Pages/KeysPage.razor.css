@@ -1,0 +1,209 @@
+.keys-page {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+    padding-block: var(--space-2) var(--space-8);
+}
+
+.keys-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+}
+
+.keys-header h2 {
+    font-size: var(--text-lg);
+}
+
+.keys-header p {
+    margin-top: 2px;
+    color: var(--text-muted);
+    font-size: var(--text-xs);
+}
+
+.keys-header__add {
+    flex: none;
+    padding-inline: var(--space-4);
+}
+
+.credential-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.credential-card {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--space-3);
+    min-width: 0;
+    padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--surface);
+}
+
+.credential-card__icon {
+    display: grid;
+    place-items: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: var(--radius-md);
+    background: var(--accent-wash);
+    color: var(--accent);
+}
+
+.credential-card__icon .icon {
+    width: 19px;
+    height: 19px;
+}
+
+.credential-card__body {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+}
+
+.credential-card__title-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+}
+
+.credential-card__title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--text-sm);
+}
+
+.credential-card__kind {
+    flex: none;
+    padding: 1px var(--space-2);
+    border-radius: var(--radius-full);
+    background: var(--surface-sunken);
+    color: var(--text-faint);
+    font-size: 0.68rem;
+    font-weight: 600;
+}
+
+.credential-card__hint {
+    overflow: hidden;
+    color: var(--text-muted);
+    font-size: var(--text-xs);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.credential-card__delete {
+    color: var(--text-faint);
+}
+
+.credential-card__delete:hover {
+    color: var(--danger);
+    background: var(--danger-wash);
+}
+
+.keys-security-note {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface-sunken);
+}
+
+.keys-security-note__icon {
+    display: grid;
+    place-items: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    margin-top: 1px;
+    color: var(--ok);
+}
+
+.keys-security-note__icon .icon {
+    width: 16px;
+    height: 16px;
+}
+
+.keys-security-note strong,
+.keys-security-note small {
+    display: block;
+}
+
+.keys-security-note strong {
+    margin-bottom: 2px;
+    font-size: var(--text-xs);
+}
+
+.keys-security-note small {
+    color: var(--text-muted);
+    font-size: var(--text-xs);
+    line-height: 1.45;
+}
+
+.keys-editor {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+}
+
+.keys-editor__intro {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--surface);
+}
+
+.keys-editor__glyph {
+    display: grid;
+    place-items: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: var(--radius-md);
+    background: var(--accent-wash);
+    color: var(--accent);
+}
+
+.keys-editor__intro strong,
+.keys-editor__intro small {
+    display: block;
+}
+
+.keys-editor__intro small {
+    margin-top: 2px;
+    color: var(--text-muted);
+    font-size: var(--text-xs);
+}
+
+.keys-empty {
+    padding-inline: var(--space-3);
+}
+
+@media (max-width: 420px) {
+    .credential-card {
+        gap: var(--space-2);
+        padding-left: var(--space-3);
+    }
+
+    .credential-card__icon {
+        width: 2.25rem;
+        height: 2.25rem;
+    }
+
+    .credential-card__kind {
+        display: none;
+    }
+}
