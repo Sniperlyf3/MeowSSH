@@ -51,7 +51,7 @@ public interface IProtocolConnectionEngine
 /// <summary>Dispatches a saved endpoint to the engine for its selected protocol.</summary>
 public sealed class ConnectionEngine(IEnumerable<IProtocolConnectionEngine> engines) : IConnectionEngine
 {
-    private readonly IReadOnlyDictionary<HostProtocol, IProtocolConnectionEngine> _engines =
+    private readonly Dictionary<HostProtocol, IProtocolConnectionEngine> _engines =
         engines.ToDictionary(engine => engine.Protocol);
 
     public Task<IHostConnection> ConnectAsync(
