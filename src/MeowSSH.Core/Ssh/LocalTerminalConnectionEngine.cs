@@ -1,12 +1,12 @@
 using MeowSSH.Core.Model;
-using Meowshell;
 
 namespace MeowSSH.Core.Ssh;
 
 /// <summary>
-/// Runs Meowshell's shell server inside this app and connects back to its
-/// ephemeral tailcat address. This gives Android a real PTY without requiring a
-/// system shell executable to be driven directly from MAUI.
+/// Opens a real local PTY through Meowshell's private local-agent transport.
+/// The helper is connected only through redirected process stdin/stdout: no
+/// Tailcat address, DERP relay, DNS lookup, TCP/UDP socket, or Internet access
+/// is involved in creating or using the terminal transport.
 /// </summary>
 public sealed class LocalTerminalConnectionEngine(MeowshellSshEngineOptions options) : IProtocolConnectionEngine
 {
@@ -18,55 +18,22 @@ public sealed class LocalTerminalConnectionEngine(MeowshellSshEngineOptions opti
         ISshPrompts prompts,
         CancellationToken cancellationToken = default)
     {
-        var localRoot = Path.Combine(options.WorkingDirectory, "local-terminal");
-        var serverHome = Path.Combine(localRoot, "server");
-        var clientHome = Path.Combine(localRoot, "client");
-        Directory.CreateDirectory(serverHome);
-        Directory.CreateDirectory(clientHome);
-
-        MeowshellServer? server = null;
-        MeowshellAgentConnection? agent = null;
+        LocalMeowshellAgentConnection? agent = null;
         try
         {
-            var serverOptions = MeowshellOptions.Create(TimeSpan.FromHours(12)) with
-            {
-                HomeDirectory = serverHome,
-                WorkDirectory = serverHome,
-                BinaryDirectory = options.BinaryDirectory,
-                InsecureNoAuth = true,
-                EphemeralKey = true,
-                FullAddress = true,
-            };
-            server = await MeowshellServer.StartAsync(serverOptions, cancellationToken).ConfigureAwait(false);
-
-            var clientOptions = new TailcatClientOptions
-            {
-                HomeDirectory = clientHome,
-                BinaryDirectory = options.BinaryDirectory!,
-                Timeout = options.ConnectTimeout,
-                Verbose = options.Verbose,
-            };
-            agent = await MeowshellAgentConnection.ConnectAsync(
-                clientOptions,
-                server.Address,
-                configure: new MeowshellAgentConfigureOptions { DisableLocalAgent = true },
-                cancellationToken: cancellationToken).ConfigureAwait(false);
-
-            return new LocalTerminalConnection(host.Id, server, agent);
+            agent = await LocalMeowshellAgentConnection.StartAsync(options, cancellationToken).ConfigureAwait(false);
+            return new LocalTerminalConnection(host.Id, agent);
         }
-        catch (Exception ex) when (ex is TailcatException or IOException or FileNotFoundException or TimeoutException)
+        catch (Exception ex) when (ex is IOException or FileNotFoundException or TimeoutException)
         {
             if (agent is not null) await agent.DisposeAsync().ConfigureAwait(false);
-            if (server is not null) await server.DisposeAsync().ConfigureAwait(false);
-            if (ex is TailcatException tailcat) throw MeowshellSshEngine.Translate(tailcat);
             throw new SshException(SshFailure.Unknown, $"Could not start the local terminal: {ex.Message}", ex);
         }
     }
 
     private sealed class LocalTerminalConnection(
         Guid hostId,
-        MeowshellServer server,
-        MeowshellAgentConnection agent) : IHostConnection
+        LocalMeowshellAgentConnection agent) : IHostConnection
     {
         private bool _disposed;
 
@@ -80,28 +47,22 @@ public sealed class LocalTerminalConnectionEngine(MeowshellSshEngineOptions opti
             CancellationToken cancellationToken = default)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            try
-            {
-                var channel = await agent.OpenShellAsync(
-                    columns,
-                    rows,
-                    term: "xterm-256color",
-                    pty: true,
-                    cancellationToken: cancellationToken).ConfigureAwait(false);
-                return new MeowshellSshShell(channel, lost => ConnectionLost?.Invoke(this, lost));
-            }
-            catch (TailcatException ex)
-            {
-                throw MeowshellSshEngine.Translate(ex);
-            }
+            return await agent.OpenShellAsync(columns, rows, cancellationToken).ConfigureAwait(false);
         }
 
         public async ValueTask DisposeAsync()
         {
             if (_disposed) return;
             _disposed = true;
-            try { await agent.DisposeAsync().ConfigureAwait(false); }
-            finally { await server.DisposeAsync().ConfigureAwait(false); }
+            agent.ConnectionLost -= OnAgentConnectionLost;
+            await agent.DisposeAsync().ConfigureAwait(false);
+        }
+
+        private void OnAgentConnectionLost(object? sender, SshConnectionLost e) => ConnectionLost?.Invoke(this, e);
+
+        public LocalTerminalConnection
+        {
+            agent.ConnectionLost += OnAgentConnectionLost;
         }
     }
 }
