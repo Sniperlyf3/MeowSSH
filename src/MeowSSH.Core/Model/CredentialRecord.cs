@@ -8,6 +8,9 @@ public enum CredentialKind
 
     /// <summary>A private key in OpenSSH or PEM form, optionally passphrase-protected.</summary>
     PrivateKey = 2,
+
+    /// <summary>An SSH public key used only to authorize access; it cannot authenticate an outbound connection.</summary>
+    PublicKey = 3,
 }
 
 /// <summary>
@@ -68,6 +71,7 @@ public sealed record CredentialRecord
     public string DisplayHint => Kind switch
     {
         CredentialKind.Password => "••••••••",
+        CredentialKind.PublicKey => PublicKey is null ? "public key" : Fingerprint(PublicKey),
         _ => PublicKey is null ? "private key" : Fingerprint(PublicKey),
     };
 
