@@ -52,7 +52,7 @@
 
     private static string ViewLabel(SessionTabInfo tab) => tab.View switch
     {
-        SessionView.Terminal => tab.TerminalLabel,
+        SessionView.Terminal => tab.SupportsFiles ? "SSH" : tab.TerminalLabel,
         SessionView.Files => "Files",
         SessionView.Forwards => "Forwards",
         _ => tab.View.ToString(),
