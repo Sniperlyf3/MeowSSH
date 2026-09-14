@@ -24,10 +24,54 @@ internal sealed class MeowshellSshConnection(Guid hostId, MeowshellAgentConnecti
         }
     }
 
-    // The agent multiplexes, so this is not a second connection and costs no
-    // second authentication -- the whole reason one agent is kept per host.
     public Task<ISftpSession> OpenSftpAsync(CancellationToken cancellationToken = default) =>
         Task.FromResult<ISftpSession>(new MeowshellSftpSession(agent));
+
+    public Task<ISshForward> OpenLocalForwardAsync(
+        string listenAddress,
+        string remoteAddress,
+        bool allowNonLoopbackBind = false,
+        CancellationToken cancellationToken = default) =>
+        OpenForwardAsync(
+            () => agent.OpenLocalForwardAsync(listenAddress, remoteAddress, allowNonLoopbackBind,
+                cancellationToken: cancellationToken),
+            SshForwardKind.Local,
+            remoteAddress);
+
+    public Task<ISshForward> OpenRemoteForwardAsync(
+        string listenAddress,
+        string localAddress,
+        CancellationToken cancellationToken = default) =>
+        OpenForwardAsync(
+            () => agent.OpenRemoteForwardAsync(listenAddress, localAddress, cancellationToken: cancellationToken),
+            SshForwardKind.Remote,
+            localAddress);
+
+    public Task<ISshForward> OpenSocksForwardAsync(
+        string listenAddress,
+        bool requireAuth = true,
+        CancellationToken cancellationToken = default) =>
+        OpenForwardAsync(
+            () => agent.OpenSocksForwardAsync(listenAddress, requireAuth,
+                cancellationToken: cancellationToken),
+            SshForwardKind.Socks,
+            null);
+
+    private static async Task<ISshForward> OpenForwardAsync(
+        Func<Task<MeowshellForward>> open,
+        SshForwardKind kind,
+        string? destination)
+    {
+        try
+        {
+            var forward = await open().ConfigureAwait(false);
+            return new MeowshellSshForward(forward, kind, destination);
+        }
+        catch (TailcatException ex)
+        {
+            throw MeowshellSshEngine.Translate(ex);
+        }
+    }
 
     private void OnChannelLost(SshConnectionLost lost)
     {
@@ -40,6 +84,19 @@ internal sealed class MeowshellSshConnection(Guid hostId, MeowshellAgentConnecti
         IsConnected = false;
         await agent.DisposeAsync().ConfigureAwait(false);
     }
+}
+
+internal sealed class MeowshellSshForward(MeowshellForward forward, SshForwardKind kind, string? destination) : ISshForward
+{
+    public SshForwardKind Kind { get; } = kind;
+    public string BoundAddress => forward.BoundAddress;
+    public string? Destination { get; } = destination;
+    public string? SocksUsername => forward.SocksUsername;
+    public string? SocksPassword => forward.SocksPassword;
+
+    public Task CloseAsync(CancellationToken cancellationToken = default) => forward.CloseAsync(cancellationToken);
+
+    public ValueTask DisposeAsync() => forward.DisposeAsync();
 }
 
 internal sealed class MeowshellSshShell : ISshShell
@@ -57,15 +114,6 @@ internal sealed class MeowshellSshShell : ISshShell
     public event EventHandler<ReadOnlyMemory<byte>>? OutputReceived;
     public event EventHandler<int>? Exited;
 
-    /// <summary>
-    /// Reads the channel's output and republishes it as events.
-    /// </summary>
-    /// <remarks>
-    /// Whatever the read returns is forwarded immediately rather than being
-    /// accumulated into lines. Terminal output is not line-oriented -- a shell
-    /// prompt has no trailing newline, and buffering for one would leave the user
-    /// looking at a blank screen waiting for a prompt that already arrived.
-    /// </remarks>
     private async Task PumpAsync(Action<SshConnectionLost> onLost)
     {
         var buffer = new byte[16 * 1024];
@@ -83,7 +131,6 @@ internal sealed class MeowshellSshShell : ISshShell
         }
         catch (OperationCanceledException)
         {
-            // Deliberate shutdown.
         }
         catch (Exception ex)
         {
@@ -102,7 +149,7 @@ internal sealed class MeowshellSshShell : ISshShell
     public async ValueTask DisposeAsync()
     {
         await _pumpStopped.CancelAsync().ConfigureAwait(false);
-        try { await _channel.CloseAsync().ConfigureAwait(false); } catch (TailcatException) { /* already gone */ }
+        try { await _channel.CloseAsync().ConfigureAwait(false); } catch (TailcatException) { }
         try { await _pump.ConfigureAwait(false); } catch (OperationCanceledException) { }
         await _channel.DisposeAsync().ConfigureAwait(false);
         _pumpStopped.Dispose();

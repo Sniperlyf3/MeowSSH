@@ -44,6 +44,25 @@ public interface ISshConnection : IAsyncDisposable
     /// <summary>Opens file operations on this same connection.</summary>
     Task<ISftpSession> OpenSftpAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>Equivalent to OpenSSH -L. The local listener defaults to loopback only.</summary>
+    Task<ISshForward> OpenLocalForwardAsync(
+        string listenAddress,
+        string remoteAddress,
+        bool allowNonLoopbackBind = false,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Equivalent to OpenSSH -R.</summary>
+    Task<ISshForward> OpenRemoteForwardAsync(
+        string listenAddress,
+        string localAddress,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Equivalent to OpenSSH -D. SOCKS authentication is enabled by default.</summary>
+    Task<ISshForward> OpenSocksForwardAsync(
+        string listenAddress,
+        bool requireAuth = true,
+        CancellationToken cancellationToken = default);
+
     /// <summary>Raised when the connection drops without being closed deliberately.</summary>
     event EventHandler<SshConnectionLost>? ConnectionLost;
 }
