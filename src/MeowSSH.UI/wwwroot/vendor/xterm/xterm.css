@@ -106,6 +106,21 @@
     position: relative;
 }
 
+/*
+ * MeowSSH runs the DOM renderer. Keep xterm's container non-selectable so
+ * gestures/IME behavior stay intact, but let Android WebView select the actual
+ * rendered row text on long-press. This gives the platform its native selection
+ * handles and contextual Copy action instead of requiring the in-app Copy key.
+ */
+.xterm .xterm-rows,
+.xterm .xterm-rows > div,
+.xterm .xterm-rows span {
+    user-select: text;
+    -ms-user-select: text;
+    -webkit-user-select: text;
+    -webkit-touch-callout: default;
+}
+
 .xterm .xterm-screen canvas {
     position: absolute;
     left: 0;
