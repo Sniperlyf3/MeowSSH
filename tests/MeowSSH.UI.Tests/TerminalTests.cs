@@ -138,6 +138,17 @@ public class TerminalTests(TestHostFixture fixture)
     }
 
     [Fact]
+    public async Task TerminalRowsAllowNativeTextSelection()
+    {
+        var page = await OpenSessionAsync();
+
+        var userSelect = await page.Locator(".xterm-rows").EvaluateAsync<string>(
+            "element => getComputedStyle(element).userSelect");
+
+        Assert.Equal("text", userSelect);
+    }
+
+    [Fact]
     public async Task TheRemotePtyIsToldTheSizeTheTerminalActuallyAchieved()
     {
         var page = await OpenSessionAsync();
