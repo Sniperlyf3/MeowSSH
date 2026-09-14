@@ -45,6 +45,8 @@ public static class MauiProgram
             new MeowshellSshEngine(sp.GetRequiredService<MeowshellSshEngineOptions>()));
         builder.Services.AddSingleton<IProtocolConnectionEngine>(sp =>
             new SshProtocolConnectionEngine(sp.GetRequiredService<ISshEngine>()));
+        builder.Services.AddSingleton<IProtocolConnectionEngine>(sp =>
+            new MoshConnectionEngine(sp.GetRequiredService<MeowshellSshEngineOptions>()));
         builder.Services.AddSingleton<IProtocolConnectionEngine, TelnetConnectionEngine>();
         builder.Services.AddSingleton<IProtocolConnectionEngine, SerialConnectionEngine>();
         builder.Services.AddSingleton<IProtocolConnectionEngine>(sp =>
