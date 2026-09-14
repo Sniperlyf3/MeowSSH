@@ -45,10 +45,11 @@ public sealed class CredentialSshPrompts(ISshPrompts fallback, SshCredentials cr
         // keyboard-interactive method instead of the SSH "password" method.
         // Only auto-answer an unambiguous single hidden Password prompt; OTP/MFA
         // questions still go to the user.
-        if (credentials.Password is { } stored
+        var stored = credentials.Password;
+        if (stored is not null
             && prompt.Questions.Count == 1
-            && prompt.Echos.Count == 1
-            && !prompt.Echos[0]
+            && prompt.Echo.Count == 1
+            && !prompt.Echo[0]
             && prompt.Questions[0].Contains("password", StringComparison.OrdinalIgnoreCase))
         {
             IReadOnlyList<string> answer = [Encoding.UTF8.GetString(stored.ReadOnlySpan)];
