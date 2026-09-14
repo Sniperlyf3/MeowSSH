@@ -1,0 +1,84 @@
+@using MeowSSH.UI.Services
+@inject ITailcatHubService Hub
+@inject IActiveSessionLifetime SessionLifetime
+
+<div class="tailcat-stack">
+    @if (_error is not null) { <p class="lock__error" role="alert">@_error</p> }
+    @if (_notice is not null) { <p class="note" role="status">@_notice</p> }
+    @if (Hub.Snapshot.Server is { } server)
+    {
+        <article class="tailcat-card" data-testid="tailcat-server-running">
+            <h2>This phone is shared</h2>
+            <label class="field"><span class="field__label">Tailcat address</span><input class="field__input mono" readonly value="@server.Address" data-testid="tailcat-server-address" /></label>
+            <p>@(server.ExitNodeEnabled ? "Exit node · " : "")@(server.ShellEnabled ? "Shell · " : "")@(server.FilesEnabled ? $"Files ({server.FileMode})" : "")</p>
+            <p class="field__hint">Expires @server.ExpiresAt.ToLocalTime().ToString("g").</p>
+            <button class="btn btn--danger btn--block" disabled="@_busy" data-testid="stop-tailcat-server" @onclick="StopAsync">Stop sharing</button>
+        </article>
+    }
+    else
+    {
+        <article class="tailcat-card">
+            <h2>Share this phone</h2>
+            <label class="field"><span class="field__label">Allowed Tailcat client keys</span><textarea class="field__input mono" rows="3" data-testid="tailcat-allowed-clients" placeholder="nodekey:..." @bind="_allowedClients"></textarea><span class="field__hint">Required. Comma-separate trusted client public keys.</span></label>
+            <label class="field"><span class="field__label">Lifetime (hours)</span><input class="field__input" type="number" min="1" max="24" data-testid="tailcat-lifetime" @bind="_hours" /></label>
+            <label class="forward-option"><input type="checkbox" data-testid="tailcat-exit-node" @bind="_exitNode" /><span><strong>Exit node</strong><small>Allow approved Tailcat clients to route through this phone.</small></span></label>
+            <label class="forward-option"><input type="checkbox" data-testid="tailcat-shell" @bind="_shell" /><span><strong>Remote shell</strong><small>Expose a shell protected by SSH authorized keys.</small></span></label>
+            @if (_shell) { <label class="field"><span class="field__label">Authorized SSH keys</span><textarea class="field__input mono" rows="3" data-testid="tailcat-authorized-ssh" @bind="_authorizedSsh"></textarea></label> }
+            <label class="forward-option"><input type="checkbox" data-testid="tailcat-files" @bind="_files" /><span><strong>Share a folder</strong><small>Expose one directory over Tailcat SFTP.</small></span></label>
+            @if (_files)
+            {
+                <label class="field"><span class="field__label">Folder path</span><input class="field__input mono" data-testid="tailcat-share-path" @bind="_folder" /></label>
+                <label class="field"><span class="field__label">Access</span><select class="field__input" data-testid="tailcat-file-mode" @bind="_fileMode"><option value="ro">Read only</option><option value="rw">Read / write</option><option value="wo">Upload only</option><option value="wo+">Upload + directories</option></select></label>
+            }
+            @if (_exitNode) { <p class="note"><Icon Name="alert" /> Only authorize client keys you trust.</p> }
+            <button class="btn btn--primary btn--block" disabled="@(_busy || !CanStart)" data-testid="start-tailcat-server" @onclick="StartAsync">Start sharing</button>
+        </article>
+    }
+</div>
+
+@code {
+    private string _allowedClients = "";
+    private int _hours = 8;
+    private bool _exitNode = true;
+    private bool _shell;
+    private string _authorizedSsh = "";
+    private bool _files;
+    private string _folder = "";
+    private string _fileMode = "ro";
+    private bool _busy;
+    private string? _error;
+    private string? _notice;
+
+    private bool CanStart => !string.IsNullOrWhiteSpace(_allowedClients) && (_exitNode || _shell || _files)
+        && (!_shell || !string.IsNullOrWhiteSpace(_authorizedSsh)) && (!_files || !string.IsNullOrWhiteSpace(_folder))
+        && _hours is >= 1 and <= 24;
+
+    private bool HasLongLivedTailcat()
+    {
+        var s = Hub.Snapshot;
+        return s.Server is not null || s.Socks is not null || s.Forwards.Count > 0;
+    }
+
+    private async Task StartAsync()
+    {
+        _busy = true; _error = _notice = null;
+        var wasActive = HasLongLivedTailcat();
+        try
+        {
+            if (!wasActive) await SessionLifetime.StartAsync();
+            try { await Hub.StartServerAsync(new TailcatServeRequest(TimeSpan.FromHours(_hours), _allowedClients, _shell, _authorizedSsh, _files, _folder, _fileMode, _exitNode)); }
+            catch { if (!wasActive) await SessionLifetime.StopAsync(); throw; }
+            _notice = "Tailcat sharing started.";
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task StopAsync()
+    {
+        _busy = true; _error = _notice = null;
+        try { await Hub.StopServerAsync(); if (!HasLongLivedTailcat()) await SessionLifetime.StopAsync(); _notice = "Tailcat sharing stopped."; }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+}
