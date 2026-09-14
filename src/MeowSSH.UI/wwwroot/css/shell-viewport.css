@@ -1,0 +1,56 @@
+/*
+   Viewport ownership ----------------------------------------------------
+
+   The app shell, not the document, owns scrolling. Keeping the document fixed
+   prevents a long editor/list from pushing either the top bar or the tab bar
+   outside the visible viewport. Only .app__body scrolls.
+*/
+html,
+body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* The MAUI host mounts AppRoot here. */
+#app {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.app {
+  width: 100%;
+  height: 100dvh;
+  min-height: 0;
+  max-height: 100dvh;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+}
+
+.app__body {
+  min-height: 0;
+  max-height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.topbar,
+.tabbar {
+  position: relative;
+  z-index: 10;
+  flex-shrink: 0;
+}
+
+/* Lock/setup screens do not use AppShell. They still need their own scroll
+   container on very small displays now that document scrolling is disabled. */
+.lock {
+  height: 100dvh;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
