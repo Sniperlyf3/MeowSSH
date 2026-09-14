@@ -1,0 +1,64 @@
+@using MeowSSH.UI.Services
+@inject ITailcatHubService Hub
+@inject IActiveSessionLifetime SessionLifetime
+
+<div class="tailcat-stack">
+    @if (_error is not null) { <p class="lock__error" role="alert">@_error</p> }
+    <article class="tailcat-card">
+        <h2>SOCKS5 gateway</h2>
+        @if (Hub.Snapshot.Socks is { } socks)
+        {
+            <p class="note" data-testid="tailcat-socks-running">Listening at <span class="mono">@socks.ListenAddress</span></p>
+            <button class="btn btn--danger btn--block" disabled="@_busy" data-testid="stop-tailcat-socks" @onclick="StopSocksAsync">Stop gateway</button>
+        }
+        else
+        {
+            <label class="field"><span class="field__label">Listen address</span><input class="field__input mono" data-testid="tailcat-socks-listen" @bind="_socksListen" /></label>
+            <label class="field"><span class="field__label">Client key name</span><input class="field__input mono" data-testid="tailcat-socks-key" placeholder="client-default" @bind="_clientKey" /><span class="field__hint">Leave blank for Tailcat's default client identity.</span></label>
+            <button class="btn btn--primary btn--block" disabled="@_busy" data-testid="start-tailcat-socks" @onclick="StartSocksAsync">Start gateway</button>
+        }
+    </article>
+
+    <article class="tailcat-card">
+        <h2>Port forwarding</h2>
+        <label class="field"><span class="field__label">Tailcat server</span><input class="field__input mono" data-testid="tailcat-forward-address" placeholder="tc…" @bind="_address" /></label>
+        <label class="field"><span class="field__label">Mappings</span><textarea class="field__input mono" rows="3" data-testid="tailcat-forward-mappings" placeholder="8080:80&#10;8443:192.168.1.10:443" @bind="_mappings"></textarea><span class="field__hint">One per line: port, local:remote, or local:remote-host:remote-port.</span></label>
+        <label class="field"><span class="field__label">Bind address</span><input class="field__input mono" data-testid="tailcat-forward-bind" @bind="_bind" /></label>
+        <button class="btn btn--primary btn--block" disabled="@(_busy || string.IsNullOrWhiteSpace(_address) || MappingList.Count == 0)" data-testid="start-tailcat-forward" @onclick="StartForwardAsync">Start forward</button>
+        @foreach (var forward in Hub.Snapshot.Forwards)
+        {
+            <div class="tailcat-running-row" data-testid="tailcat-forward-row">
+                <span><strong class="mono">@string.Join(", ", forward.BoundAddresses)</strong><small>@forward.Address · @string.Join(", ", forward.Mappings)</small></span>
+                <button class="btn btn--icon" aria-label="Stop forward" @onclick="() => StopForwardAsync(forward.Id)"><Icon Name="close" /></button>
+            </div>
+        }
+    </article>
+</div>
+
+@code {
+    private string _socksListen = "127.0.0.1:0";
+    private string _clientKey = "";
+    private string _address = "";
+    private string _mappings = "";
+    private string _bind = "127.0.0.1";
+    private bool _busy;
+    private string? _error;
+
+    private IReadOnlyList<string> MappingList => [.. _mappings.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
+    private bool Active() { var s = Hub.Snapshot; return s.Server is not null || s.Socks is not null || s.Forwards.Count > 0; }
+
+    private async Task StartSocksAsync() => await RunStartAsync(() => Hub.StartSocksAsync(new TailcatSocksRequest(_socksListen, Empty(_clientKey))));
+    private async Task StartForwardAsync() => await RunStartAsync(() => Hub.StartForwardAsync(new TailcatForwardRequest(_address, MappingList, _bind, Empty(_clientKey))));
+
+    private async Task RunStartAsync(Func<Task> start)
+    {
+        _busy = true; _error = null; var wasActive = Active();
+        try { if (!wasActive) await SessionLifetime.StartAsync(); try { await start(); } catch { if (!wasActive) await SessionLifetime.StopAsync(); throw; } }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task StopSocksAsync() { _busy = true; try { await Hub.StopSocksAsync(); if (!Active()) await SessionLifetime.StopAsync(); } catch (Exception ex) { _error = ex.Message; } finally { _busy = false; } }
+    private async Task StopForwardAsync(Guid id) { _busy = true; try { await Hub.StopForwardAsync(id); if (!Active()) await SessionLifetime.StopAsync(); } catch (Exception ex) { _error = ex.Message; } finally { _busy = false; } }
+    private static string? Empty(string value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+}
