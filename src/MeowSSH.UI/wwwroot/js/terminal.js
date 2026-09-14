@@ -1,42 +1,122 @@
 /*
-  Bridges an xterm.js terminal to the SSH shell on the .NET side.
+  Bridges an xterm.js terminal to the terminal session on the .NET side.
 
-  Two things here are load-bearing and not obvious:
-
-  1. Output is batched before it crosses into .NET's renderer. A command like
-     `cat` on a large file delivers thousands of small chunks, and marshalling
-     each one individually saturates the interop bridge and locks the UI. They
-     are coalesced on an animation frame instead, which is also the fastest the
-     screen could show them anyway.
-
-  2. Input is sent as raw bytes, not as a string. Terminal input is a byte
-     stream -- escape sequences, control characters, partial UTF-8 from a fast
-     paste -- and re-encoding it through a JS string mangles anything that is
-     not valid text.
+  Output stays byte-oriented and is coalesced on animation frames so large
+  bursts do not saturate the Blazor interop bridge. Input also stays as raw
+  bytes so escape sequences and split UTF-8 sequences are not rewritten.
 */
 
 const sessions = new Map();
+const preferenceEvent = "meowssh-terminal-settings-changed";
 
-function readZoomPercent() {
-    const raw = Number.parseInt(localStorage.getItem("meowssh.terminal.zoom") ?? "100", 10);
-    return Number.isFinite(raw) ? Math.min(160, Math.max(80, raw)) : 100;
+const storageKeys = {
+    zoom: "meowssh.terminal.zoom",
+    theme: "meowssh.terminal.theme",
+    cursorStyle: "meowssh.terminal.cursorStyle",
+    cursorBlink: "meowssh.terminal.cursorBlink",
+    scrollback: "meowssh.terminal.scrollback",
+};
+
+const themes = {
+    "meow-dark": {
+        background: "#0b0e13",
+        foreground: "#e7ebf2",
+        cursor: "#ff8a5b",
+        cursorAccent: "#0b0e13",
+        selectionBackground: "rgba(255, 138, 91, 0.28)",
+        black: "#12171f", red: "#f2555a", green: "#3fbf8f", yellow: "#e3b341",
+        blue: "#59a9ff", magenta: "#c98bdb", cyan: "#4fc4cf", white: "#c8cfdb",
+        brightBlack: "#5d6676", brightRed: "#ff7a7e", brightGreen: "#62d6a8",
+        brightYellow: "#f0c75e", brightBlue: "#82bfff", brightMagenta: "#dba6e8",
+        brightCyan: "#74d8e1", brightWhite: "#f2f5fa",
+    },
+    "solarized-dark": {
+        background: "#002b36", foreground: "#839496", cursor: "#93a1a1", cursorAccent: "#002b36",
+        selectionBackground: "rgba(147, 161, 161, 0.28)", black: "#073642", red: "#dc322f",
+        green: "#859900", yellow: "#b58900", blue: "#268bd2", magenta: "#d33682",
+        cyan: "#2aa198", white: "#eee8d5", brightBlack: "#586e75", brightRed: "#cb4b16",
+        brightGreen: "#586e75", brightYellow: "#657b83", brightBlue: "#839496",
+        brightMagenta: "#6c71c4", brightCyan: "#93a1a1", brightWhite: "#fdf6e3",
+    },
+    "solarized-light": {
+        background: "#fdf6e3", foreground: "#657b83", cursor: "#586e75", cursorAccent: "#fdf6e3",
+        selectionBackground: "rgba(88, 110, 117, 0.22)", black: "#073642", red: "#dc322f",
+        green: "#859900", yellow: "#b58900", blue: "#268bd2", magenta: "#d33682",
+        cyan: "#2aa198", white: "#eee8d5", brightBlack: "#586e75", brightRed: "#cb4b16",
+        brightGreen: "#586e75", brightYellow: "#657b83", brightBlue: "#839496",
+        brightMagenta: "#6c71c4", brightCyan: "#93a1a1", brightWhite: "#fdf6e3",
+    },
+    dracula: {
+        background: "#282a36", foreground: "#f8f8f2", cursor: "#f8f8f2", cursorAccent: "#282a36",
+        selectionBackground: "rgba(68, 71, 90, 0.65)", black: "#21222c", red: "#ff5555",
+        green: "#50fa7b", yellow: "#f1fa8c", blue: "#bd93f9", magenta: "#ff79c6",
+        cyan: "#8be9fd", white: "#f8f8f2", brightBlack: "#6272a4", brightRed: "#ff6e6e",
+        brightGreen: "#69ff94", brightYellow: "#ffffa5", brightBlue: "#d6acff",
+        brightMagenta: "#ff92df", brightCyan: "#a4ffff", brightWhite: "#ffffff",
+    },
+};
+
+function boundedInteger(key, fallback, min, max) {
+    const value = Number.parseInt(localStorage.getItem(key) ?? "", 10);
+    return Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
+}
+
+function booleanPreference(key, fallback) {
+    const value = localStorage.getItem(key);
+    if (value === null) return fallback;
+    return value === "true";
+}
+
+export function getPreferences() {
+    const requestedTheme = localStorage.getItem(storageKeys.theme) ?? "meow-dark";
+    const requestedCursor = localStorage.getItem(storageKeys.cursorStyle) ?? "block";
+    return {
+        zoom: boundedInteger(storageKeys.zoom, 100, 80, 160),
+        theme: Object.hasOwn(themes, requestedTheme) ? requestedTheme : "meow-dark",
+        cursorStyle: ["block", "bar", "underline"].includes(requestedCursor) ? requestedCursor : "block",
+        cursorBlink: booleanPreference(storageKeys.cursorBlink, true),
+        scrollback: boundedInteger(storageKeys.scrollback, 5000, 1000, 50000),
+    };
+}
+
+export function setPreference(name, value) {
+    const key = storageKeys[name];
+    if (!key) throw new Error(`Unknown terminal preference: ${name}`);
+    localStorage.setItem(key, String(value));
+    window.dispatchEvent(new CustomEvent(preferenceEvent));
+}
+
+export function resetPreferences() {
+    for (const key of Object.values(storageKeys)) localStorage.removeItem(key);
+    window.dispatchEvent(new CustomEvent(preferenceEvent));
+    return getPreferences();
+}
+
+function applyPreferences(session) {
+    const preferences = getPreferences();
+    const terminal = session.terminal;
+    terminal.options.fontSize = session.baseFontSize * preferences.zoom / 100;
+    terminal.options.theme = themes[preferences.theme];
+    terminal.options.cursorStyle = preferences.cursorStyle;
+    terminal.options.cursorBlink = preferences.cursorBlink;
+    terminal.options.scrollback = preferences.scrollback;
+    try { session.fit.fit(); } catch { /* element can detach during navigation */ }
 }
 
 export function create(elementId, dotNetRef, options) {
     const element = document.getElementById(elementId);
     if (!element) throw new Error(`Terminal container "${elementId}" is not in the document.`);
 
+    const preferences = getPreferences();
     const terminal = new window.Terminal({
         allowProposedApi: true,
-        cursorBlink: true,
-        // Match the app's own mono face so the terminal does not read as a
-        // foreign widget dropped into the page.
+        cursorBlink: preferences.cursorBlink,
+        cursorStyle: preferences.cursorStyle,
         fontFamily: options.fontFamily,
-        fontSize: options.fontSize * readZoomPercent() / 100,
+        fontSize: options.fontSize * preferences.zoom / 100,
         letterSpacing: 0,
-        scrollback: 5000,
-        theme: options.theme,
-        // A phone keyboard's autocorrect would otherwise rewrite shell commands.
+        scrollback: preferences.scrollback,
+        theme: themes[preferences.theme],
         screenReaderMode: false,
     });
 
@@ -45,16 +125,6 @@ export function create(elementId, dotNetRef, options) {
     terminal.open(element);
     fit.fit();
 
-    // xterm already asks for no autocorrect, no autocapitalise and no
-    // spellcheck. Gboard composes anyway: it holds the word being typed as
-    // uncommitted composition text, shows it over the terminal, and leaves the
-    // real cursor at the last committed position -- which is why the caret sat
-    // thin and one word behind until space committed it.
-    //
-    // The vendored xterm helper is a hidden password-style input. Do not set an
-    // inputmode here: on Android/Samsung that can override the password editor
-    // classification and bring IME composition back even when suggestions are
-    // hidden. Let type="password" be the strongest signal to the keyboard.
     const textarea = element.querySelector(".xterm-helper-textarea");
     if (textarea) {
         textarea.setAttribute("autocomplete", "off");
@@ -62,44 +132,33 @@ export function create(elementId, dotNetRef, options) {
     }
 
     const encoder = new TextEncoder();
-    terminal.onData(data => {
-        // The Uint8Array goes across as-is. Blazor has optimized byte-array
-        // interop in both directions; Array.from() would turn this into a plain
-        // JS array, which does not bind to a byte[] parameter and throws once
-        // per keystroke.
-        dotNetRef.invokeMethodAsync("OnInputAsync", encoder.encode(data));
-    });
-
-    // xterm reports the size it actually achieved after fitting, which is what
-    // the remote pty must be told -- not the size we asked for.
-    terminal.onResize(({ cols, rows }) => {
-        dotNetRef.invokeMethodAsync("OnResizeAsync", cols, rows);
-    });
+    terminal.onData(data => dotNetRef.invokeMethodAsync("OnInputAsync", encoder.encode(data)));
+    terminal.onResize(({ cols, rows }) => dotNetRef.invokeMethodAsync("OnResizeAsync", cols, rows));
 
     const observer = new ResizeObserver(() => {
         try { fit.fit(); } catch { /* element detached mid-layout */ }
     });
     observer.observe(element);
 
-    // A soft keyboard opening resizes the window, and on the way through that
-    // the terminal can end up blurred -- at which point xterm draws the thin
-    // inactive cursor and stops moving it, so the caret sits where it was before
-    // you started typing even though the characters arrive. Refocusing after the
-    // layout settles keeps the caret where the text is.
-    //
-    // Only when the terminal already had focus: stealing it back from a dialog
-    // that opened over the session would be worse than a misdrawn cursor.
     const keepFocus = () => {
         if (!element.contains(document.activeElement)) return;
         requestAnimationFrame(() => terminal.focus());
     };
 
-    // visualViewport is what actually reports a keyboard on Android; a resize
-    // event on window does not fire reliably when the window is only panned.
     const viewport = window.visualViewport;
     viewport?.addEventListener("resize", keepFocus);
 
-    sessions.set(elementId, { terminal, fit, observer, viewport, keepFocus, pending: [], frame: 0 });
+    const preferenceListener = () => {
+        const session = sessions.get(elementId);
+        if (!session) return;
+        applyPreferences(session);
+    };
+    window.addEventListener(preferenceEvent, preferenceListener);
+
+    sessions.set(elementId, {
+        terminal, fit, observer, viewport, keepFocus, preferenceListener, dotNetRef, encoder,
+        baseFontSize: options.fontSize, pending: [], frame: 0,
+    });
     return { cols: terminal.cols, rows: terminal.rows };
 }
 
@@ -123,8 +182,6 @@ export function write(elementId, bytes) {
             merged.set(chunk, offset);
             offset += chunk.length;
         }
-        // Write the bytes, not a decoded string: xterm's own UTF-8 decoder
-        // handles a multi-byte character split across two network chunks.
         session.terminal.write(merged);
     });
 }
@@ -140,9 +197,41 @@ export function fit(elementId) {
     return { cols: session.terminal.cols, rows: session.terminal.rows };
 }
 
-export function setTheme(elementId, theme) {
+export async function copySelection(elementId) {
     const session = sessions.get(elementId);
-    if (session) session.terminal.options.theme = theme;
+    if (!session) return false;
+    const text = session.terminal.getSelection();
+    if (!text) return false;
+    try {
+        await navigator.clipboard.writeText(text);
+        session.terminal.focus();
+        return true;
+    } catch {
+        session.terminal.focus();
+        return false;
+    }
+}
+
+export async function pasteClipboard(elementId) {
+    const session = sessions.get(elementId);
+    if (!session) return false;
+    try {
+        const text = await navigator.clipboard.readText();
+        if (!text) return false;
+        await session.dotNetRef.invokeMethodAsync("OnInputAsync", session.encoder.encode(text));
+        session.terminal.focus();
+        return true;
+    } catch {
+        session.terminal.focus();
+        return false;
+    }
+}
+
+export function clearTerminal(elementId) {
+    const session = sessions.get(elementId);
+    if (!session) return;
+    session.terminal.clear();
+    session.terminal.focus();
 }
 
 export function dispose(elementId) {
@@ -150,9 +239,8 @@ export function dispose(elementId) {
     if (!session) return;
     if (session.frame !== 0) cancelAnimationFrame(session.frame);
     session.observer.disconnect();
-    // visualViewport outlives the page, so a listener left on it holds the
-    // disposed terminal alive and refocuses something that no longer exists.
     session.viewport?.removeEventListener("resize", session.keepFocus);
+    window.removeEventListener(preferenceEvent, session.preferenceListener);
     session.terminal.dispose();
     sessions.delete(elementId);
 }
