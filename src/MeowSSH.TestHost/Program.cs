@@ -18,6 +18,7 @@ builder.Services.AddScoped<IProtocolConnectionEngine>(sp =>
     new SshProtocolConnectionEngine(sp.GetRequiredService<ISshEngine>()));
 builder.Services.AddScoped<IConnectionEngine, ConnectionEngine>();
 builder.Services.AddScoped<ICredentialResolver, FakeCredentialResolver>();
+builder.Services.AddScoped<ISerialDeviceService, UnsupportedSerialDeviceService>();
 builder.Services.AddScoped(_ => new FakeVaultSession(
     VaultState.Locked,
     recoveryCode: MeowSSH.TestHost.TestHostDefaults.RecoveryCode));
