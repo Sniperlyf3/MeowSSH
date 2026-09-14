@@ -1,21 +1,29 @@
 <div class="app">
     <header class="topbar">
-        <h1 class="topbar__title">@Title</h1>
-        <div class="topbar__actions">@Actions</div>
+        <h1 class="topbar__title">@(_showTailcat ? "Tailcat" : Title)</h1>
+        <div class="topbar__actions">@(_showTailcat ? null : Actions)</div>
     </header>
 
     <main class="app__body" data-testid="app-body">
-        @ChildContent
+        @if (_showTailcat)
+        {
+            <TailcatHubPanel />
+        }
+        else
+        {
+            @ChildContent
+        }
     </main>
 
     <nav class="tabbar" aria-label="Main">
         @foreach (var tab in Tabs)
         {
+            var active = tab.Id == CurrentTab;
             <button type="button"
-                    class="tabbar__tab @(tab.Id == ActiveTab ? "is-active" : "")"
-                    aria-current="@(tab.Id == ActiveTab ? "page" : null)"
+                    class="tabbar__tab @(active ? "is-active" : "")"
+                    aria-current="@(active ? "page" : null)"
                     data-testid="tab-@tab.Id"
-                    @onclick="() => OnTabSelected.InvokeAsync(tab.Id)">
+                    @onclick="() => SelectTabAsync(tab.Id)">
                 <Icon Name="@tab.Icon" />
                 @tab.Label
             </button>
@@ -29,6 +37,21 @@
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string ActiveTab { get; set; } = "hosts";
     [Parameter] public EventCallback<string> OnTabSelected { get; set; }
+
+    private bool _showTailcat;
+    private string CurrentTab => _showTailcat ? "tailcat" : ActiveTab;
+
+    private async Task SelectTabAsync(string tab)
+    {
+        if (tab == "tailcat")
+        {
+            _showTailcat = true;
+            return;
+        }
+
+        _showTailcat = false;
+        await OnTabSelected.InvokeAsync(tab);
+    }
 
     private sealed record Tab(string Id, string Label, string Icon);
 
