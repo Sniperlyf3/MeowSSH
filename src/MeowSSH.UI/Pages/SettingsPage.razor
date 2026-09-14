@@ -60,8 +60,8 @@
                         <span class="setting-card__body">Disable this if you prefer a completely static terminal.</span>
                     </span>
                     <input id="terminal-cursor-blink" type="checkbox" class="settings__toggle"
-                           data-testid="terminal-cursor-blink" checked="@_cursorBlink"
-                           @onchange="OnCursorBlinkChangedAsync" />
+                           data-testid="terminal-cursor-blink"
+                           @bind="_cursorBlink" @bind:after="OnCursorBlinkChangedAsync" />
                 </label>
 
                 <label class="setting-card" for="terminal-scrollback">
@@ -166,11 +166,7 @@
         await SetAsync("cursorStyle", _cursorStyle);
     }
 
-    private async Task OnCursorBlinkChangedAsync(ChangeEventArgs e)
-    {
-        _cursorBlink = e.Value is bool value ? value : bool.TryParse(e.Value?.ToString(), out var parsed) && parsed;
-        await SetAsync("cursorBlink", _cursorBlink);
-    }
+    private Task OnCursorBlinkChangedAsync() => SetAsync("cursorBlink", _cursorBlink);
 
     private async Task OnScrollbackChangedAsync(ChangeEventArgs e)
     {
