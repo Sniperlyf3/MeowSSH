@@ -1,0 +1,38 @@
+@inject ITailcatHubService Hub
+
+<article class="tailcat-card">
+    <h2>Connectivity diagnostics</h2>
+    @if (_error is not null) { <p class="lock__error" role="alert">@_error</p> }
+    <label class="field"><span class="field__label">Tailcat address or DNS name</span><input class="field__input mono" data-testid="tailcat-diagnostic-address" @bind="_address" /></label>
+    <label class="forward-option"><input type="checkbox" @bind="_waitDirect" /><span><strong>Wait for a direct path</strong><small>Try to upgrade from DERP relay before returning.</small></span></label>
+    <button class="btn btn--primary btn--block" disabled="@(_busy || string.IsNullOrWhiteSpace(_address))" data-testid="tailcat-diagnose" @onclick="RunAsync">@(_busy ? "Testing…" : "Run diagnostics")</button>
+    @if (_result is { } result)
+    {
+        <dl class="tailcat-diagnostics" data-testid="tailcat-diagnostic-result">
+            <dt>Ping</dt><dd>@(result.PingSucceeded ? "Reachable" : "Failed")</dd>
+            <dt>Path</dt><dd>@(result.Direct == true ? "Direct" : result.Direct == false ? "DERP relay" : "Unknown")</dd>
+            <dt>Latency</dt><dd>@(result.Latency is { } latency ? $"{latency.TotalMilliseconds:N0} ms" : "—")</dd>
+            <dt>Via</dt><dd class="mono">@(result.Via ?? "—")</dd>
+            <dt>Region</dt><dd>@(result.RegionName ?? (result.RegionId == 0 ? "Embedded / unknown" : result.RegionId.ToString()))</dd>
+            <dt>Server key</dt><dd class="mono tailcat-break">@result.ServerPublicKey</dd>
+            <dt>Pre-shared key</dt><dd>@(result.HasPresharedKey ? "Enabled" : "Not embedded")</dd>
+            <dt>Resolved address</dt><dd class="mono tailcat-break">@result.ResolvedAddress</dd>
+        </dl>
+    }
+</article>
+
+@code {
+    private string _address = "";
+    private bool _waitDirect;
+    private bool _busy;
+    private string? _error;
+    private TailcatDiagnosticResult? _result;
+
+    private async Task RunAsync()
+    {
+        _busy = true; _error = null; _result = null;
+        try { _result = await Hub.DiagnoseAsync(_address, _waitDirect); }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+}
