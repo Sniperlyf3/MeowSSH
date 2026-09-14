@@ -1,0 +1,261 @@
+@using MeowSSH.Core.Ssh
+@using MeowSSH.UI.Components
+
+<div class="forwards" data-testid="forwards-page">
+    <header class="topbar">
+        <button type="button" class="btn btn--icon" aria-label="Back to hosts"
+                data-testid="forwards-back" @onclick="() => OnClosed.InvokeAsync()">
+            <Icon Name="back" />
+        </button>
+        <span class="session__title">
+            <span class="session__host">Forwards</span>
+            <span class="session__address">@HostLabel</span>
+        </span>
+        <button type="button" class="btn btn--icon" aria-label="Add port forward"
+                data-testid="add-forward" @onclick="StartAdd">
+            <Icon Name="plus" />
+        </button>
+    </header>
+
+    <div class="forwards__body">
+        @if (Forwards.Count == 0)
+        {
+            <div class="empty" data-testid="forwards-empty">
+                <span class="empty__glyph"><Icon Name="network" /></span>
+                <p class="empty__title">No active forwards</p>
+                <p class="empty__body">Tunnel a local or remote TCP port through this SSH connection, or run a SOCKS5 proxy.</p>
+                <button type="button" class="btn btn--primary" data-testid="add-first-forward" @onclick="StartAdd">
+                    <Icon Name="plus" /> Add forward
+                </button>
+            </div>
+        }
+        else
+        {
+            <div class="forward-list" data-testid="forward-list">
+                @foreach (var forward in Forwards)
+                {
+                    <article class="forward-card" data-testid="forward-row" @key="forward.Id">
+                        <div class="forward-card__header">
+                            <span class="forward-card__kind">@KindLabel(forward.Kind)</span>
+                            <span class="status status--ok"><span class="status__dot"></span>Running</span>
+                        </div>
+                        <div class="forward-card__route mono">
+                            @if (forward.Kind == SshForwardKind.Socks)
+                            {
+                                <span>@forward.BoundAddress</span>
+                                <span aria-hidden="true">→</span>
+                                <span>SOCKS5</span>
+                            }
+                            else
+                            {
+                                <span>@forward.BoundAddress</span>
+                                <span aria-hidden="true">→</span>
+                                <span>@forward.Destination</span>
+                            }
+                        </div>
+                        @if (forward.Kind == SshForwardKind.Socks && forward.SocksUsername is not null)
+                        {
+                            <div class="forward-card__credentials" data-testid="socks-credentials">
+                                <span>Username <code>@forward.SocksUsername</code></span>
+                                <span>Password <code>@forward.SocksPassword</code></span>
+                            </div>
+                        }
+                        <button type="button" class="btn btn--danger btn--block"
+                                data-testid="stop-forward" @onclick="() => OnStop.InvokeAsync(new ForwardStopRequest(forward.Id))">
+                            Stop forward
+                        </button>
+                    </article>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@if (_adding)
+{
+    <div class="sheet" role="dialog" aria-label="Add port forward" data-testid="forward-form">
+        <p class="sheet__title">Add port forward</p>
+
+        <div class="forward-kinds" role="group" aria-label="Forward type">
+            @foreach (var kind in Enum.GetValues<SshForwardKind>())
+            {
+                <button type="button" class="btn @(_kind == kind ? "btn--primary" : "btn--ghost")"
+                        data-testid="forward-kind-@kind.ToString().ToLowerInvariant()"
+                        aria-pressed="@(_kind == kind ? "true" : "false")"
+                        @onclick="() => SelectKind(kind)">@KindLabel(kind)</button>
+            }
+        </div>
+
+        <div class="stack">
+            <label class="field">
+                <span class="field__label">@ListenLabel</span>
+                <input class="field__input mono" data-testid="forward-bind"
+                       autocomplete="off" autocapitalize="none" spellcheck="false"
+                       @bind="_bind" @bind:event="oninput" />
+                @if (_kind is SshForwardKind.Local or SshForwardKind.Socks)
+                {
+                    <span class="field__hint">Use 127.0.0.1 unless other devices should be able to connect.</span>
+                }
+            </label>
+
+            <label class="field">
+                <span class="field__label">Listen port</span>
+                <input class="field__input mono" type="number" min="0" max="65535" inputmode="numeric"
+                       data-testid="forward-listen-port" @bind="_listenPort" />
+                <span class="field__hint">Port 0 asks the OS/server to choose an available port.</span>
+            </label>
+
+            @if (_kind != SshForwardKind.Socks)
+            {
+                <label class="field">
+                    <span class="field__label">@DestinationHostLabel</span>
+                    <input class="field__input mono" data-testid="forward-destination-host"
+                           autocomplete="off" autocapitalize="none" spellcheck="false"
+                           @bind="_destinationHost" @bind:event="oninput" />
+                </label>
+                <label class="field">
+                    <span class="field__label">Destination port</span>
+                    <input class="field__input mono" type="number" min="1" max="65535" inputmode="numeric"
+                           data-testid="forward-destination-port" @bind="_destinationPort" />
+                </label>
+            }
+
+            @if (_kind is SshForwardKind.Local or SshForwardKind.Socks)
+            {
+                <label class="forward-option">
+                    <input type="checkbox" data-testid="forward-public-bind" @bind="_allowNonLoopback" />
+                    <span>
+                        <strong>Allow non-loopback bind</strong>
+                        <small>Only enable this intentionally. It can expose the forwarded service to your local network.</small>
+                    </span>
+                </label>
+            }
+
+            @if (_kind == SshForwardKind.Socks)
+            {
+                <label class="forward-option">
+                    <input type="checkbox" data-testid="forward-socks-auth" @bind="_socksAuth" />
+                    <span>
+                        <strong>Require SOCKS authentication</strong>
+                        <small>Recommended. MeowSSH generates credentials for this running proxy.</small>
+                    </span>
+                </label>
+            }
+
+            @if (_validation is not null)
+            {
+                <p class="field__error" role="alert" data-testid="forward-validation">@_validation</p>
+            }
+
+            <button type="button" class="btn btn--primary btn--block" data-testid="start-forward"
+                    disabled="@_starting" @onclick="StartForwardAsync">
+                @(_starting ? "Starting…" : "Start forward")
+            </button>
+            <button type="button" class="btn btn--ghost btn--block" disabled="@_starting"
+                    @onclick="CancelAdd">Cancel</button>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public string HostLabel { get; set; } = "";
+    [Parameter, EditorRequired] public IReadOnlyList<ForwardInfo> Forwards { get; set; } = [];
+    [Parameter] public EventCallback<ForwardRequest> OnStart { get; set; }
+    [Parameter] public EventCallback<ForwardStopRequest> OnStop { get; set; }
+    [Parameter] public EventCallback OnClosed { get; set; }
+
+    private bool _adding;
+    private bool _starting;
+    private SshForwardKind _kind = SshForwardKind.Local;
+    private string _bind = "127.0.0.1";
+    private int _listenPort;
+    private string _destinationHost = "127.0.0.1";
+    private int _destinationPort = 80;
+    private bool _allowNonLoopback;
+    private bool _socksAuth = true;
+    private string? _validation;
+
+    private string ListenLabel => _kind == SshForwardKind.Remote ? "Remote bind address" : "Local bind address";
+    private string DestinationHostLabel => _kind == SshForwardKind.Remote ? "Local destination host" : "Remote destination host";
+
+    private void StartAdd()
+    {
+        _adding = true;
+        _validation = null;
+    }
+
+    private void CancelAdd()
+    {
+        _adding = false;
+        _validation = null;
+    }
+
+    private void SelectKind(SshForwardKind kind)
+    {
+        _kind = kind;
+        _validation = null;
+        _bind = kind == SshForwardKind.Remote ? "127.0.0.1" : "127.0.0.1";
+    }
+
+    private async Task StartForwardAsync()
+    {
+        _validation = Validate();
+        if (_validation is not null) return;
+
+        _starting = true;
+        try
+        {
+            var listen = Address(_bind.Trim(), _listenPort);
+            var destination = _kind == SshForwardKind.Socks
+                ? null
+                : Address(_destinationHost.Trim(), _destinationPort);
+            await OnStart.InvokeAsync(new ForwardRequest(
+                _kind,
+                listen,
+                destination,
+                _allowNonLoopback,
+                _socksAuth));
+            _adding = false;
+        }
+        finally
+        {
+            _starting = false;
+        }
+    }
+
+    private string? Validate()
+    {
+        if (string.IsNullOrWhiteSpace(_bind)) return "Enter a bind address.";
+        if (_listenPort is < 0 or > 65535) return "Listen port must be between 0 and 65535.";
+        if (_kind != SshForwardKind.Socks)
+        {
+            if (string.IsNullOrWhiteSpace(_destinationHost)) return "Enter a destination host.";
+            if (_destinationPort is < 1 or > 65535) return "Destination port must be between 1 and 65535.";
+        }
+        if (_kind is SshForwardKind.Local or SshForwardKind.Socks
+            && !_allowNonLoopback
+            && !IsLoopback(_bind.Trim()))
+            return "Enable non-loopback binding before listening on an address other than localhost.";
+        return null;
+    }
+
+    private static bool IsLoopback(string value) =>
+        value.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase)
+        || value.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+        || value.Equals("::1", StringComparison.OrdinalIgnoreCase)
+        || value.Equals("[::1]", StringComparison.OrdinalIgnoreCase);
+
+    private static string Address(string host, int port)
+    {
+        if (host.StartsWith('[', StringComparison.Ordinal)) return $"{host}:{port}";
+        return host.Contains(':', StringComparison.Ordinal) ? $"[{host}]:{port}" : $"{host}:{port}";
+    }
+
+    private static string KindLabel(SshForwardKind kind) => kind switch
+    {
+        SshForwardKind.Local => "Local (-L)",
+        SshForwardKind.Remote => "Remote (-R)",
+        SshForwardKind.Socks => "SOCKS5 (-D)",
+        _ => kind.ToString(),
+    };
+}
