@@ -24,7 +24,7 @@ namespace MeowSSH.Core.Storage;
 public sealed record VaultDocument
 {
     /// <summary>The only schema this build writes. A newer file is refused rather than guessed at.</summary>
-    public const int SchemaVersion = 1;
+    public const int SchemaVersion = 2;
 
     /// <summary>
     /// Identifies the device that wrote this vault, so sync can break ties between
@@ -56,14 +56,6 @@ public sealed record VaultDocument
     public IReadOnlyList<CredentialRecord> LiveCredentials =>
         [.. Credentials.Where(c => !c.IsDeleted).OrderBy(c => c.Label)];
 
-    /// <summary>
-    /// Replaces a host, or adds it, stamping the sync bookkeeping.
-    /// </summary>
-    /// <remarks>
-    /// The caller never sets <see cref="HostRecord.Revision"/> itself. A revision
-    /// assigned anywhere but here would eventually be assigned twice, and two
-    /// rows claiming the same revision is exactly the case sync cannot resolve.
-    /// </remarks>
     public VaultDocument WithHost(HostRecord host, DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(host);
@@ -77,14 +69,6 @@ public sealed record VaultDocument
         return this with { Hosts = Replace(Hosts, stamped, h => h.Id == host.Id) };
     }
 
-    /// <summary>
-    /// Marks a host deleted rather than removing it.
-    /// </summary>
-    /// <remarks>
-    /// A row that simply vanished is indistinguishable from one that never
-    /// reached this device, so a sync would helpfully restore it. The tombstone
-    /// says "gone on purpose".
-    /// </remarks>
     public VaultDocument WithoutHost(Guid hostId, DateTimeOffset now)
     {
         var existing = Hosts.FirstOrDefault(h => h.Id == hostId);
@@ -109,7 +93,7 @@ public sealed record VaultDocument
             UpdatedAt = now,
             OriginDeviceId = DeviceId,
         };
-        return this with { Credentials = Replace(Credentials, stamped, c => c.Id == credential.Id) };
+        return this with { Credentials = Replace(Credentials, stamped, h => h.Id == credential.Id) };
     }
 
     public VaultDocument WithoutCredential(Guid credentialId, DateTimeOffset now)
@@ -118,8 +102,6 @@ public sealed record VaultDocument
         if (existing is null || existing.IsDeleted) return this;
         var tombstone = existing with
         {
-            // The secret goes now, not when the tombstone is eventually pruned.
-            // A deleted key that is still readable on disk is the whole problem.
             Secret = [],
             Passphrase = null,
             DeletedAt = now,
@@ -127,7 +109,7 @@ public sealed record VaultDocument
             UpdatedAt = now,
             OriginDeviceId = DeviceId,
         };
-        return this with { Credentials = Replace(Credentials, tombstone, c => c.Id == credentialId) };
+        return this with { Credentials = Replace(Credentials, tombstone, h => h.Id == credentialId) };
     }
 
     public VaultDocument WithWrappedKey(WrappedVaultKey key)
