@@ -1,6 +1,7 @@
 @implements IDisposable
 @inject ITailcatHubService Hub
 
+<link rel="stylesheet" href="_content/MeowSSH.UI/css/tailcat.css" />
 <section class="tailcat-page" data-testid="tailcat-page">
     <div class="segmented tailcat-sections" role="tablist" aria-label="Tailcat tools">
         @foreach (var section in Sections)
@@ -13,13 +14,25 @@
         }
     </div>
 
-    @switch (_section)
+    @if (_section == "phone")
     {
-        case "phone": <TailcatPhonePanel /> break;
-        case "connect": <TailcatConnectPanel /> break;
-        case "transfers": <TailcatTransfersPanel /> break;
-        case "keys": <TailcatKeysPanel /> break;
-        default: <TailcatDiagnosticsPanel /> break;
+        <TailcatPhonePanel />
+    }
+    else if (_section == "connect")
+    {
+        <TailcatConnectPanel />
+    }
+    else if (_section == "transfers")
+    {
+        <TailcatTransfersPanel />
+    }
+    else if (_section == "keys")
+    {
+        <TailcatKeysPanel />
+    }
+    else
+    {
+        <TailcatDiagnosticsPanel />
     }
 
     @if (_snapshot.RecentLogLines.Count > 0)
