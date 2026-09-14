@@ -9,7 +9,7 @@ public static class SshKeyGenerator
 {
     public static GeneratedSshKey GenerateRsa(string? comment = null, int keySize = 3072)
     {
-        if (keySize < 2048) throw new ArgumentOutOfRangeException(nameof(keySize));
+        ArgumentOutOfRangeException.ThrowIfLessThan(keySize, 2048);
 
         using var rsa = RSA.Create(keySize);
         var privateKey = rsa.ExportPkcs8PrivateKeyPem();
