@@ -1,0 +1,63 @@
+@inject ITailcatHubService Hub
+
+<div class="tailcat-stack">
+    @if (_error is not null) { <p class="lock__error" role="alert">@_error</p> }
+    <article class="tailcat-card">
+        <h2>Generate identity</h2>
+        <div class="form__row">
+            <label class="field field--grow"><span class="field__label">Name</span><input class="field__input mono" data-testid="tailcat-key-name" @bind="_name" /></label>
+            <label class="field field--grow"><span class="field__label">Type</span><select class="field__input" data-testid="tailcat-key-type" @bind="_client"><option value="false">Server</option><option value="true">Client</option></select></label>
+        </div>
+        <label class="field"><span class="field__label">DERP region</span><input class="field__input mono" placeholder="auto" data-testid="tailcat-key-region" @bind="_region" /><span class="field__hint">Optional ID, code, substring, or custom hostname.</span></label>
+        <label class="forward-option"><input type="checkbox" @bind="_fixedRegion" /><span><strong>Fix region now</strong><small>Bake the selected or nearest relay into the generated identity.</small></span></label>
+        <label class="forward-option"><input type="checkbox" @bind="_embedDerp" /><span><strong>Embed DERP map</strong><small>Make a self-contained address that does not need a DERP-map lookup.</small></span></label>
+        <button class="btn btn--primary btn--block" disabled="@(_busy || string.IsNullOrWhiteSpace(_name))" data-testid="tailcat-generate-key" @onclick="GenerateAsync">Generate</button>
+        @if (_generated is not null) { <p class="note mono tailcat-break" data-testid="tailcat-generated-key">@_generated.Value</p> }
+    </article>
+
+    <article class="tailcat-card">
+        <h2>Saved identities</h2>
+        <button class="btn btn--ghost btn--block" disabled="@_busy" data-testid="tailcat-refresh-keys" @onclick="ReloadAsync">Refresh</button>
+        @foreach (var key in _keys)
+        {
+            <div class="tailcat-running-row" data-testid="tailcat-key-row"><strong class="mono">@key</strong><button class="btn btn--icon" aria-label="Delete Tailcat key" @onclick="() => DeleteAsync(key)"><Icon Name="trash" /></button></div>
+        }
+        <label class="field"><span class="field__label">Client key name</span><input class="field__input mono" placeholder="client-default" data-testid="tailcat-public-key-name" @bind="_publicName" /></label>
+        <button class="btn btn--ghost btn--block" disabled="@_busy" data-testid="tailcat-show-public-key" @onclick="ShowPublicAsync">Show public key</button>
+        @if (_publicKey is not null) { <p class="note mono tailcat-break" data-testid="tailcat-public-key">@_publicKey</p> }
+    </article>
+</div>
+
+@code {
+    private IReadOnlyList<string> _keys = [];
+    private string _name = "";
+    private bool _client;
+    private string _region = "";
+    private bool _fixedRegion;
+    private bool _embedDerp;
+    private TailcatGeneratedKey? _generated;
+    private string _publicName = "";
+    private string? _publicKey;
+    private bool _busy;
+    private string? _error;
+
+    protected override Task OnInitializedAsync() => ReloadAsync();
+
+    private async Task ReloadAsync() => await RunAsync(async () => _keys = await Hub.ListKeysAsync());
+    private async Task GenerateAsync() => await RunAsync(async () =>
+    {
+        _generated = await Hub.GenerateKeyAsync(new TailcatGenerateKeyRequest(_name, _client, Empty(_region), _fixedRegion, _embedDerp));
+        _keys = await Hub.ListKeysAsync();
+    });
+    private async Task DeleteAsync(string name) => await RunAsync(async () => { await Hub.DeleteKeyAsync(name); _keys = await Hub.ListKeysAsync(); });
+    private async Task ShowPublicAsync() => await RunAsync(async () => _publicKey = await Hub.GetClientPublicKeyAsync(Empty(_publicName)));
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        if (_busy) return;
+        _busy = true; _error = null;
+        try { await action(); } catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+    private static string? Empty(string value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+}
