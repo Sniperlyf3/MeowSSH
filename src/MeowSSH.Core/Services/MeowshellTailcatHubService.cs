@@ -86,6 +86,7 @@ public sealed class MeowshellTailcatHubService : ITailcatHubService
                 request.EnableFiles,
                 request.EnableExitNode,
                 request.AllowAnyClient,
+                request.InsecureShell,
                 request.EnableFiles ? request.SharedFolder!.Trim() : null,
                 request.FileMode);
             server.Log += AddLog;
