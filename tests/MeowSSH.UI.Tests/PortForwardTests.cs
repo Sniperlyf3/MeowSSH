@@ -55,6 +55,42 @@ public class PortForwardTests(TestHostFixture fixture)
     }
 
     [Fact]
+    public async Task SocksForwardCanUseCustomCredentials()
+    {
+        var page = await OpenForwardsAsync();
+        var workspace = page.Locator(".session-workspace.is-active");
+
+        await workspace.GetByTestId("add-first-forward").ClickAsync();
+        await workspace.GetByTestId("forward-kind-socks").ClickAsync();
+        await workspace.GetByTestId("forward-custom-socks-auth").CheckAsync();
+        await workspace.GetByTestId("forward-socks-username").FillAsync("cat-user");
+        await workspace.GetByTestId("forward-socks-password").FillAsync("cat-secret");
+        await workspace.GetByTestId("forward-max-connections").FillAsync("12");
+        await workspace.GetByTestId("start-forward").ClickAsync();
+
+        await Assertions.Expect(workspace.GetByTestId("socks-credentials")).ToContainTextAsync("cat-user");
+        await Assertions.Expect(workspace.GetByTestId("socks-credentials")).ToContainTextAsync("cat-secret");
+    }
+
+    [Fact]
+    public async Task LocalForwardCanListenOnAUnixSocket()
+    {
+        var page = await OpenForwardsAsync();
+        var workspace = page.Locator(".session-workspace.is-active");
+
+        await workspace.GetByTestId("add-first-forward").ClickAsync();
+        await workspace.GetByTestId("forward-unix-socket").CheckAsync();
+        await workspace.GetByTestId("forward-socket-path").FillAsync("/tmp/meowssh-db.sock");
+        await workspace.GetByTestId("forward-destination-host").FillAsync("db.internal");
+        await workspace.GetByTestId("forward-destination-port").FillAsync("5432");
+        await workspace.GetByTestId("start-forward").ClickAsync();
+
+        var row = workspace.GetByTestId("forward-row");
+        await Assertions.Expect(row).ToContainTextAsync("/tmp/meowssh-db.sock");
+        await Assertions.Expect(row).ToContainTextAsync("db.internal:5432");
+    }
+
+    [Fact]
     public async Task RemoteForwardCanBeStartedAlongsideOtherForwards()
     {
         var page = await OpenForwardsAsync();
