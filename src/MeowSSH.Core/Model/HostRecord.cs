@@ -1,6 +1,16 @@
 namespace MeowSSH.Core.Model;
 
-/// <summary>How MeowSSH reaches a host.</summary>
+/// <summary>The terminal protocol used for a saved connection.</summary>
+public enum HostProtocol
+{
+    Ssh,
+    Mosh,
+    Telnet,
+    Serial,
+    Local,
+}
+
+/// <summary>How MeowSSH reaches an SSH or Mosh host.</summary>
 public enum SshTransport
 {
     /// <summary>An ordinary SSH server reached over TCP.</summary>
@@ -28,39 +38,31 @@ public enum ConnectionState
     Error,
 }
 
-/// <summary>
-/// A saved host.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Every field that sync will eventually need is already here, because adding
-/// them later would mean migrating a database whose rows are encrypted and whose
-/// only copy may be on a device that is offline. <see cref="Revision"/> and
-/// <see cref="UpdatedAt"/> let two devices decide which edit won;
-/// <see cref="OriginDeviceId"/> breaks ties between edits made in the same
-/// instant; <see cref="DeletedAt"/> is a tombstone, because a row that simply
-/// vanished is indistinguishable from one that never synced.
-/// </para>
-/// <para>
-/// Nothing here is secret. Credentials live in their own records, sealed
-/// separately, so listing hosts never requires unsealing a password.
-/// </para>
-/// </remarks>
+/// <summary>A saved host or terminal endpoint.</summary>
 public sealed record HostRecord
 {
     public required Guid Id { get; init; }
 
-    /// <summary>What the user calls this host.</summary>
+    /// <summary>What the user calls this endpoint.</summary>
     public required string Label { get; init; }
 
-    /// <summary>Hostname, IP, or tailcat address, depending on <see cref="Transport"/>.</summary>
+    /// <summary>
+    /// Hostname, IP, tailcat address, or serial-device identifier depending on
+    /// <see cref="Protocol"/> and <see cref="Transport"/>. Local terminals leave it empty.
+    /// </summary>
     public required string Address { get; init; }
 
     public int Port { get; init; } = 22;
 
     public string? Username { get; init; }
 
+    /// <summary>The terminal protocol. Older vaults migrate to SSH.</summary>
+    public HostProtocol Protocol { get; init; } = HostProtocol.Ssh;
+
     public SshTransport Transport { get; init; } = SshTransport.Tcp;
+
+    /// <summary>Automatically reconnect after an unexpected network/session loss.</summary>
+    public bool AutoReconnect { get; init; } = true;
 
     /// <summary>Free-form labels the user groups hosts by.</summary>
     public IReadOnlyList<string> Tags { get; init; } = [];
@@ -68,14 +70,7 @@ public sealed record HostRecord
     /// <summary>Id of the host this one is reached through, if it sits behind a bastion.</summary>
     public Guid? JumpHostId { get; init; }
 
-    /// <summary>
-    /// The credential this host signs in with, if one has been chosen.
-    /// </summary>
-    /// <remarks>
-    /// A reference rather than the secret itself: one deploy key across a fleet is
-    /// the normal case, and copying it into every host would mean rotating it in
-    /// as many places as there are servers.
-    /// </remarks>
+    /// <summary>The credential this host signs in with, if one has been chosen.</summary>
     public Guid? CredentialId { get; init; }
 
     public DateTimeOffset? LastConnectedAt { get; init; }
@@ -89,14 +84,18 @@ public sealed record HostRecord
 
     public bool IsDeleted => DeletedAt is not null;
 
-    /// <summary>
-    /// How this host is written in the places SSH itself writes it, e.g.
-    /// <c>deploy@build-01:2222</c>.
-    /// </summary>
-    public string DisplayAddress => Transport switch
+    /// <summary>Human-readable endpoint shown in lists and session headers.</summary>
+    public string DisplayAddress => Protocol switch
     {
-        SshTransport.Tailcat => Address.Length > 22 ? string.Concat(Address.AsSpan(0, 20), "…") : Address,
-        _ => (Username is null ? Address : $"{Username}@{Address}") + (Port == 22 ? "" : $":{Port}"),
+        HostProtocol.Local => "Local terminal",
+        HostProtocol.Serial => string.IsNullOrWhiteSpace(Address) ? "USB serial" : Address,
+        HostProtocol.Telnet => Address + (Port == 23 ? "" : $":{Port}"),
+        HostProtocol.Mosh => (Username is null ? Address : $"{Username}@{Address}") + (Port == 22 ? "" : $":{Port}"),
+        _ => Transport switch
+        {
+            SshTransport.Tailcat => Address.Length > 22 ? string.Concat(Address.AsSpan(0, 20), "…") : Address,
+            _ => (Username is null ? Address : $"{Username}@{Address}") + (Port == 22 ? "" : $":{Port}"),
+        },
     };
 
     /// <summary>Two letters for the host's avatar, taken from its label.</summary>
