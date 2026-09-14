@@ -12,25 +12,31 @@ public class MultiSessionTests(TestHostFixture fixture)
         return page;
     }
 
+    private static ILocator ActiveWorkspace(IPage page) =>
+        page.Locator(".session-workspace.is-active");
+
     [Fact]
     public async Task OpeningAnotherHostKeepsTheFirstSessionAsATab()
     {
         var page = await OpenMultiAsync();
 
         await page.GetByTestId("host-row").Filter(new() { HasText = "prod-web-01" }).ClickAsync();
-        await Assertions.Expect(page.GetByTestId("session-tabs")).ToBeVisibleAsync();
-        await Assertions.Expect(page.GetByTestId("session-tab")).ToHaveCountAsync(1);
+        var workspace = ActiveWorkspace(page);
+        await Assertions.Expect(workspace.GetByTestId("session-tabs")).ToBeVisibleAsync();
+        await Assertions.Expect(workspace.GetByTestId("session-tab")).ToHaveCountAsync(1);
 
-        await page.GetByTestId("new-session-tab").ClickAsync();
-        await Assertions.Expect(page.GetByTestId("resume-sessions")).ToContainTextAsync("1 open session");
+        await workspace.GetByTestId("new-session-tab").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("resume-sessions")).ToContainTextAsync("Return to open session");
 
         await page.GetByTestId("host-row").Filter(new() { HasText = "build-runner" }).ClickAsync();
-        await Assertions.Expect(page.GetByTestId("session-tab")).ToHaveCountAsync(2);
-        await Assertions.Expect(page.GetByTestId("session")).ToContainTextAsync("build-runner");
+        workspace = ActiveWorkspace(page);
+        await Assertions.Expect(workspace.GetByTestId("session-tab")).ToHaveCountAsync(2);
+        await Assertions.Expect(workspace.GetByTestId("session")).ToContainTextAsync("build-runner");
 
-        await page.GetByTestId("session-tab").Filter(new() { HasText = "prod-web-01" }).ClickAsync();
-        await Assertions.Expect(page.GetByTestId("session")).ToContainTextAsync("prod-web-01");
-        await Assertions.Expect(page.GetByTestId("session-tab")).ToHaveCountAsync(2);
+        await workspace.GetByTestId("session-tab").Filter(new() { HasText = "prod-web-01" }).ClickAsync();
+        workspace = ActiveWorkspace(page);
+        await Assertions.Expect(workspace.GetByTestId("session")).ToContainTextAsync("prod-web-01");
+        await Assertions.Expect(workspace.GetByTestId("session-tab")).ToHaveCountAsync(2);
     }
 
     [Fact]
@@ -39,16 +45,19 @@ public class MultiSessionTests(TestHostFixture fixture)
         var page = await OpenMultiAsync();
 
         await page.GetByTestId("host-row").Filter(new() { HasText = "prod-web-01" }).ClickAsync();
-        await Assertions.Expect(page.GetByTestId("terminal")).ToBeVisibleAsync();
+        var workspace = ActiveWorkspace(page);
+        await Assertions.Expect(workspace.GetByTestId("terminal")).ToBeVisibleAsync();
 
-        await page.GetByTestId("toggle-session-view").ClickAsync();
-        await Assertions.Expect(page.GetByTestId("files")).ToBeVisibleAsync();
-        await Assertions.Expect(page.GetByTestId("session-tab").First).ToContainTextAsync("Files");
+        await workspace.GetByTestId("toggle-session-view").ClickAsync();
+        workspace = ActiveWorkspace(page);
+        await Assertions.Expect(workspace.GetByTestId("files")).ToBeVisibleAsync();
+        await Assertions.Expect(workspace.GetByTestId("session-tab").First).ToContainTextAsync("Files");
 
-        await page.GetByTestId("toggle-session-view").ClickAsync();
-        await Assertions.Expect(page.GetByTestId("terminal")).ToBeVisibleAsync();
-        await Assertions.Expect(page.GetByTestId("session-tab").First).ToContainTextAsync("SSH");
-        await Assertions.Expect(page.GetByTestId("session-tab")).ToHaveCountAsync(1);
+        await workspace.GetByTestId("toggle-session-view").ClickAsync();
+        workspace = ActiveWorkspace(page);
+        await Assertions.Expect(workspace.GetByTestId("terminal")).ToBeVisibleAsync();
+        await Assertions.Expect(workspace.GetByTestId("session-tab").First).ToContainTextAsync("SSH");
+        await Assertions.Expect(workspace.GetByTestId("session-tab")).ToHaveCountAsync(1);
     }
 
     [Fact]
@@ -57,14 +66,15 @@ public class MultiSessionTests(TestHostFixture fixture)
         var page = await OpenMultiAsync();
 
         await page.GetByTestId("host-row").Filter(new() { HasText = "prod-web-01" }).ClickAsync();
-        await page.GetByTestId("session-back").ClickAsync();
+        await ActiveWorkspace(page).GetByTestId("session-back").ClickAsync();
 
         await Assertions.Expect(page.GetByTestId("host-list").First).ToBeVisibleAsync();
         await Assertions.Expect(page.GetByTestId("resume-sessions")).ToContainTextAsync("Return to open session");
 
         await page.GetByTestId("resume-sessions").ClickAsync();
-        await Assertions.Expect(page.GetByTestId("session-tabs")).ToBeVisibleAsync();
-        await Assertions.Expect(page.GetByTestId("session")).ToContainTextAsync("prod-web-01");
+        var workspace = ActiveWorkspace(page);
+        await Assertions.Expect(workspace.GetByTestId("session-tabs")).ToBeVisibleAsync();
+        await Assertions.Expect(workspace.GetByTestId("session")).ToContainTextAsync("prod-web-01");
     }
 
     [Fact]
@@ -73,15 +83,17 @@ public class MultiSessionTests(TestHostFixture fixture)
         var page = await OpenMultiAsync();
 
         await page.GetByTestId("host-row").Filter(new() { HasText = "prod-web-01" }).ClickAsync();
-        await page.GetByTestId("new-session-tab").ClickAsync();
+        await ActiveWorkspace(page).GetByTestId("new-session-tab").ClickAsync();
         await page.GetByTestId("host-row").Filter(new() { HasText = "build-runner" }).ClickAsync();
-        await Assertions.Expect(page.GetByTestId("session-tab")).ToHaveCountAsync(2);
+        var workspace = ActiveWorkspace(page);
+        await Assertions.Expect(workspace.GetByTestId("session-tab")).ToHaveCountAsync(2);
 
-        await page.GetByTestId("close-session-tab").Last.ClickAsync();
-        await Assertions.Expect(page.GetByTestId("session-tab")).ToHaveCountAsync(1);
-        await Assertions.Expect(page.GetByTestId("session")).ToContainTextAsync("prod-web-01");
+        await workspace.GetByTestId("close-session-tab").Last.ClickAsync();
+        workspace = ActiveWorkspace(page);
+        await Assertions.Expect(workspace.GetByTestId("session-tab")).ToHaveCountAsync(1);
+        await Assertions.Expect(workspace.GetByTestId("session")).ToContainTextAsync("prod-web-01");
 
-        await page.GetByTestId("close-session-tab").First.ClickAsync();
+        await workspace.GetByTestId("close-session-tab").First.ClickAsync();
         await Assertions.Expect(page.GetByTestId("host-list").First).ToBeVisibleAsync();
         await Assertions.Expect(page.GetByTestId("session-tabs")).ToHaveCountAsync(0);
     }
