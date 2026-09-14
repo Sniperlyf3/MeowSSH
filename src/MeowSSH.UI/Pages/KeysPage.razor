@@ -264,7 +264,7 @@
                 Username = string.IsNullOrWhiteSpace(_username) ? null : _username.Trim(),
                 Secret = _kind == CredentialKind.PublicKey ? [] : Encoding.UTF8.GetBytes(_secret),
                 Passphrase = _kind == CredentialKind.PrivateKey && _passphrase.Length > 0 ? Encoding.UTF8.GetBytes(_passphrase) : null,
-                PublicKey = _kind is CredentialKind.PrivateKey or CredentialKind.PublicKey && !string.IsNullOrWhiteSpace(_publicKey)
+                PublicKey = (_kind is CredentialKind.PrivateKey or CredentialKind.PublicKey) && !string.IsNullOrWhiteSpace(_publicKey)
                     ? _publicKey.Trim()
                     : null,
             });
