@@ -67,7 +67,7 @@ public sealed class MeowshellTailcatHubService : ITailcatHubService
                 WorkDirectory = _runtime.WorkDirectory,
                 DerpMapUrl = _runtime.DerpMapUrl,
                 Lifetime = request.Lifetime,
-                AllowClientKeys = request.AllowedClientKeys.Trim(),
+                AllowClientKeys = request.AllowAnyClient ? null : request.AllowedClientKeys.Trim(),
                 AuthorizedKeys = request.EnableShell ? request.AuthorizedSshKeys!.Trim() : null,
                 Files = files,
                 AllowExitNode = request.EnableExitNode,
@@ -84,6 +84,7 @@ public sealed class MeowshellTailcatHubService : ITailcatHubService
                 request.EnableShell,
                 request.EnableFiles,
                 request.EnableExitNode,
+                request.AllowAnyClient,
                 request.EnableFiles ? request.SharedFolder!.Trim() : null,
                 request.FileMode);
             server.Log += AddLog;
@@ -361,11 +362,16 @@ public sealed class MeowshellTailcatHubService : ITailcatHubService
             throw new ArgumentOutOfRangeException(nameof(request), "Tailcat sharing lifetime must be between 1 second and 24 hours.");
         if (!request.EnableShell && !request.EnableFiles && !request.EnableExitNode)
             throw new ArgumentException("Enable at least one Tailcat service.", nameof(request));
-        if (string.IsNullOrWhiteSpace(request.AllowedClientKeys))
-            throw new ArgumentException("At least one allowed Tailcat client key is required.", nameof(request));
-        var keys = request.AllowedClientKeys.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (keys.Length == 0 || keys.Any(key => !key.StartsWith("nodekey:", StringComparison.Ordinal)))
-            throw new ArgumentException("Allowed clients must be comma-separated nodekey: public keys.", nameof(request));
+        if (request.AllowAnyClient && !request.EnableExitNode)
+            throw new ArgumentException("Insecure Tailcat client mode is only available when exit-node mode is enabled.", nameof(request));
+        if (!request.AllowAnyClient)
+        {
+            if (string.IsNullOrWhiteSpace(request.AllowedClientKeys))
+                throw new ArgumentException("At least one allowed Tailcat client key is required unless insecure mode is explicitly enabled.", nameof(request));
+            var keys = request.AllowedClientKeys.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (keys.Length == 0 || keys.Any(key => !key.StartsWith("nodekey:", StringComparison.Ordinal)))
+                throw new ArgumentException("Allowed clients must be comma-separated nodekey: public keys.", nameof(request));
+        }
         if (request.EnableShell && string.IsNullOrWhiteSpace(request.AuthorizedSshKeys))
             throw new ArgumentException("Shell sharing requires at least one authorized SSH key.", nameof(request));
         if (request.EnableFiles && string.IsNullOrWhiteSpace(request.SharedFolder))
