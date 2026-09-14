@@ -3,16 +3,28 @@ using MeowSSH.Core.Security;
 namespace MeowSSH.Core.Ssh;
 
 /// <summary>
-/// The key material offered for one connection attempt.
+/// The authentication material offered for one connection attempt.
 /// </summary>
 /// <remarks>
-/// Passed per connection rather than configured on the engine, because keys come
-/// out of the vault and should exist in memory only for as long as the handshake
-/// needs them. The caller owns this and should dispose it as soon as the
-/// connection is established.
+/// Passed per connection rather than configured on the engine, because secrets
+/// come out of the vault and should exist in memory only for as long as the
+/// handshake needs them. The caller owns this and should dispose it as soon as
+/// the connection is established.
 /// </remarks>
 public sealed class SshCredentials : IDisposable
 {
+    /// <summary>
+    /// Username attached to the selected credential. When present it takes
+    /// precedence over the host's own username for this connection.
+    /// </summary>
+    public string? Username { get; init; }
+
+    /// <summary>Stored password for password authentication.</summary>
+    public SecretBuffer? Password { get; init; }
+
+    /// <summary>Passphrase for an encrypted private key, when one is stored.</summary>
+    public SecretBuffer? KeyPassphrase { get; init; }
+
     /// <summary>Private keys in OpenSSH format, decrypted from the vault.</summary>
     public IReadOnlyList<SecretBuffer> PrivateKeys { get; init; } = [];
 
@@ -30,7 +42,7 @@ public sealed class SshCredentials : IDisposable
 
     public IReadOnlyList<byte[]> KeyStorePublicKeys { get; init; } = [];
 
-    /// <summary>Offers no keys; auth falls to a password or a challenge.</summary>
+    /// <summary>Offers no stored authentication material.</summary>
     public static SshCredentials None { get; } = new();
 
     /// <summary>Reads an OpenSSH private key file into a credential set.</summary>
@@ -39,6 +51,8 @@ public sealed class SshCredentials : IDisposable
 
     public void Dispose()
     {
+        Password?.Dispose();
+        KeyPassphrase?.Dispose();
         foreach (var key in PrivateKeys) key.Dispose();
     }
 }
