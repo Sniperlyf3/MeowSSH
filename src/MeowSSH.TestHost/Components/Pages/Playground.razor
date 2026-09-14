@@ -20,7 +20,11 @@
     <span data-testid="interactive" hidden></span>
 }
 
-@if (_setup)
+@if (_multi)
+{
+    <AppRoot />
+}
+else if (_setup)
 {
     <VaultSetupScreen OnReady="() => { _setup = false; _unlocked = true; }" />
 }
@@ -64,6 +68,7 @@ else
     [Inject] private NavigationManager Navigation { get; set; } = default!;
     [Inject] private FakeVaultSession Vault { get; set; } = default!;
 
+    private bool _multi;
     private bool _unlocked;
     private bool _setup;
     private bool _editing;
@@ -79,17 +84,15 @@ else
     protected override void OnInitialized()
     {
         var query = new Uri(Navigation.Uri).Query;
-        _setup = query.Contains("setup", StringComparison.OrdinalIgnoreCase);
-        // The session has to agree with the screen: rendering the setup screen
-        // against a vault that reports itself as merely locked makes "create"
-        // answer "a vault already exists" and the flow dead-ends.
-        Vault.Reset(_setup ? VaultState.NotCreated : VaultState.Locked);
-        // "locked" and "setup" are separate scenarios: one is a returning user,
-        // the other a first run, and they are different screens.
-        _unlocked = !_setup && !query.Contains("locked", StringComparison.OrdinalIgnoreCase);
+        _multi = query.Contains("multi", StringComparison.OrdinalIgnoreCase);
+        _setup = !_multi && query.Contains("setup", StringComparison.OrdinalIgnoreCase);
+        // AppRoot owns the vault UI in the multi-session scenario, but starts
+        // unlocked so these tests can focus on session behavior rather than auth.
+        Vault.Reset(_multi ? VaultState.Unlocked : _setup ? VaultState.NotCreated : VaultState.Locked);
+        _unlocked = _multi || (!_setup && !query.Contains("locked", StringComparison.OrdinalIgnoreCase));
         if (query.Contains("keys", StringComparison.OrdinalIgnoreCase)) _tab = "keys";
         if (query.Contains("newhost", StringComparison.OrdinalIgnoreCase)) _editing = true;
-        if (query.Contains("files", StringComparison.OrdinalIgnoreCase))
+        if (!_multi && query.Contains("files", StringComparison.OrdinalIgnoreCase))
             _files = new FilesState(SampleHost, new FakeSftpSession());
     }
 
@@ -109,7 +112,7 @@ else
     // nothing is listening to yet.
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (_session is null || _sessionStarted) return;
+        if (_multi || _session is null || _sessionStarted) return;
         _sessionStarted = true;
         await _session.Shell.StartAsync();
     }

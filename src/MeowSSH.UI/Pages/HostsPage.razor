@@ -13,6 +13,15 @@
     </Actions>
 
     <ChildContent>
+        @if (OpenSessionCount > 0)
+        {
+            <button type="button" class="btn btn--ghost btn--block session-resume"
+                    data-testid="resume-sessions" @onclick="OnOpenSessions">
+                <Icon Name="terminal" />
+                @(OpenSessionCount == 1 ? "Return to open session" : $"Return to {OpenSessionCount} open sessions")
+            </button>
+        }
+
         @if (_hosts is null)
         {
             <p class="visually-hidden" role="status">Loading hosts</p>
@@ -55,12 +64,11 @@
     private IReadOnlyList<HostStatus>? _hosts;
 
     [Parameter] public EventCallback<HostRecord> OnHostSelected { get; set; }
-
     [Parameter] public EventCallback OnAddHost { get; set; }
-
     [Parameter] public EventCallback<HostRecord> OnEditHost { get; set; }
-
     [Parameter] public EventCallback<string> OnTabSelected { get; set; }
+    [Parameter] public int OpenSessionCount { get; set; }
+    [Parameter] public EventCallback OnOpenSessions { get; set; }
 
     protected override async Task OnInitializedAsync()
     {
@@ -75,9 +83,6 @@
 
     private Task Connect(HostRecord host) => OnHostSelected.InvokeAsync(host);
 
-    // Connected hosts first: a session already running is what the user is most
-    // likely coming back to, and burying it under an alphabetical list makes them
-    // hunt for the one row that is actually live.
     private static IEnumerable<IGrouping<string, HostStatus>> Grouped(IReadOnlyList<HostStatus> hosts) =>
         hosts
             .OrderBy(h => h.State == ConnectionState.Connected ? 0 : 1)

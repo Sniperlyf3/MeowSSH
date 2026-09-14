@@ -3,7 +3,7 @@
 <div class="session" data-testid="session">
     <header class="topbar">
         <button type="button" class="btn btn--icon" aria-label="Back to hosts"
-                data-testid="session-back" @onclick="OnClose">
+                data-testid="session-back" @onclick="OnBack">
             <Icon Name="back" />
         </button>
 
@@ -12,6 +12,10 @@
             <span class="session__address">@Host.DisplayAddress</span>
         </span>
 
+        <button type="button" class="btn btn--icon" aria-label="Browse files"
+                data-testid="session-files" disabled="@(!IsConnected)" @onclick="OpenFilesAsync">
+            <Icon Name="folder" />
+        </button>
         <StatusBadge Label="@(IsConnected ? "Connected" : "Disconnected")"
                      Variant="@(IsConnected ? "ok" : "danger")"
                      ShowDot="true" />
@@ -43,12 +47,14 @@
     [Parameter] public EventCallback OnReconnect { get; set; }
     [Parameter] public EventCallback<Exception> OnWriteFailed { get; set; }
     [Parameter] public EventCallback OnClosed { get; set; }
+    [Parameter] public EventCallback OnOpenFiles { get; set; }
 
     private string EffectiveDisconnectMessage =>
-        DisconnectMessage == "_sessionStatus"
+        DisconnectMessage is "_sessionStatus" or "session.Status"
             ? "The SSH session is no longer connected."
             : DisconnectMessage;
 
-    private Task OnClose() => OnClosed.InvokeAsync();
+    private Task OnBack() => OnClosed.InvokeAsync();
     private Task ReconnectAsync() => OnReconnect.InvokeAsync();
+    private Task OpenFilesAsync() => OnOpenFiles.InvokeAsync();
 }
