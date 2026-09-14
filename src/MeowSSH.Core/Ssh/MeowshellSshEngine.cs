@@ -31,8 +31,6 @@ public sealed class MeowshellSshEngine(MeowshellSshEngineOptions options) : ISsh
             HomeDirectory = options.WorkingDirectory,
             Timeout = options.ConnectTimeout,
             Verbose = options.Verbose,
-            // Init-only, so it has to be set here rather than conditionally
-            // afterwards; null means "find the packaged binaries".
             BinaryDirectory = options.BinaryDirectory!,
         };
 
@@ -41,7 +39,7 @@ public sealed class MeowshellSshEngine(MeowshellSshEngineOptions options) : ISsh
         {
             agent = await MeowshellAgentConnection.ConnectAsync(
                 clientOptions,
-                destination: Destination(host),
+                destination: Destination(host, credentials),
                 configure: Configure(credentials),
                 port: host.Transport == SshTransport.Tailcat
                     ? null
@@ -49,13 +47,7 @@ public sealed class MeowshellSshEngine(MeowshellSshEngineOptions options) : ISsh
                 jumpHosts: null,
                 knownHostsPath: options.KnownHostsPath,
                 proxyUrl: options.ProxyUrl,
-                // The handshake raises its prompts inside this call and is over
-                // before it returns, so this callback is the only point at which
-                // handlers can be attached in time to be asked. Subscribing to
-                // the returned object is always too late: the host key question
-                // has already been asked and answered by then -- with silence,
-                // which the agent correctly reads as "cancelled" and refuses.
-                configureConnection: connection => Attach(connection, prompts),
+                configureConnection: connection => Attach(connection, prompts, credentials),
                 cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
 
@@ -68,10 +60,6 @@ public sealed class MeowshellSshEngine(MeowshellSshEngineOptions options) : ISsh
         }
         catch (FileNotFoundException ex)
         {
-            // Its own case, and ahead of IOException because it derives from it:
-            // a missing native binary reported as a storage problem sends anyone
-            // reading it to look in entirely the wrong place. That is exactly
-            // what happened on the first device this ran on.
             if (agent is not null) await agent.DisposeAsync().ConfigureAwait(false);
             throw new SshException(
                 SshFailure.Unknown,
@@ -80,12 +68,6 @@ public sealed class MeowshellSshEngine(MeowshellSshEngineOptions options) : ISsh
         }
         catch (IOException ex)
         {
-            // Meowshell validates the agent's HOME before it starts anything and
-            // reports a refusal as an IOException, which is outside the typed
-            // error model the rest of this method translates. Left to escape it
-            // would surface as an unhandled exception on the connect path rather
-            // than as something the UI can explain. The message does not name a
-            // cause, because this catch covers more than one.
             if (agent is not null) await agent.DisposeAsync().ConfigureAwait(false);
             throw new SshException(
                 SshFailure.Unknown,
@@ -94,17 +76,6 @@ public sealed class MeowshellSshEngine(MeowshellSshEngineOptions options) : ISsh
         }
     }
 
-    /// <summary>
-    /// Creates the agent's HOME so that only this user can reach it.
-    /// </summary>
-    /// <remarks>
-    /// The mode is set explicitly rather than left to the process umask. This
-    /// directory becomes the agent's HOME, which is where known_hosts and any
-    /// session key material live, and Meowshell refuses to launch against a HOME
-    /// that grants group or other access -- correctly, since another local user
-    /// able to write there could redirect host-key verification. Under the usual
-    /// umask of 022 the default would be 0755 and every connection would fail.
-    /// </remarks>
     private static void EnsurePrivateWorkingDirectory(string path)
     {
         const UnixFileMode ownerOnly =
@@ -122,9 +93,6 @@ public sealed class MeowshellSshEngine(MeowshellSshEngineOptions options) : ISsh
             return;
         }
 
-        // An existing directory from an older build was created with the umask
-        // applied, so it may be 0755. Narrowing it is safe and is what the user
-        // would want; leaving it would make every connection fail from here on.
         var mode = File.GetUnixFileMode(path);
         const UnixFileMode sharedAccess =
             UnixFileMode.GroupRead | UnixFileMode.GroupWrite | UnixFileMode.GroupExecute |
@@ -134,25 +102,31 @@ public sealed class MeowshellSshEngine(MeowshellSshEngineOptions options) : ISsh
 
     private MeowshellAgentConfigureOptions Configure(SshCredentials credentials) => new()
     {
-        // There is no ssh-agent on Android, and on a desktop the user's agent is
-        // not this app's to spend: keys come from the vault.
         DisableLocalAgent = true,
         AllowLegacyKeyAlgorithms = options.AllowLegacyKeyAlgorithms,
-        // Copied out of their pinned buffers only here, at the call that needs
-        // them; the caller disposes the originals once the handshake is done.
         PrivateKeys = [.. credentials.PrivateKeys.Select(k => k.ReadOnlySpan.ToArray())],
         Certificates = [.. credentials.Certificates],
         KeystoreKeyIds = [.. credentials.KeyStoreKeyIds],
         KeystorePublicKeys = [.. credentials.KeyStorePublicKeys],
     };
 
-    private static string Destination(HostRecord host) => host.Transport switch
+    private static string Destination(HostRecord host, SshCredentials credentials)
     {
-        SshTransport.Tailcat => host.Address,
-        _ => host.Username is null ? host.Address : $"{host.Username}@{host.Address}",
-    };
+        if (host.Transport == SshTransport.Tailcat) return host.Address;
 
-    private static void Attach(MeowshellAgentConnection agent, ISshPrompts prompts)
+        // A username stored with the selected credential belongs to that
+        // credential and therefore takes precedence over the host-level default.
+        // This lets one credential carry the complete login identity.
+        var username = string.IsNullOrWhiteSpace(credentials.Username)
+            ? host.Username
+            : credentials.Username;
+        return username is null ? host.Address : $"{username}@{host.Address}";
+    }
+
+    private static void Attach(
+        MeowshellAgentConnection agent,
+        ISshPrompts prompts,
+        SshCredentials credentials)
     {
         agent.HostKeyPromptRequested += async (prompt, ct) =>
             await prompts.ConfirmUnknownHostKeyAsync(
@@ -160,18 +134,37 @@ public sealed class MeowshellSshEngine(MeowshellSshEngineOptions options) : ISsh
 
         agent.PasswordRequested += async (prompt, ct) =>
         {
+            if (credentials.Password is { } stored)
+                return SecretToString(stored);
+
             using var secret = await prompts.RequestPasswordAsync(prompt, ct).ConfigureAwait(false);
             return SecretToString(secret);
         };
 
         agent.PassphraseRequested += async ct =>
         {
+            if (credentials.KeyPassphrase is { } stored)
+                return SecretToString(stored);
+
             using var secret = await prompts.RequestKeyPassphraseAsync(ct).ConfigureAwait(false);
             return SecretToString(secret);
         };
 
         agent.KeyboardInteractiveRequested += async (prompt, ct) =>
         {
+            // PAM-backed SSH servers often expose an ordinary password through
+            // keyboard-interactive rather than the SSH password method. Use the
+            // stored password only for the unambiguous single hidden password
+            // question; OTP/MFA challenges must remain interactive.
+            if (credentials.Password is { } stored
+                && prompt.Questions.Count == 1
+                && prompt.Echos.Count == 1
+                && !prompt.Echos[0]
+                && prompt.Questions[0].Contains("password", StringComparison.OrdinalIgnoreCase))
+            {
+                return [SecretToString(stored)];
+            }
+
             var answers = await prompts.AnswerChallengeAsync(
                 new KeyboardInteractivePrompt(prompt.Name, prompt.Instruction, prompt.Questions, prompt.Echos),
                 ct).ConfigureAwait(false);
@@ -179,16 +172,6 @@ public sealed class MeowshellSshEngine(MeowshellSshEngineOptions options) : ISsh
         };
     }
 
-    /// <summary>
-    /// Converts a secret to the string the agent protocol requires, at the last
-    /// possible moment.
-    /// </summary>
-    /// <remarks>
-    /// This is where the buffer discipline ends and cannot be helped: the protocol
-    /// carries the answer as JSON, so it has to become a string, and a .NET string
-    /// cannot be overwritten afterwards. Keeping the conversion here means it
-    /// happens exactly once, at the boundary, rather than throughout the app.
-    /// </remarks>
     private static string SecretToString(SecretBuffer? secret) =>
         secret is null ? "" : System.Text.Encoding.UTF8.GetString(secret.ReadOnlySpan);
 
@@ -209,8 +192,6 @@ public sealed class MeowshellSshEngine(MeowshellSshEngineOptions options) : ISsh
         Describe(ex),
         ex);
 
-    // Written for a person. The engine's own diagnostics are useful in a log and
-    // alarming in a dialog, so they do not go in the message.
     private static string Describe(TailcatException ex) => ex.Code switch
     {
         MeowshellErrorCode.AuthFailed => "The server refused these credentials.",
@@ -224,23 +205,9 @@ public sealed class MeowshellSshEngine(MeowshellSshEngineOptions options) : ISsh
         MeowshellErrorCode.PermissionDenied => "The server denied permission.",
         MeowshellErrorCode.NotFound => "Not found on the server.",
         MeowshellErrorCode.Cancelled => "Cancelled.",
-
-        // The one case with nothing better to say, and so the one case where
-        // the engine's own words have to be passed through. Replacing them with
-        // "The connection failed." leaves the user with nothing to act on and
-        // whoever is helping them with nothing to go on -- which is worse than a
-        // sentence written for a different audience.
         _ => Unexplained(ex),
     };
 
-    /// <summary>
-    /// Everything known about a failure MeowSSH has no words of its own for.
-    /// </summary>
-    /// <remarks>
-    /// The agent's stderr is the useful part and is usually the only part: a
-    /// failure with no typed reason is one this app did not anticipate, and the
-    /// process that did the work is the only thing that knows what happened.
-    /// </remarks>
     private static string Unexplained(TailcatException ex)
     {
         var detail = !string.IsNullOrWhiteSpace(ex.Diagnostics) ? ex.Diagnostics.Trim()
@@ -249,8 +216,6 @@ public sealed class MeowshellSshEngine(MeowshellSshEngineOptions options) : ISsh
 
         if (detail is null) return "The connection failed.";
 
-        // Long stderr is a wall of text in a dialog. The first lines carry the
-        // cause; the rest is usually a stack of context nobody reads on a phone.
         var lines = detail.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var summary = string.Join(" ", lines.Take(3));
         return summary.Length > 300 ? summary[..300] + "…" : summary;
