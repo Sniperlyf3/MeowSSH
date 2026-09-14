@@ -26,7 +26,15 @@ public sealed class FakeSshEngine : ISshEngine
 
         public Guid HostId { get; } = hostId;
         public bool IsConnected => !_disposed;
-        public event EventHandler<SshConnectionLost>? ConnectionLost;
+
+        // The multi-session tests only need independent channels, not simulated
+        // network drops. Accessors avoid a never-raised backing event becoming a
+        // warnings-as-errors build failure.
+        public event EventHandler<SshConnectionLost>? ConnectionLost
+        {
+            add { }
+            remove { }
+        }
 
         public Task<ISshShell> OpenShellAsync(
             int columns,
@@ -50,7 +58,6 @@ public sealed class FakeSshEngine : ISshEngine
         public ValueTask DisposeAsync()
         {
             _disposed = true;
-            ConnectionLost = null;
             return ValueTask.CompletedTask;
         }
     }
