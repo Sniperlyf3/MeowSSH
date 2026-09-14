@@ -1,5 +1,3 @@
-@using MeowSSH.UI.Services
-
 <nav class="session-tabs" aria-label="Open sessions" data-testid="session-tabs">
     @foreach (var tab in Tabs)
     {
@@ -12,6 +10,16 @@
                 <span class="session-tabs__label">@tab.Label</span>
                 <span class="session-tabs__kind">@(tab.View == SessionView.Files ? "Files" : "SSH")</span>
             </button>
+            @if (tab.Id == ActiveId)
+            {
+                <button type="button" class="session-tabs__mode"
+                        aria-label="@(tab.View == SessionView.Files ? "Switch to terminal" : "Switch to files")"
+                        data-testid="toggle-session-view"
+                        disabled="@(!tab.IsConnected)"
+                        @onclick="() => OnToggleView.InvokeAsync(tab.Id)">
+                    <Icon Name="@(tab.View == SessionView.Files ? "terminal" : "folder")" />
+                </button>
+            }
             <button type="button" class="session-tabs__close"
                     aria-label="Close @tab.Label"
                     data-testid="close-session-tab"
@@ -27,5 +35,6 @@
     [Parameter] public Guid? ActiveId { get; set; }
     [Parameter] public EventCallback<Guid> OnSelected { get; set; }
     [Parameter] public EventCallback<Guid> OnClosed { get; set; }
+    [Parameter] public EventCallback<Guid> OnToggleView { get; set; }
     [Parameter] public EventCallback OnNew { get; set; }
 }
