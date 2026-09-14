@@ -1,4 +1,5 @@
 @inject IHostEditor Editor
+@inject IHostDirectory Hosts
 @inject ISerialDeviceService SerialDevices
 
 <AppShell Title="@(IsNew ? "New connection" : "Edit connection")" ActiveTab="hosts">
@@ -180,6 +181,29 @@
                 </p>
             }
 
+            @if (_protocol == HostProtocol.Ssh)
+            {
+                <label class="field">
+                    <span class="field__label">Jump host</span>
+                    <select class="field__input" data-testid="jump-host" @bind="_jumpHostId">
+                        <option value="">Direct connection</option>
+                        @foreach (var jump in _jumpHosts)
+                        {
+                            <option value="@jump.Id">@jump.Label — @jump.DisplayAddress</option>
+                        }
+                    </select>
+                    <span class="field__hint">Optional. Connect through another saved SSH host first. Every hop uses its own saved credential and host-key verification.</span>
+                </label>
+
+                <label class="forward-option">
+                    <input type="checkbox" data-testid="forward-agent" @bind="_forwardAgent" />
+                    <span>
+                        <strong>Forward SSH agent</strong>
+                        <small>Lets the remote session request signatures from this connection's selected key without sending the private key to the server.</small>
+                    </span>
+                </label>
+            }
+
             @if (SupportsProxy)
             {
                 <label class="field">
@@ -188,7 +212,7 @@
                            placeholder="socks5://127.0.0.1:1080" autocomplete="off"
                            autocapitalize="none" spellcheck="false"
                            @bind="_proxyUrl" @bind:event="oninput" />
-                    <span class="field__hint">Optional. Route the SSH bootstrap through a SOCKS5 or HTTP CONNECT proxy.</span>
+                    <span class="field__hint">Optional. Route the first SSH hop through a SOCKS5 or HTTP CONNECT proxy.</span>
                     @if (!ProxyIsValid)
                     {
                         <span class="field__error" data-testid="ssh-proxy-validation">Use a socks5:// or http:// proxy URL.</span>
@@ -236,15 +260,18 @@
     private string _username = "";
     private int _port = 22;
     private string _credentialId = "";
+    private string _jumpHostId = "";
     private string _proxyUrl = "";
     private HostProtocol _protocol = HostProtocol.Ssh;
     private SshTransport _transport = SshTransport.Tcp;
     private bool _autoReconnect = true;
+    private bool _forwardAgent;
     private int _serialBaudRate = 115200;
     private int _serialDataBits = 8;
     private SerialParity _serialParity = SerialParity.None;
     private SerialStopBits _serialStopBits = SerialStopBits.One;
     private IReadOnlyList<CredentialSummary> _credentials = [];
+    private IReadOnlyList<HostRecord> _jumpHosts = [];
     private IReadOnlyList<SerialDeviceInfo> _serialDevices = [];
     private string? _error;
     private bool _busy;
@@ -277,7 +304,7 @@
         HostProtocol.Telnet => "Legacy unencrypted terminal protocol.",
         HostProtocol.Serial => "Direct USB serial console using Android USB Host.",
         HostProtocol.Local => "A real local PTY running fully offline inside MeowSSH's app sandbox.",
-        _ => "Secure Shell with terminal, SFTP and port forwarding.",
+        _ => "Secure Shell with terminal, SFTP, jump hosts and port forwarding.",
     };
 
     private string TransportHint => _transport switch
@@ -338,7 +365,9 @@
             _protocol = host.Protocol;
             _transport = host.Transport;
             _autoReconnect = host.AutoReconnect;
+            _forwardAgent = host.ForwardAgent;
             _proxyUrl = host.ProxyUrl ?? "";
+            _jumpHostId = host.JumpHostId?.ToString() ?? "";
             _serialBaudRate = host.SerialBaudRate;
             _serialDataBits = host.SerialDataBits;
             _serialParity = host.SerialParity;
@@ -347,6 +376,11 @@
         }
 
         _credentials = await Editor.GetCredentialsAsync();
+        var statuses = await Hosts.GetHostsAsync();
+        _jumpHosts = [.. statuses
+            .Select(status => status.Host)
+            .Where(host => !host.IsDeleted && host.Protocol == HostProtocol.Ssh && host.Id != Host?.Id)
+            .OrderBy(host => host.Label, StringComparer.OrdinalIgnoreCase)];
         await RefreshSerialDevicesAsync();
     }
 
@@ -361,22 +395,32 @@
             _address = "";
             _username = "";
             _credentialId = "";
+            _jumpHostId = "";
+            _forwardAgent = false;
             _autoReconnect = false;
         }
         else if (protocol == HostProtocol.Telnet)
         {
             _username = "";
             _credentialId = "";
+            _jumpHostId = "";
+            _forwardAgent = false;
         }
         else if (protocol == HostProtocol.Serial)
         {
             _username = "";
             _credentialId = "";
+            _jumpHostId = "";
+            _forwardAgent = false;
         }
-        else if (!_autoReconnect)
+        else if (protocol != HostProtocol.Ssh)
         {
-            _autoReconnect = true;
+            _jumpHostId = "";
+            _forwardAgent = false;
         }
+
+        if (protocol != HostProtocol.Local && !_autoReconnect)
+            _autoReconnect = true;
     }
 
     private void SetTransport(SshTransport transport)
@@ -408,13 +452,13 @@
                 Transport = _protocol == HostProtocol.Mosh ? SshTransport.Tcp : _transport,
                 AutoReconnect = _protocol != HostProtocol.Local && _autoReconnect,
                 ProxyUrl = SupportsProxy && !string.IsNullOrWhiteSpace(_proxyUrl) ? _proxyUrl.Trim() : null,
-                ForwardAgent = Host?.ForwardAgent ?? false,
+                ForwardAgent = _protocol == HostProtocol.Ssh && _forwardAgent,
                 SerialBaudRate = _serialBaudRate,
                 SerialDataBits = _serialDataBits,
                 SerialParity = _serialParity,
                 SerialStopBits = _serialStopBits,
                 Tags = Host?.Tags ?? [],
-                JumpHostId = Host?.JumpHostId,
+                JumpHostId = _protocol == HostProtocol.Ssh && Guid.TryParse(_jumpHostId, out var jumpId) ? jumpId : null,
                 CredentialId = UsesSshCredentials && Guid.TryParse(_credentialId, out var id) ? id : null,
                 LastConnectedAt = Host?.LastConnectedAt,
             });
