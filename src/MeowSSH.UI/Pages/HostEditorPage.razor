@@ -133,12 +133,15 @@
                                        @bind="_username" @bind:event="oninput" />
                             </label>
                         }
-                        <label class="field field--narrow">
-                            <span class="field__label">@(_protocol == HostProtocol.Mosh ? "SSH port" : "Port")</span>
-                            <input class="field__input mono" type="number" inputmode="numeric"
-                                   min="1" max="65535" data-testid="host-port"
-                                   @bind="_port" @bind:event="oninput" />
-                        </label>
+                        @if (!(_protocol == HostProtocol.Ssh && _transport == SshTransport.Tailcat))
+                        {
+                            <label class="field field--narrow">
+                                <span class="field__label">@(_protocol == HostProtocol.Mosh ? "SSH port" : "Port")</span>
+                                <input class="field__input mono" type="number" inputmode="numeric"
+                                       min="1" max="65535" data-testid="host-port"
+                                       @bind="_port" @bind:event="oninput" />
+                            </label>
+                        }
                     </div>
                 }
             }
