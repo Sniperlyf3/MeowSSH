@@ -3,7 +3,7 @@
 <article class="tailcat-card">
     <h2>Connectivity diagnostics</h2>
     @if (_error is not null) { <p class="lock__error" role="alert">@_error</p> }
-    <label class="field"><span class="field__label">Tailcat address or DNS name</span><input class="field__input mono" data-testid="tailcat-diagnostic-address" @bind="_address" /></label>
+    <label class="field"><span class="field__label">Tailcat address or DNS name</span><input class="field__input mono" data-testid="tailcat-diagnostic-address" @bind="_address" @bind:event="oninput" /></label>
     <label class="forward-option"><input type="checkbox" @bind="_waitDirect" /><span><strong>Wait for a direct path</strong><small>Try to upgrade from DERP relay before returning.</small></span></label>
     <button class="btn btn--primary btn--block" disabled="@(_busy || string.IsNullOrWhiteSpace(_address))" data-testid="tailcat-diagnose" @onclick="RunAsync">@(_busy ? "Testing…" : "Run diagnostics")</button>
     @if (_result is { } result)
