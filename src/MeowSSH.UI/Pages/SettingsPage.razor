@@ -1,42 +1,90 @@
+@implements IAsyncDisposable
 @inject IJSRuntime Js
 
 <AppShell Title="Settings" ActiveTab="settings" OnTabSelected="OnTabSelected">
     <ChildContent>
         <section class="settings" data-testid="settings-page">
             <div class="settings__section">
-                <h2 class="section-label">Terminal</h2>
+                <h2 class="section-label">Terminal appearance</h2>
+
+                <label class="setting-card" for="terminal-theme">
+                    <span class="setting-card__copy">
+                        <span class="setting-card__title">Colour theme</span>
+                        <span class="setting-card__body">Applies immediately to open terminals and future sessions.</span>
+                    </span>
+                    <select id="terminal-theme" class="field__input settings__select"
+                            data-testid="terminal-theme" value="@_theme" @onchange="OnThemeChangedAsync">
+                        <option value="meow-dark">Meow Dark</option>
+                        <option value="solarized-dark">Solarized Dark</option>
+                        <option value="solarized-light">Solarized Light</option>
+                        <option value="dracula">Dracula</option>
+                    </select>
+                </label>
 
                 <label class="setting-card" for="terminal-zoom">
                     <span class="setting-card__copy">
-                        <span class="setting-card__title">Zoom level</span>
-                        <span class="setting-card__body">
-                            Changes the terminal text size. New sessions use this value.
-                        </span>
+                        <span class="setting-card__title">Text size</span>
+                        <span class="setting-card__body">Scales terminal text without changing Android display settings.</span>
                     </span>
                     <span class="setting-card__value mono" data-testid="terminal-zoom-value">@_zoom%</span>
                 </label>
 
-                <input id="terminal-zoom"
-                       class="range"
-                       type="range"
-                       min="80"
-                       max="160"
-                       step="10"
-                       value="@_zoom"
-                       data-testid="terminal-zoom"
-                       @oninput="OnZoomChangedAsync" />
+                <input id="terminal-zoom" class="range" type="range"
+                       min="80" max="160" step="10" value="@_zoom"
+                       data-testid="terminal-zoom" @oninput="OnZoomChangedAsync" />
 
                 <div class="settings__range-labels" aria-hidden="true">
-                    <span>80%</span>
-                    <span>160%</span>
+                    <span>80%</span><span>160%</span>
                 </div>
+            </div>
 
-                <button type="button"
-                        class="btn btn--ghost"
-                        data-testid="terminal-zoom-reset"
-                        disabled="@(_zoom == 100)"
-                        @onclick="ResetZoomAsync">
-                    Reset to 100%
+            <div class="settings__section">
+                <h2 class="section-label">Cursor & history</h2>
+
+                <label class="setting-card" for="terminal-cursor-style">
+                    <span class="setting-card__copy">
+                        <span class="setting-card__title">Cursor style</span>
+                        <span class="setting-card__body">Choose a block, vertical bar, or underline cursor.</span>
+                    </span>
+                    <select id="terminal-cursor-style" class="field__input settings__select"
+                            data-testid="terminal-cursor-style" value="@_cursorStyle" @onchange="OnCursorStyleChangedAsync">
+                        <option value="block">Block</option>
+                        <option value="bar">Bar</option>
+                        <option value="underline">Underline</option>
+                    </select>
+                </label>
+
+                <label class="setting-card setting-card--toggle" for="terminal-cursor-blink">
+                    <span class="setting-card__copy">
+                        <span class="setting-card__title">Blinking cursor</span>
+                        <span class="setting-card__body">Disable this if you prefer a completely static terminal.</span>
+                    </span>
+                    <input id="terminal-cursor-blink" type="checkbox" class="settings__toggle"
+                           data-testid="terminal-cursor-blink" checked="@_cursorBlink"
+                           @onchange="OnCursorBlinkChangedAsync" />
+                </label>
+
+                <label class="setting-card" for="terminal-scrollback">
+                    <span class="setting-card__copy">
+                        <span class="setting-card__title">Scrollback</span>
+                        <span class="setting-card__body">More lines preserve more history but consume more memory.</span>
+                    </span>
+                    <select id="terminal-scrollback" class="field__input settings__select"
+                            data-testid="terminal-scrollback" value="@_scrollback" @onchange="OnScrollbackChangedAsync">
+                        <option value="1000">1,000 lines</option>
+                        <option value="5000">5,000 lines</option>
+                        <option value="10000">10,000 lines</option>
+                        <option value="20000">20,000 lines</option>
+                        <option value="50000">50,000 lines</option>
+                    </select>
+                </label>
+            </div>
+
+            <div class="settings__section">
+                <h2 class="section-label">Reset</h2>
+                <button type="button" class="btn btn--ghost btn--block"
+                        data-testid="terminal-settings-reset" @onclick="ResetTerminalSettingsAsync">
+                    Reset terminal appearance
                 </button>
             </div>
         </section>
@@ -45,9 +93,27 @@
 
 @code {
     private const int DefaultZoom = 100;
+    private const string DefaultTheme = "meow-dark";
+    private const string DefaultCursorStyle = "block";
+    private const int DefaultScrollback = 5000;
+
+    private IJSObjectReference? _module;
     private int _zoom = DefaultZoom;
+    private string _theme = DefaultTheme;
+    private string _cursorStyle = DefaultCursorStyle;
+    private bool _cursorBlink = true;
+    private int _scrollback = DefaultScrollback;
 
     [Parameter] public EventCallback<string> OnTabSelected { get; set; }
+
+    private sealed class TerminalPreferences
+    {
+        public int Zoom { get; set; } = DefaultZoom;
+        public string Theme { get; set; } = DefaultTheme;
+        public string CursorStyle { get; set; } = DefaultCursorStyle;
+        public bool CursorBlink { get; set; } = true;
+        public int Scrollback { get; set; } = DefaultScrollback;
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -55,29 +121,74 @@
 
         try
         {
-            var raw = await Js.InvokeAsync<string?>("localStorage.getItem", "meowssh.terminal.zoom");
-            _zoom = int.TryParse(raw, out var value)
-                ? Math.Clamp(value, 80, 160)
-                : DefaultZoom;
+            _module = await Js.InvokeAsync<IJSObjectReference>("import", "./_content/MeowSSH.UI/js/terminal.js");
+            Apply(await _module.InvokeAsync<TerminalPreferences>("getPreferences"));
         }
         catch
         {
-            _zoom = DefaultZoom;
+            Apply(new TerminalPreferences());
         }
 
         StateHasChanged();
+    }
+
+    private void Apply(TerminalPreferences preferences)
+    {
+        _zoom = preferences.Zoom;
+        _theme = preferences.Theme;
+        _cursorStyle = preferences.CursorStyle;
+        _cursorBlink = preferences.CursorBlink;
+        _scrollback = preferences.Scrollback;
+    }
+
+    private async Task SetAsync(string name, object value)
+    {
+        if (_module is null) return;
+        await _module.InvokeVoidAsync("setPreference", name, value);
     }
 
     private async Task OnZoomChangedAsync(ChangeEventArgs e)
     {
         if (!int.TryParse(e.Value?.ToString(), out var value)) return;
         _zoom = Math.Clamp(value, 80, 160);
-        await Js.InvokeVoidAsync("localStorage.setItem", "meowssh.terminal.zoom", _zoom.ToString());
+        await SetAsync("zoom", _zoom);
     }
 
-    private async Task ResetZoomAsync()
+    private async Task OnThemeChangedAsync(ChangeEventArgs e)
     {
-        _zoom = DefaultZoom;
-        await Js.InvokeVoidAsync("localStorage.setItem", "meowssh.terminal.zoom", DefaultZoom.ToString());
+        _theme = e.Value?.ToString() ?? DefaultTheme;
+        await SetAsync("theme", _theme);
+    }
+
+    private async Task OnCursorStyleChangedAsync(ChangeEventArgs e)
+    {
+        _cursorStyle = e.Value?.ToString() ?? DefaultCursorStyle;
+        await SetAsync("cursorStyle", _cursorStyle);
+    }
+
+    private async Task OnCursorBlinkChangedAsync(ChangeEventArgs e)
+    {
+        _cursorBlink = e.Value is bool value ? value : bool.TryParse(e.Value?.ToString(), out var parsed) && parsed;
+        await SetAsync("cursorBlink", _cursorBlink);
+    }
+
+    private async Task OnScrollbackChangedAsync(ChangeEventArgs e)
+    {
+        if (!int.TryParse(e.Value?.ToString(), out var value)) return;
+        _scrollback = Math.Clamp(value, 1000, 50000);
+        await SetAsync("scrollback", _scrollback);
+    }
+
+    private async Task ResetTerminalSettingsAsync()
+    {
+        if (_module is null) return;
+        Apply(await _module.InvokeAsync<TerminalPreferences>("resetPreferences"));
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_module is null) return;
+        try { await _module.DisposeAsync(); }
+        catch (JSDisconnectedException) { }
     }
 }
