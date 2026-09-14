@@ -31,13 +31,19 @@ public sealed class LocalTerminalConnectionEngine(MeowshellSshEngineOptions opti
         }
     }
 
-    private sealed class LocalTerminalConnection(
-        Guid hostId,
-        LocalMeowshellAgentConnection agent) : IHostConnection
+    private sealed class LocalTerminalConnection : IHostConnection
     {
+        private readonly LocalMeowshellAgentConnection _agent;
         private bool _disposed;
 
-        public Guid HostId { get; } = hostId;
+        public LocalTerminalConnection(Guid hostId, LocalMeowshellAgentConnection agent)
+        {
+            HostId = hostId;
+            _agent = agent;
+            _agent.ConnectionLost += OnAgentConnectionLost;
+        }
+
+        public Guid HostId { get; }
         public bool IsConnected => !_disposed;
         public event EventHandler<SshConnectionLost>? ConnectionLost;
 
@@ -47,22 +53,17 @@ public sealed class LocalTerminalConnectionEngine(MeowshellSshEngineOptions opti
             CancellationToken cancellationToken = default)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            return await agent.OpenShellAsync(columns, rows, cancellationToken).ConfigureAwait(false);
+            return await _agent.OpenShellAsync(columns, rows, cancellationToken).ConfigureAwait(false);
         }
 
         public async ValueTask DisposeAsync()
         {
             if (_disposed) return;
             _disposed = true;
-            agent.ConnectionLost -= OnAgentConnectionLost;
-            await agent.DisposeAsync().ConfigureAwait(false);
+            _agent.ConnectionLost -= OnAgentConnectionLost;
+            await _agent.DisposeAsync().ConfigureAwait(false);
         }
 
         private void OnAgentConnectionLost(object? sender, SshConnectionLost e) => ConnectionLost?.Invoke(this, e);
-
-        public LocalTerminalConnection
-        {
-            agent.ConnectionLost += OnAgentConnectionLost;
-        }
     }
 }
