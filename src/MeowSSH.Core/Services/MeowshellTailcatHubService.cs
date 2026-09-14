@@ -372,8 +372,12 @@ public sealed class MeowshellTailcatHubService : ITailcatHubService
             if (keys.Length == 0 || keys.Any(key => !key.StartsWith("nodekey:", StringComparison.Ordinal)))
                 throw new ArgumentException("Allowed clients must be comma-separated nodekey: public keys.", nameof(request));
         }
-        if (request.EnableShell && string.IsNullOrWhiteSpace(request.AuthorizedSshKeys))
-            throw new ArgumentException("Shell sharing requires at least one authorized SSH key.", nameof(request));
+        if (request.InsecureShell && !request.EnableShell)
+            throw new ArgumentException("Shell key bypass requires shell sharing to be enabled.", nameof(request));
+        if (request.InsecureShell && request.AllowAnyClient)
+            throw new ArgumentException("Shell key bypass cannot be combined with allow-any-client mode.", nameof(request));
+        if (request.EnableShell && !request.InsecureShell && string.IsNullOrWhiteSpace(request.AuthorizedSshKeys))
+            throw new ArgumentException("Shell sharing requires at least one authorized SSH key unless shell key bypass is explicitly enabled.", nameof(request));
         if (request.EnableFiles && string.IsNullOrWhiteSpace(request.SharedFolder))
             throw new ArgumentException("File sharing requires a folder path.", nameof(request));
         if (request.FileMode is not ("ro" or "rw" or "wo" or "wo+"))
