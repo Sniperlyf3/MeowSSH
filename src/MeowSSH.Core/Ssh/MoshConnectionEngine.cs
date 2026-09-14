@@ -72,10 +72,10 @@ public sealed class MoshConnectionEngine(MeowshellSshEngineOptions options) : IP
         }
     }
 
-    private static MeowshellAgentConfigureOptions Configure(SshCredentials credentials) => new()
+    private MeowshellAgentConfigureOptions Configure(SshCredentials credentials) => new()
     {
         DisableLocalAgent = true,
-        AllowLegacyKeyAlgorithms = false,
+        AllowLegacyKeyAlgorithms = options.AllowLegacyKeyAlgorithms,
         PrivateKeys = [.. credentials.PrivateKeys.Select(key => key.ReadOnlySpan.ToArray())],
         Certificates = [.. credentials.Certificates],
         KeystoreKeyIds = [.. credentials.KeyStoreKeyIds],
@@ -204,7 +204,7 @@ public sealed class MoshConnectionEngine(MeowshellSshEngineOptions options) : IP
             var translated = ex is TailcatException tailcat
                 ? MeowshellSshEngine.Translate(tailcat)
                 : new SshException(SshFailure.ConnectionLost, "The Mosh session ended unexpectedly.", ex);
-            ConnectionLost?.Invoke(this, new SshConnectionLost(translated.Reason, translated.Message));
+            ConnectionLost?.Invoke(this, new SshConnectionLost(translated.Failure, translated.Message));
             _terminal.NotifyExited();
         }
     }
