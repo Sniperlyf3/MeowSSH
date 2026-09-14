@@ -27,6 +27,7 @@ builder.Services.AddScoped(_ => new FakeVaultSession(
 builder.Services.AddScoped<IVaultSession>(sp => sp.GetRequiredService<FakeVaultSession>());
 
 builder.Services.AddScoped<IActiveSessionLifetime, NoOpActiveSessionLifetime>();
+builder.Services.AddScoped<ILocalFileTransferService, LocalFileTransferService>();
 
 // The same prompts object the Android app uses, so the browser tests drive the
 // real trust-on-first-use flow rather than a stand-in for it.
