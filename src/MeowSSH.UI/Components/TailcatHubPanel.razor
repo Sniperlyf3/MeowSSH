@@ -1,0 +1,56 @@
+@implements IDisposable
+@inject ITailcatHubService Hub
+
+<section class="tailcat-page" data-testid="tailcat-page">
+    <div class="segmented tailcat-sections" role="tablist" aria-label="Tailcat tools">
+        @foreach (var section in Sections)
+        {
+            <button type="button" role="tab"
+                    class="segmented__option @(_section == section.Id ? "segmented__option--on" : "")"
+                    aria-selected="@(_section == section.Id ? "true" : "false")"
+                    data-testid="tailcat-section-@section.Id"
+                    @onclick="() => _section = section.Id">@section.Label</button>
+        }
+    </div>
+
+    @switch (_section)
+    {
+        case "phone": <TailcatPhonePanel /> break;
+        case "connect": <TailcatConnectPanel /> break;
+        case "transfers": <TailcatTransfersPanel /> break;
+        case "keys": <TailcatKeysPanel /> break;
+        default: <TailcatDiagnosticsPanel /> break;
+    }
+
+    @if (_snapshot.RecentLogLines.Count > 0)
+    {
+        <details class="tailcat-card tailcat-logs" data-testid="tailcat-native-logs">
+            <summary>Native diagnostics</summary>
+            <pre>@string.Join("\n", _snapshot.RecentLogLines.TakeLast(30))</pre>
+        </details>
+    }
+</section>
+
+@code {
+    private static readonly (string Id, string Label)[] Sections =
+    [
+        ("phone", "This phone"), ("connect", "Connect"), ("transfers", "Transfers"),
+        ("keys", "Keys"), ("diagnostics", "Diagnostics"),
+    ];
+    private string _section = "phone";
+    private TailcatHubSnapshot _snapshot = new(null, null, [], []);
+
+    protected override void OnInitialized()
+    {
+        _snapshot = Hub.Snapshot;
+        Hub.Changed += OnChanged;
+    }
+
+    private void OnChanged(object? sender, EventArgs e) => _ = InvokeAsync(() =>
+    {
+        _snapshot = Hub.Snapshot;
+        StateHasChanged();
+    });
+
+    public void Dispose() => Hub.Changed -= OnChanged;
+}
