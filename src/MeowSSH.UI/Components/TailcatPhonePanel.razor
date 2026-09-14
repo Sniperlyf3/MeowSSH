@@ -1,5 +1,6 @@
 @using MeowSSH.UI.Services
 @inject ITailcatHubService Hub
+@inject IHostEditor Editor
 @inject IActiveSessionLifetime SessionLifetime
 
 <div class="tailcat-stack">
@@ -48,7 +49,24 @@
                 }
                 else
                 {
-                    <label class="field"><span class="field__label">Authorized SSH keys</span><textarea class="field__input mono" rows="3" data-testid="tailcat-authorized-ssh" @bind="_authorizedSsh"></textarea></label>
+                    @if (_sshPublicKeys.Count > 0)
+                    {
+                        <fieldset class="field" data-testid="tailcat-saved-ssh-keys">
+                            <legend class="field__label">Saved SSH public keys</legend>
+                            @foreach (var credential in _sshPublicKeys)
+                            {
+                                <label class="forward-option">
+                                    <input type="checkbox"
+                                           data-testid="tailcat-saved-ssh-key"
+                                           checked="@_selectedSshKeyIds.Contains(credential.Id)"
+                                           @onchange="e => SetSavedSshKey(credential.Id, e.Value is true)" />
+                                    <span><strong>@credential.Label</strong><small class="mono">@credential.DisplayHint</small></span>
+                                </label>
+                            }
+                            <span class="field__hint">Selected keys are added to the shell's authorized_keys list. Private key material never leaves the vault.</span>
+                        </fieldset>
+                    }
+                    <label class="field"><span class="field__label">Additional authorized SSH keys</span><textarea class="field__input mono" rows="3" data-testid="tailcat-authorized-ssh" placeholder="ssh-ed25519 AAAA..." @bind="_authorizedSsh"></textarea><span class="field__hint">Optional when at least one saved public key is selected.</span></label>
                 }
             }
             <label class="forward-option"><input type="checkbox" data-testid="tailcat-files" @bind="_files" /><span><strong>Share a folder</strong><small>Expose one directory over Tailcat SFTP.</small></span></label>
@@ -73,6 +91,8 @@
     private bool _useTailcatCredentialForShell;
     private bool _insecureShellConfirmed;
     private string _authorizedSsh = "";
+    private IReadOnlyList<CredentialSummary> _sshPublicKeys = [];
+    private readonly HashSet<Guid> _selectedSshKeyIds = [];
     private bool _files;
     private string _folder = "";
     private string _fileMode = "ro";
@@ -83,8 +103,33 @@
     private bool CanStart => (_allowAnyClient || !string.IsNullOrWhiteSpace(_allowedClients)) && (_exitNode || _shell || _files)
         && (!_allowAnyClient || (_exitNode && _insecureConfirmed))
         && (!_useTailcatCredentialForShell || (_shell && _insecureShellConfirmed))
-        && (!_shell || _useTailcatCredentialForShell || !string.IsNullOrWhiteSpace(_authorizedSsh)) && (!_files || !string.IsNullOrWhiteSpace(_folder))
+        && (!_shell || _useTailcatCredentialForShell || HasAuthorizedSshKeys) && (!_files || !string.IsNullOrWhiteSpace(_folder))
         && _hours is >= 1 and <= 24;
+
+    private bool HasAuthorizedSshKeys => !string.IsNullOrWhiteSpace(_authorizedSsh) || _selectedSshKeyIds.Count > 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _sshPublicKeys = [.. (await Editor.GetCredentialsAsync())
+            .Where(c => !string.IsNullOrWhiteSpace(c.PublicKey))
+            .OrderBy(c => c.Label, StringComparer.OrdinalIgnoreCase)];
+    }
+
+    private void SetSavedSshKey(Guid id, bool selected)
+    {
+        if (selected) _selectedSshKeyIds.Add(id);
+        else _selectedSshKeyIds.Remove(id);
+    }
+
+    private string AuthorizedSshKeys()
+    {
+        var saved = _sshPublicKeys
+            .Where(c => _selectedSshKeyIds.Contains(c.Id))
+            .Select(c => c.PublicKey!)
+            .Where(key => !string.IsNullOrWhiteSpace(key));
+        var manual = string.IsNullOrWhiteSpace(_authorizedSsh) ? [] : new[] { _authorizedSsh.Trim() };
+        return string.Join(Environment.NewLine, saved.Concat(manual));
+    }
 
     private bool HasLongLivedTailcat()
     {
@@ -99,7 +144,7 @@
         try
         {
             if (!wasActive) await SessionLifetime.StartAsync();
-            try { await Hub.StartServerAsync(new TailcatServeRequest(TimeSpan.FromHours(_hours), _allowedClients, _shell, _authorizedSsh, _files, _folder, _fileMode, _exitNode, _allowAnyClient, _useTailcatCredentialForShell)); }
+            try { await Hub.StartServerAsync(new TailcatServeRequest(TimeSpan.FromHours(_hours), _allowedClients, _shell, AuthorizedSshKeys(), _files, _folder, _fileMode, _exitNode, _allowAnyClient, _useTailcatCredentialForShell)); }
             catch { if (!wasActive) await SessionLifetime.StopAsync(); throw; }
             _notice = "Tailcat sharing started.";
         }
