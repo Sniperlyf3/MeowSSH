@@ -36,7 +36,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<ILocalFileTransferService, AndroidLocalFileTransferService>();
         builder.Services.AddSingleton<ISerialDeviceService, AndroidUsbSerialDeviceService>();
 
-        var nativeDirectory = global::Android.App.Application.Context.ApplicationInfo!.NativeLibraryDir;
+        var nativeDirectory = global::Android.App.Application.Context.ApplicationInfo!.NativeLibraryDir!;
         var engineOptions = new MeowshellSshEngineOptions(
             WorkingDirectory: Path.Combine(FileSystem.AppDataDirectory, "agent"),
             KnownHostsPath: Path.Combine(FileSystem.AppDataDirectory, "agent", "known_hosts"),
