@@ -1,0 +1,1 @@
+Terminal UX preferences are intentionally stored locally on the device. Theme, text size, cursor style, cursor blinking, and scrollback apply live to open terminals through the terminal.js preference event. Clipboard actions and the expanded mobile key row stay inside the terminal component so SSH, Mosh, Telnet, serial, and local sessions share the same controls.
