@@ -51,7 +51,8 @@ public static class MauiProgram
         builder.Services.AddSingleton<IProtocolConnectionEngine, SerialConnectionEngine>();
         builder.Services.AddSingleton<IProtocolConnectionEngine>(sp =>
             new LocalTerminalConnectionEngine(sp.GetRequiredService<MeowshellSshEngineOptions>()));
-        builder.Services.AddSingleton<IConnectionEngine, ConnectionEngine>();
+        builder.Services.AddSingleton<ConnectionEngine>();
+        builder.Services.AddSingleton<IConnectionEngine, ProxyJumpConnector>();
 
 #if DEBUG
         builder.Services.AddBlazorWebViewDeveloperTools();
