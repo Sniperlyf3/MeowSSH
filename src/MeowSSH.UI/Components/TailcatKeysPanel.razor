@@ -5,7 +5,7 @@
     <article class="tailcat-card">
         <h2>Generate identity</h2>
         <div class="form__row">
-            <label class="field field--grow"><span class="field__label">Name</span><input class="field__input mono" data-testid="tailcat-key-name" @bind="_name" /></label>
+            <label class="field field--grow"><span class="field__label">Name</span><input class="field__input mono" data-testid="tailcat-key-name" @bind="_name" @bind:event="oninput" /></label>
             <label class="field field--grow"><span class="field__label">Type</span><select class="field__input" data-testid="tailcat-key-type" @bind="_client"><option value="false">Server</option><option value="true">Client</option></select></label>
         </div>
         <label class="field"><span class="field__label">DERP region</span><input class="field__input mono" placeholder="auto" data-testid="tailcat-key-region" @bind="_region" /><span class="field__hint">Optional ID, code, substring, or custom hostname.</span></label>
