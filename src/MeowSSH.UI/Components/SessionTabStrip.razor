@@ -8,9 +8,9 @@
                     @onclick="() => OnSelected.InvokeAsync(tab.Id)">
                 <span class="session-tabs__dot @(tab.IsConnected ? "is-connected" : "is-disconnected")" aria-hidden="true"></span>
                 <span class="session-tabs__label">@tab.Label</span>
-                <span class="session-tabs__kind">@ViewLabel(tab.View)</span>
+                <span class="session-tabs__kind">@ViewLabel(tab)</span>
             </button>
-            @if (tab.Id == ActiveId)
+            @if (tab.Id == ActiveId && tab.SupportsFiles)
             {
                 <button type="button" class="session-tabs__mode"
                         aria-label="@(tab.View == SessionView.Terminal ? "Switch to files" : "Switch to terminal")"
@@ -19,6 +19,9 @@
                         @onclick="() => OnToggleView.InvokeAsync(tab.Id)">
                     <Icon Name="@(tab.View == SessionView.Terminal ? "folder" : "terminal")" />
                 </button>
+            }
+            @if (tab.Id == ActiveId && tab.SupportsForwards)
+            {
                 <button type="button" class="session-tabs__mode"
                         aria-label="Open port forwards"
                         aria-pressed="@(tab.View == SessionView.Forwards ? "true" : "false")"
@@ -47,11 +50,11 @@
     [Parameter] public EventCallback<Guid> OnOpenForwards { get; set; }
     [Parameter] public EventCallback OnNew { get; set; }
 
-    private static string ViewLabel(SessionView view) => view switch
+    private static string ViewLabel(SessionTabInfo tab) => tab.View switch
     {
-        SessionView.Terminal => "SSH",
+        SessionView.Terminal => tab.SupportsFiles ? "SSH" : tab.TerminalLabel,
         SessionView.Files => "Files",
         SessionView.Forwards => "Forwards",
-        _ => view.ToString(),
+        _ => tab.View.ToString(),
     };
 }

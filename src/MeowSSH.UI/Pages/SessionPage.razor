@@ -12,12 +12,15 @@
             <span class="session__address">@Host.DisplayAddress</span>
         </span>
 
-        <button type="button" class="btn btn--icon" aria-label="Browse files"
-                data-testid="session-files" disabled="@(!IsConnected)" @onclick="OpenFilesAsync">
-            <Icon Name="folder" />
-        </button>
-        <StatusBadge Label="@(IsConnected ? "Connected" : "Disconnected")"
-                     Variant="@(IsConnected ? "ok" : "danger")"
+        @if (SupportsFiles)
+        {
+            <button type="button" class="btn btn--icon" aria-label="Browse files"
+                    data-testid="session-files" disabled="@(!IsConnected)" @onclick="OpenFilesAsync">
+                <Icon Name="folder" />
+            </button>
+        }
+        <StatusBadge Label="@(IsReconnecting ? "Reconnecting" : IsConnected ? "Connected" : "Disconnected")"
+                     Variant="@(IsConnected ? "ok" : IsReconnecting ? "warn" : "danger")"
                      ShowDot="true" />
     </header>
 
@@ -25,14 +28,13 @@
 
     @if (!IsConnected)
     {
-        <div class="sheet sheet--danger" role="alert" data-testid="session-disconnected">
-            <p class="sheet__title">Session disconnected</p>
+        <div class="sheet @(IsReconnecting ? "" : "sheet--danger")" role="alert" data-testid="session-disconnected">
+            <p class="sheet__title">@(IsReconnecting ? "Reconnecting" : "Session disconnected")</p>
             <p class="sheet__body">@EffectiveDisconnectMessage</p>
             <button type="button" class="btn btn--primary btn--block"
-                    disabled="@IsReconnecting"
                     data-testid="session-reconnect"
                     @onclick="ReconnectAsync">
-                @(IsReconnecting ? "Reconnecting…" : "Reconnect")
+                @(IsReconnecting ? "Reconnect now" : "Reconnect")
             </button>
         </div>
     }
@@ -40,10 +42,11 @@
 
 @code {
     [Parameter, EditorRequired] public HostRecord Host { get; set; } = default!;
-    [Parameter, EditorRequired] public ISshShell Shell { get; set; } = default!;
+    [Parameter, EditorRequired] public ITerminalSession Shell { get; set; } = default!;
+    [Parameter] public bool SupportsFiles { get; set; }
     [Parameter] public bool IsConnected { get; set; } = true;
     [Parameter] public bool IsReconnecting { get; set; }
-    [Parameter] public string DisconnectMessage { get; set; } = "The SSH session is no longer connected.";
+    [Parameter] public string DisconnectMessage { get; set; } = "The terminal session is no longer connected.";
     [Parameter] public EventCallback OnReconnect { get; set; }
     [Parameter] public EventCallback<Exception> OnWriteFailed { get; set; }
     [Parameter] public EventCallback OnClosed { get; set; }
@@ -51,7 +54,7 @@
 
     private string EffectiveDisconnectMessage =>
         DisconnectMessage is "_sessionStatus" or "session.Status"
-            ? "The SSH session is no longer connected."
+            ? "The terminal session is no longer connected."
             : DisconnectMessage;
 
     private Task OnBack() => OnClosed.InvokeAsync();

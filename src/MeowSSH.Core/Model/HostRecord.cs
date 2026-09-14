@@ -1,23 +1,37 @@
 namespace MeowSSH.Core.Model;
 
-/// <summary>How MeowSSH reaches a host.</summary>
+/// <summary>The terminal protocol used for a saved connection.</summary>
+public enum HostProtocol
+{
+    Ssh = 1,
+    Mosh = 2,
+    Telnet = 3,
+    Serial = 4,
+    Local = 5,
+}
+
+/// <summary>How MeowSSH reaches an SSH or Mosh host.</summary>
 public enum SshTransport
 {
-    /// <summary>An ordinary SSH server reached over TCP.</summary>
     Tcp,
-
-    /// <summary>
-    /// A tailcat address: Tailscale's data plane with no control plane, where the
-    /// address itself is the credential and no port needs to be open anywhere.
-    /// </summary>
     Tailcat,
-
-    /// <summary>
-    /// A Tailscale SSH host, reached over TCP across the tailnet. Requires the
-    /// Tailscale app to be connected on this device; identity comes from the
-    /// tailnet rather than from an SSH key.
-    /// </summary>
     TailscaleSsh,
+}
+
+public enum SerialParity
+{
+    None = 1,
+    Odd = 2,
+    Even = 3,
+    Mark = 4,
+    Space = 5,
+}
+
+public enum SerialStopBits
+{
+    One = 1,
+    OnePointFive = 2,
+    Two = 3,
 }
 
 public enum ConnectionState
@@ -28,59 +42,36 @@ public enum ConnectionState
     Error,
 }
 
-/// <summary>
-/// A saved host.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Every field that sync will eventually need is already here, because adding
-/// them later would mean migrating a database whose rows are encrypted and whose
-/// only copy may be on a device that is offline. <see cref="Revision"/> and
-/// <see cref="UpdatedAt"/> let two devices decide which edit won;
-/// <see cref="OriginDeviceId"/> breaks ties between edits made in the same
-/// instant; <see cref="DeletedAt"/> is a tombstone, because a row that simply
-/// vanished is indistinguishable from one that never synced.
-/// </para>
-/// <para>
-/// Nothing here is secret. Credentials live in their own records, sealed
-/// separately, so listing hosts never requires unsealing a password.
-/// </para>
-/// </remarks>
+/// <summary>A saved host or terminal endpoint.</summary>
 public sealed record HostRecord
 {
     public required Guid Id { get; init; }
-
-    /// <summary>What the user calls this host.</summary>
     public required string Label { get; init; }
 
-    /// <summary>Hostname, IP, or tailcat address, depending on <see cref="Transport"/>.</summary>
+    /// <summary>
+    /// Hostname, IP, tailcat address, or serial-device identifier depending on
+    /// <see cref="Protocol"/> and <see cref="Transport"/>. Local terminals leave it empty.
+    /// </summary>
     public required string Address { get; init; }
 
     public int Port { get; init; } = 22;
-
     public string? Username { get; init; }
-
+    public HostProtocol Protocol { get; init; } = HostProtocol.Ssh;
     public SshTransport Transport { get; init; } = SshTransport.Tcp;
 
-    /// <summary>Free-form labels the user groups hosts by.</summary>
+    /// <summary>Automatically reconnect after an unexpected network/session loss.</summary>
+    public bool AutoReconnect { get; init; } = true;
+
+    /// <summary>USB serial line settings. Ignored unless <see cref="Protocol"/> is Serial.</summary>
+    public int SerialBaudRate { get; init; } = 115200;
+    public int SerialDataBits { get; init; } = 8;
+    public SerialStopBits SerialStopBits { get; init; } = SerialStopBits.One;
+    public SerialParity SerialParity { get; init; } = SerialParity.None;
+
     public IReadOnlyList<string> Tags { get; init; } = [];
-
-    /// <summary>Id of the host this one is reached through, if it sits behind a bastion.</summary>
     public Guid? JumpHostId { get; init; }
-
-    /// <summary>
-    /// The credential this host signs in with, if one has been chosen.
-    /// </summary>
-    /// <remarks>
-    /// A reference rather than the secret itself: one deploy key across a fleet is
-    /// the normal case, and copying it into every host would mean rotating it in
-    /// as many places as there are servers.
-    /// </remarks>
     public Guid? CredentialId { get; init; }
-
     public DateTimeOffset? LastConnectedAt { get; init; }
-
-    // Sync bookkeeping ----------------------------------------------------
 
     public long Revision { get; init; }
     public DateTimeOffset UpdatedAt { get; init; }
@@ -89,17 +80,21 @@ public sealed record HostRecord
 
     public bool IsDeleted => DeletedAt is not null;
 
-    /// <summary>
-    /// How this host is written in the places SSH itself writes it, e.g.
-    /// <c>deploy@build-01:2222</c>.
-    /// </summary>
-    public string DisplayAddress => Transport switch
+    public string DisplayAddress => Protocol switch
     {
-        SshTransport.Tailcat => Address.Length > 22 ? string.Concat(Address.AsSpan(0, 20), "…") : Address,
-        _ => (Username is null ? Address : $"{Username}@{Address}") + (Port == 22 ? "" : $":{Port}"),
+        HostProtocol.Local => "Local terminal",
+        HostProtocol.Serial => string.IsNullOrWhiteSpace(Address)
+            ? $"USB serial · {SerialBaudRate} baud"
+            : $"{Address} · {SerialBaudRate} baud",
+        HostProtocol.Telnet => Address + (Port == 23 ? "" : $":{Port}"),
+        HostProtocol.Mosh => (Username is null ? Address : $"{Username}@{Address}") + (Port == 22 ? "" : $":{Port}"),
+        _ => Transport switch
+        {
+            SshTransport.Tailcat => Address.Length > 22 ? string.Concat(Address.AsSpan(0, 20), "…") : Address,
+            _ => (Username is null ? Address : $"{Username}@{Address}") + (Port == 22 ? "" : $":{Port}"),
+        },
     };
 
-    /// <summary>Two letters for the host's avatar, taken from its label.</summary>
     public string Initials
     {
         get

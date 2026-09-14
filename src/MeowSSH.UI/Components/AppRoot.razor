@@ -3,7 +3,7 @@
 @using MeowSSH.UI.Services
 @implements IAsyncDisposable
 @inject IVaultSession Vault
-@inject ISshEngine Engine
+@inject IConnectionEngine Engine
 @inject ISshPrompts Prompts
 @inject InteractiveSshPrompts Questions
 @inject ICredentialResolver Credentials
@@ -39,15 +39,16 @@ else if (_activeSessionId is not null && _sessions.Count > 0)
                              OnNew="OpenNewSession" />
 
             <div class="session-workspace__pane @(session.View == SessionView.Terminal ? "is-active" : "")">
-                @if (session.Shell is not null)
+                @if (session.Terminal is not null)
                 {
                     <SessionPage Host="session.DisplayHost"
-                                 Shell="session.Shell"
+                                 Shell="session.Terminal"
+                                 SupportsFiles="session.SupportsSshFeatures"
                                  IsConnected="session.IsConnected"
                                  IsReconnecting="session.IsReconnecting"
                                  DisconnectMessage="session.Status"
                                  OnReconnect="() => ReconnectAsync(session.Id)"
-                                 OnWriteFailed="ex => OnShellWriteFailedAsync(session.Id, ex)"
+                                 OnWriteFailed="ex => OnTerminalWriteFailedAsync(session.Id, ex)"
                                  OnOpenFiles="() => ShowFilesAsync(session.Id)"
                                  OnClosed="LeaveWorkspace" />
                 }
@@ -64,11 +65,14 @@ else if (_activeSessionId is not null && _sessions.Count > 0)
             </div>
 
             <div class="session-workspace__pane @(session.View == SessionView.Forwards ? "is-active" : "")">
-                <ForwardsPage HostLabel="session.DisplayHost.Label"
-                              Forwards="ForwardInfos(session)"
-                              OnStart="request => StartForwardAsync(session.Id, request)"
-                              OnStop="request => StopForwardAsync(session.Id, request)"
-                              OnClosed="LeaveWorkspace" />
+                @if (session.SupportsSshFeatures)
+                {
+                    <ForwardsPage HostLabel="session.DisplayHost.Label"
+                                  Forwards="ForwardInfos(session)"
+                                  OnStart="request => StartForwardAsync(session.Id, request)"
+                                  OnStop="request => StopForwardAsync(session.Id, request)"
+                                  OnClosed="LeaveWorkspace" />
+                }
             </div>
         </section>
     }
@@ -108,7 +112,7 @@ else
 {
     <div class="sheet" role="status" data-testid="connecting">
         <p class="sheet__title">@(_connectingForFiles ? $"Opening files on {_connecting}" : $"Connecting to {_connecting}")</p>
-        <p class="sheet__body">@(_connectingForFiles ? "Connecting to the host and starting SFTP." : "Waiting for the host to answer.")</p>
+        <p class="sheet__body">@(_connectingForFiles ? "Connecting to the host and starting SFTP." : "Waiting for the endpoint to answer.")</p>
     </div>
 }
 
@@ -135,19 +139,20 @@ else
     private sealed record EditorState(HostRecord? Host);
     private sealed record Failure(string Title, string Body);
 
-    private sealed class RunningForward(ISshForward forward)
+    private sealed class RunningForward(ForwardRequest request, ISshForward forward)
     {
         public Guid Id { get; } = Guid.NewGuid();
-        public ISshForward Forward { get; } = forward;
+        public ForwardRequest Request { get; } = request;
+        public ISshForward? Forward { get; set; } = forward;
     }
 
-    private sealed class OpenSession(HostRecord sourceHost, HostRecord displayHost, ISshConnection connection)
+    private sealed class OpenSession(HostRecord sourceHost, HostRecord displayHost, IHostConnection connection)
     {
         public Guid Id { get; } = Guid.NewGuid();
         public HostRecord SourceHost { get; } = sourceHost;
         public HostRecord DisplayHost { get; set; } = displayHost;
-        public ISshConnection Connection { get; set; } = connection;
-        public ISshShell? Shell { get; set; }
+        public IHostConnection Connection { get; set; } = connection;
+        public ITerminalSession? Terminal { get; set; }
         public ISftpSession? Sftp { get; set; }
         public List<RunningForward> Forwards { get; } = [];
         public SessionView View { get; set; }
@@ -155,11 +160,20 @@ else
         public bool IsReconnecting { get; set; }
         public string Status { get; set; } = "Connected.";
         public EventHandler<SshConnectionLost>? ConnectionLostHandler { get; set; }
-        public EventHandler<int>? ShellExitedHandler { get; set; }
+        public EventHandler<int>? TerminalExitedHandler { get; set; }
+        public CancellationTokenSource? ReconnectCancellation { get; set; }
+        public Task? ReconnectTask { get; set; }
+        public bool SupportsSshFeatures => Connection is ISshConnection;
     }
 
     private IReadOnlyList<SessionTabInfo> SessionTabs =>
-        [.. _sessions.Select(s => new SessionTabInfo(s.Id, s.DisplayHost.Label, s.View, s.IsConnected))];
+        [.. _sessions.Select(s => new SessionTabInfo(
+            s.Id,
+            s.DisplayHost.Label,
+            s.View,
+            s.IsConnected,
+            s.SupportsSshFeatures,
+            s.SupportsSshFeatures))];
 
     protected override async Task OnInitializedAsync()
     {
@@ -170,7 +184,6 @@ else
     }
 
     private void OnVaultChanged(object? sender, EventArgs e) => _ = InvokeAsync(StateHasChanged);
-
     private void OnQuestionsChanged(object? sender, EventArgs e) => _ = InvokeAsync(StateHasChanged);
 
     private Task OnUnlockedAsync()
@@ -188,9 +201,7 @@ else
     }
 
     private void AddHost() => _editing = new EditorState(null);
-
     private void EditHost(HostRecord host) => _editing = new EditorState(host);
-
     private void CancelEditor() => _editing = null;
 
     private Task CloseEditorAsync()
@@ -202,7 +213,16 @@ else
 
     private Task ConnectAsync(HostRecord host) => OpenSessionAsync(host, SessionView.Terminal);
 
-    private Task OpenFilesAsync(HostRecord host) => OpenSessionAsync(host, SessionView.Files);
+    private Task OpenFilesAsync(HostRecord host)
+    {
+        if (host.Protocol != HostProtocol.Ssh)
+        {
+            _failure = new Failure("SFTP is not available", "Files are available only for SSH connections.");
+            StateHasChanged();
+            return Task.CompletedTask;
+        }
+        return OpenSessionAsync(host, SessionView.Files);
+    }
 
     private async Task OpenSessionAsync(HostRecord host, SessionView initialView)
     {
@@ -213,12 +233,12 @@ else
         _failure = null;
         StateHasChanged();
 
-        ISshConnection? connection = null;
-        ISshShell? shell = null;
+        IHostConnection? connection = null;
+        ITerminalSession? terminal = null;
         ISftpSession? sftp = null;
         try
         {
-            if (!_sessions.Any(s => s.IsConnected))
+            if (!_sessions.Any(s => s.IsConnected || s.IsReconnecting))
                 await SessionLifetime.StartAsync();
 
             var connected = await ConnectHostAsync(host);
@@ -231,30 +251,38 @@ else
 
             if (initialView == SessionView.Terminal)
             {
-                shell = await connection.OpenShellAsync(80, 24);
-                session.Shell = shell;
-                WireShell(session);
+                terminal = await connection.OpenTerminalAsync(80, 24);
+                session.Terminal = terminal;
+                WireTerminal(session);
+            }
+            else if (connection is ISshConnection ssh)
+            {
+                sftp = await ssh.OpenSftpAsync();
+                session.Sftp = sftp;
             }
             else
             {
-                sftp = await connection.OpenSftpAsync();
-                session.Sftp = sftp;
+                throw new InvalidOperationException("This protocol does not provide SFTP.");
             }
 
             _sessions.Add(session);
             _activeSessionId = session.Id;
             connection = null;
-            shell = null;
+            terminal = null;
             sftp = null;
         }
         catch (SshException ex)
         {
             _failure = MapFailure(initialView == SessionView.Files ? "Could not open files" : "Could not connect", ex);
         }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or ObjectDisposedException)
+        {
+            _failure = new Failure(initialView == SessionView.Files ? "Could not open files" : "Could not connect", ex.Message);
+        }
         finally
         {
             if (sftp is not null) await sftp.DisposeAsync();
-            if (shell is not null) await shell.DisposeAsync();
+            if (terminal is not null) await terminal.DisposeAsync();
             if (connection is not null) await connection.DisposeAsync();
             if (_sessions.Count == 0) await SessionLifetime.StopAsync();
             _connecting = null;
@@ -262,40 +290,43 @@ else
         }
     }
 
-    private async Task<(HostRecord DisplayHost, ISshConnection Connection)> ConnectHostAsync(HostRecord host)
+    private async Task<(HostRecord DisplayHost, IHostConnection Connection)> ConnectHostAsync(
+        HostRecord host,
+        CancellationToken cancellationToken = default)
     {
-        using var credentials = await Credentials.ResolveAsync(host);
+        using var credentials = await Credentials.ResolveAsync(host, cancellationToken);
         var displayHost = !string.IsNullOrWhiteSpace(credentials.Username)
             ? host with { Username = credentials.Username }
             : host;
         var credentialPrompts = new CredentialSshPrompts(Prompts, credentials);
-        var connection = await Engine.ConnectAsync(displayHost, credentials, credentialPrompts);
+        var connection = await Engine.ConnectAsync(displayHost, credentials, credentialPrompts, cancellationToken);
         return (displayHost, connection);
     }
 
     private void WireConnection(OpenSession session)
     {
         EventHandler<SshConnectionLost> handler = (_, lost) =>
-            _ = InvokeAsync(() => MarkSessionDisconnectedAsync(session.Id, lost.Message));
+            _ = InvokeAsync(() => MarkSessionDisconnectedAsync(session.Id, lost.Message, autoReconnect: true));
         session.ConnectionLostHandler = handler;
         session.Connection.ConnectionLost += handler;
     }
 
-    private void WireShell(OpenSession session)
+    private void WireTerminal(OpenSession session)
     {
-        if (session.Shell is null) return;
+        if (session.Terminal is null) return;
         EventHandler<int> handler = (_, exitCode) =>
             _ = InvokeAsync(() => MarkSessionDisconnectedAsync(
                 session.Id,
-                exitCode == 0 ? "The remote shell exited." : $"The remote shell exited with status {exitCode}."));
-        session.ShellExitedHandler = handler;
-        session.Shell.Exited += handler;
+                exitCode == 0 ? "The terminal session exited." : $"The terminal session exited with status {exitCode}.",
+                autoReconnect: false));
+        session.TerminalExitedHandler = handler;
+        session.Terminal.Exited += handler;
     }
 
     private async Task ToggleSessionViewAsync(Guid id)
     {
         var session = FindSession(id);
-        if (session is null || !session.IsConnected) return;
+        if (session is null || !session.IsConnected || !session.SupportsSshFeatures) return;
 
         if (session.View == SessionView.Terminal)
             await ShowFilesAsync(id);
@@ -306,11 +337,11 @@ else
     private async Task ShowFilesAsync(Guid id)
     {
         var session = FindSession(id);
-        if (session is null || !session.IsConnected) return;
+        if (session is null || !session.IsConnected || session.Connection is not ISshConnection ssh) return;
 
         try
         {
-            session.Sftp ??= await session.Connection.OpenSftpAsync();
+            session.Sftp ??= await ssh.OpenSftpAsync();
             session.View = SessionView.Files;
             _activeSessionId = id;
         }
@@ -328,10 +359,10 @@ else
 
         try
         {
-            if (session.Shell is null)
+            if (session.Terminal is null)
             {
-                session.Shell = await session.Connection.OpenShellAsync(80, 24);
-                WireShell(session);
+                session.Terminal = await session.Connection.OpenTerminalAsync(80, 24);
+                WireTerminal(session);
             }
             session.View = SessionView.Terminal;
             _activeSessionId = id;
@@ -346,7 +377,7 @@ else
     private Task ShowForwardsAsync(Guid id)
     {
         var session = FindSession(id);
-        if (session is null || !session.IsConnected) return Task.CompletedTask;
+        if (session is null || !session.IsConnected || !session.SupportsSshFeatures) return Task.CompletedTask;
         session.View = SessionView.Forwards;
         _activeSessionId = id;
         StateHasChanged();
@@ -354,36 +385,25 @@ else
     }
 
     private IReadOnlyList<ForwardInfo> ForwardInfos(OpenSession session) =>
-        [.. session.Forwards.Select(f => new ForwardInfo(
-            f.Id,
-            f.Forward.Kind,
-            f.Forward.BoundAddress,
-            f.Forward.Destination,
-            f.Forward.SocksUsername,
-            f.Forward.SocksPassword))];
+        [.. session.Forwards
+            .Where(f => f.Forward is not null)
+            .Select(f => new ForwardInfo(
+                f.Id,
+                f.Forward!.Kind,
+                f.Forward.BoundAddress,
+                f.Forward.Destination,
+                f.Forward.SocksUsername,
+                f.Forward.SocksPassword))];
 
     private async Task StartForwardAsync(Guid id, ForwardRequest request)
     {
         var session = FindSession(id);
-        if (session is null || !session.IsConnected) return;
+        if (session is null || !session.IsConnected || session.Connection is not ISshConnection ssh) return;
 
         try
         {
-            ISshForward forward = request.Kind switch
-            {
-                SshForwardKind.Local => await session.Connection.OpenLocalForwardAsync(
-                    request.ListenAddress,
-                    RequiredDestination(request),
-                    request.AllowNonLoopbackBind),
-                SshForwardKind.Remote => await session.Connection.OpenRemoteForwardAsync(
-                    request.ListenAddress,
-                    RequiredDestination(request)),
-                SshForwardKind.Socks => await session.Connection.OpenSocksForwardAsync(
-                    request.ListenAddress,
-                    request.RequireSocksAuth),
-                _ => throw new ArgumentOutOfRangeException(nameof(request.Kind)),
-            };
-            session.Forwards.Add(new RunningForward(forward));
+            var forward = await OpenForwardAsync(ssh, request);
+            session.Forwards.Add(new RunningForward(request, forward));
             session.View = SessionView.Forwards;
             _failure = null;
         }
@@ -398,6 +418,22 @@ else
         StateHasChanged();
     }
 
+    private static Task<ISshForward> OpenForwardAsync(ISshConnection connection, ForwardRequest request) =>
+        request.Kind switch
+        {
+            SshForwardKind.Local => connection.OpenLocalForwardAsync(
+                request.ListenAddress,
+                RequiredDestination(request),
+                request.AllowNonLoopbackBind),
+            SshForwardKind.Remote => connection.OpenRemoteForwardAsync(
+                request.ListenAddress,
+                RequiredDestination(request)),
+            SshForwardKind.Socks => connection.OpenSocksForwardAsync(
+                request.ListenAddress,
+                request.RequireSocksAuth),
+            _ => throw new ArgumentOutOfRangeException(nameof(request.Kind)),
+        };
+
     private async Task StopForwardAsync(Guid id, ForwardStopRequest request)
     {
         var session = FindSession(id);
@@ -406,7 +442,7 @@ else
 
         try
         {
-            await running.Forward.DisposeAsync();
+            if (running.Forward is not null) await running.Forward.DisposeAsync();
             session.Forwards.Remove(running);
             _failure = null;
         }
@@ -452,70 +488,166 @@ else
         return Task.CompletedTask;
     }
 
-    private Task OnShellWriteFailedAsync(Guid id, Exception exception) =>
-        MarkSessionDisconnectedAsync(id, "The shell stopped accepting input. Reconnect to continue.");
+    private Task OnTerminalWriteFailedAsync(Guid id, Exception exception) =>
+        MarkSessionDisconnectedAsync(id, "The terminal stopped accepting input.", autoReconnect: true);
 
-    private async Task MarkSessionDisconnectedAsync(Guid id, string? message)
+    private async Task MarkSessionDisconnectedAsync(Guid id, string? message, bool autoReconnect)
     {
         var session = FindSession(id);
         if (session is null || !session.IsConnected) return;
 
         session.IsConnected = false;
         session.Status = string.IsNullOrWhiteSpace(message)
-            ? "The SSH session is no longer connected."
+            ? "The terminal session is no longer connected."
             : message;
-        await DisposeForwardsAsync(session);
+        await SuspendForwardsAsync(session);
 
-        if (!_sessions.Any(s => s.IsConnected)) await SessionLifetime.StopAsync();
+        if (autoReconnect && session.SourceHost.AutoReconnect)
+            StartAutoReconnect(session);
+
+        if (!_sessions.Any(s => s.IsConnected || s.IsReconnecting))
+            await SessionLifetime.StopAsync();
         StateHasChanged();
+    }
+
+    private void StartAutoReconnect(OpenSession session)
+    {
+        if (session.ReconnectTask is { IsCompleted: false }) return;
+
+        session.ReconnectCancellation?.Dispose();
+        var cts = new CancellationTokenSource();
+        session.ReconnectCancellation = cts;
+        session.ReconnectTask = AutoReconnectAsync(session, cts.Token);
+    }
+
+    private async Task AutoReconnectAsync(OpenSession session, CancellationToken cancellationToken)
+    {
+        session.IsReconnecting = true;
+        await SessionLifetime.StartAsync();
+        var attempt = 0;
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested && _sessions.Contains(session))
+            {
+                attempt++;
+                var delay = ReconnectDelay(attempt);
+                session.Status = $"Reconnect attempt {attempt} in {FormatDelay(delay)}…";
+                StateHasChanged();
+                await Task.Delay(delay, cancellationToken);
+
+                session.Status = $"Reconnect attempt {attempt}…";
+                StateHasChanged();
+                var error = await TryReconnectAsync(session, cancellationToken);
+                if (error is null) return;
+
+                session.Status = ErrorMessage(error);
+                if (!IsRetryable(error)) return;
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+        finally
+        {
+            session.IsReconnecting = false;
+            if (!session.IsConnected && !_sessions.Any(s => s.IsConnected || (s != session && s.IsReconnecting)))
+                await SessionLifetime.StopAsync();
+            StateHasChanged();
+        }
     }
 
     private async Task ReconnectAsync(Guid id)
     {
         var session = FindSession(id);
-        if (session is null || session.IsReconnecting) return;
+        if (session is null) return;
 
-        var hadShell = session.Shell is not null;
-        var hadSftp = session.Sftp is not null;
+        await CancelAutoReconnectAsync(session);
         session.IsReconnecting = true;
-        session.IsConnected = false;
-        session.Status = "Reconnecting…";
+        session.Status = "Reconnecting now…";
         StateHasChanged();
-
         try
         {
             await SessionLifetime.StartAsync();
-            await DisposeConnectionAsync(session);
-
-            var connected = await ConnectHostAsync(session.SourceHost);
-            session.DisplayHost = connected.DisplayHost;
-            session.Connection = connected.Connection;
-            WireConnection(session);
-
-            if (hadShell)
-            {
-                session.Shell = await session.Connection.OpenShellAsync(80, 24);
-                WireShell(session);
-            }
-            if (hadSftp)
-                session.Sftp = await session.Connection.OpenSftpAsync();
-
-            session.IsConnected = true;
-            session.Status = "Connected.";
-        }
-        catch (Exception ex) when (ex is SshException or IOException or ObjectDisposedException)
-        {
-            session.IsConnected = false;
-            session.Status = ex is SshException ssh ? ssh.Message : "Could not reconnect the SSH session.";
-            await DisposeConnectionAsync(session);
-            if (!_sessions.Any(s => s.IsConnected)) await SessionLifetime.StopAsync();
+            var error = await TryReconnectAsync(session, CancellationToken.None);
+            if (error is not null) session.Status = ErrorMessage(error);
         }
         finally
         {
             session.IsReconnecting = false;
+            if (!session.IsConnected && !_sessions.Any(s => s.IsConnected || s.IsReconnecting))
+                await SessionLifetime.StopAsync();
             StateHasChanged();
         }
     }
+
+    private async Task<Exception?> TryReconnectAsync(OpenSession session, CancellationToken cancellationToken)
+    {
+        var hadTerminal = session.Terminal is not null;
+        var hadSftp = session.Sftp is not null;
+        try
+        {
+            await DisposeConnectionAsync(session, preserveForwardDefinitions: true);
+
+            var connected = await ConnectHostAsync(session.SourceHost, cancellationToken);
+            session.DisplayHost = connected.DisplayHost;
+            session.Connection = connected.Connection;
+            WireConnection(session);
+
+            if (hadTerminal)
+            {
+                session.Terminal = await session.Connection.OpenTerminalAsync(80, 24, cancellationToken);
+                WireTerminal(session);
+            }
+
+            if (hadSftp)
+            {
+                if (session.Connection is not ISshConnection ssh)
+                    throw new InvalidOperationException("This reconnected protocol no longer provides SFTP.");
+                session.Sftp = await ssh.OpenSftpAsync(cancellationToken);
+            }
+
+            if (session.Forwards.Count > 0)
+            {
+                if (session.Connection is not ISshConnection ssh)
+                    throw new InvalidOperationException("This reconnected protocol no longer provides port forwarding.");
+                foreach (var running in session.Forwards)
+                    running.Forward = await OpenForwardAsync(ssh, running.Request);
+            }
+
+            session.IsConnected = true;
+            session.Status = "Connected.";
+            return null;
+        }
+        catch (Exception ex) when (ex is SshException or IOException or ObjectDisposedException or InvalidOperationException)
+        {
+            session.IsConnected = false;
+            try { await DisposeConnectionAsync(session, preserveForwardDefinitions: true); }
+            catch { }
+            return ex;
+        }
+    }
+
+    private static bool IsRetryable(Exception exception) => exception switch
+    {
+        SshException { Failure: SshFailure.AuthenticationFailed or SshFailure.HostKeyChanged or SshFailure.HostKeyUnknown
+            or SshFailure.PermissionDenied or SshFailure.Cancelled } => false,
+        InvalidOperationException => false,
+        _ => true,
+    };
+
+    private static string ErrorMessage(Exception exception) => exception is SshException ssh
+        ? ssh.Message
+        : string.IsNullOrWhiteSpace(exception.Message) ? "Could not reconnect the terminal session." : exception.Message;
+
+    private static TimeSpan ReconnectDelay(int attempt) => attempt switch
+    {
+        <= 1 => TimeSpan.FromSeconds(1),
+        2 => TimeSpan.FromSeconds(2),
+        3 => TimeSpan.FromSeconds(4),
+        4 => TimeSpan.FromSeconds(8),
+        5 => TimeSpan.FromSeconds(15),
+        _ => TimeSpan.FromSeconds(30),
+    };
+
+    private static string FormatDelay(TimeSpan delay) => delay.TotalSeconds == 1 ? "1 second" : $"{delay.TotalSeconds:0} seconds";
 
     private async Task CloseSessionAsync(Guid id)
     {
@@ -523,6 +655,7 @@ else
         if (session is null) return;
 
         var index = _sessions.IndexOf(session);
+        await CancelAutoReconnectAsync(session);
         await DisposeConnectionAsync(session);
         _sessions.Remove(session);
 
@@ -544,27 +677,34 @@ else
         StateHasChanged();
     }
 
-    private static async Task DisposeForwardsAsync(OpenSession session)
+    private static async Task SuspendForwardsAsync(OpenSession session)
     {
-        foreach (var running in session.Forwards.ToArray())
+        foreach (var running in session.Forwards)
         {
+            if (running.Forward is null) continue;
             try { await running.Forward.DisposeAsync(); }
             catch (Exception ex) when (ex is SshException or IOException or ObjectDisposedException) { }
+            running.Forward = null;
         }
-        session.Forwards.Clear();
     }
 
-    private async Task DisposeConnectionAsync(OpenSession session)
+    private static async Task DisposeForwardsAsync(OpenSession session, bool preserveDefinitions)
     {
-        await DisposeForwardsAsync(session);
+        await SuspendForwardsAsync(session);
+        if (!preserveDefinitions) session.Forwards.Clear();
+    }
 
-        if (session.Shell is not null)
+    private async Task DisposeConnectionAsync(OpenSession session, bool preserveForwardDefinitions = false)
+    {
+        await DisposeForwardsAsync(session, preserveForwardDefinitions);
+
+        if (session.Terminal is not null)
         {
-            if (session.ShellExitedHandler is not null)
-                session.Shell.Exited -= session.ShellExitedHandler;
-            await session.Shell.DisposeAsync();
-            session.Shell = null;
-            session.ShellExitedHandler = null;
+            if (session.TerminalExitedHandler is not null)
+                session.Terminal.Exited -= session.TerminalExitedHandler;
+            await session.Terminal.DisposeAsync();
+            session.Terminal = null;
+            session.TerminalExitedHandler = null;
         }
 
         if (session.Sftp is not null)
@@ -577,6 +717,21 @@ else
             session.Connection.ConnectionLost -= session.ConnectionLostHandler;
         await session.Connection.DisposeAsync();
         session.ConnectionLostHandler = null;
+    }
+
+    private static async Task CancelAutoReconnectAsync(OpenSession session)
+    {
+        var cancellation = session.ReconnectCancellation;
+        var task = session.ReconnectTask;
+        session.ReconnectCancellation = null;
+        session.ReconnectTask = null;
+        if (cancellation is null) return;
+        await cancellation.CancelAsync();
+        if (task is not null)
+        {
+            try { await task; } catch (OperationCanceledException) { }
+        }
+        cancellation.Dispose();
     }
 
     private OpenSession? FindSession(Guid id) => _sessions.FirstOrDefault(s => s.Id == id);
@@ -594,6 +749,8 @@ else
         Vault.StateChanged -= OnVaultChanged;
         Questions.Changed -= OnQuestionsChanged;
 
+        foreach (var session in _sessions.ToArray())
+            await CancelAutoReconnectAsync(session);
         foreach (var session in _sessions.ToArray())
             await DisposeConnectionAsync(session);
         _sessions.Clear();

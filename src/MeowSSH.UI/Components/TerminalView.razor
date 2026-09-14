@@ -31,12 +31,12 @@
     private DotNetObjectReference<TerminalView>? _self;
     private bool _ctrlArmed;
     private bool _altArmed;
-    private ISshShell? _subscribedShell;
+    private ITerminalSession? _subscribedShell;
 
     private readonly List<byte[]> _pendingOutput = [];
     private bool _terminalReady;
 
-    [Parameter, EditorRequired] public ISshShell Shell { get; set; } = default!;
+    [Parameter, EditorRequired] public ITerminalSession Shell { get; set; } = default!;
     [Parameter] public EventCallback<Exception> OnWriteFailed { get; set; }
 
     private sealed record QuickKey(string Id, string Label, byte[] Bytes);
@@ -147,20 +147,12 @@
         }
     }
 
-    private void ToggleCtrl()
-    {
-        _ctrlArmed = !_ctrlArmed;
-    }
+    private void ToggleCtrl() => _ctrlArmed = !_ctrlArmed;
 
-    private void ToggleAlt()
-    {
-        _altArmed = !_altArmed;
-    }
+    private void ToggleAlt() => _altArmed = !_altArmed;
 
-    private async Task SendKeyAsync(QuickKey key)
-    {
+    private async Task SendKeyAsync(QuickKey key) =>
         await WriteAsync(ApplyModifiers(key.Bytes));
-    }
 
     private byte[] ApplyModifiers(ReadOnlySpan<byte> input)
     {

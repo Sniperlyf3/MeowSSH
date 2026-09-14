@@ -5,28 +5,9 @@ using MeowSSH.Core.Security;
 
 namespace MeowSSH.Core.Storage;
 
-/// <summary>
-/// Turns a <see cref="VaultDocument"/> into the bytes that go on disk, and back.
-/// </summary>
-/// <remarks>
-/// <para>
-/// The file has a plaintext header and two sealed sections. The header holds only
-/// what has to be readable before the vault is open: the schema version, the
-/// device id, the save counter, and the wrapped copies of the master key. Each
-/// wrapped key is already authenticated under its own wrapping key, so leaving
-/// the header unencrypted gives an attacker the number of unlock routes and
-/// nothing else.
-/// </para>
-/// <para>
-/// Hosts and credentials are sealed as two blobs rather than row by row. Sealing
-/// each row would publish how many hosts exist and roughly how long each label
-/// is, on a file an attacker can watch change; sealing whole sections costs a
-/// full rewrite per save, which on a phone's host list is nothing.
-/// </para>
-/// </remarks>
+/// <summary>Turns a <see cref="VaultDocument"/> into the encrypted bytes stored on disk, and back.</summary>
 public static class VaultFile
 {
-    /// <summary>Identifies the file on sight, and stops an unrelated file from being read as an empty vault.</summary>
     private static ReadOnlySpan<byte> Magic => "MEOWVLT1"u8;
 
     private const string HostSection = "hosts";
@@ -57,31 +38,22 @@ public static class VaultFile
         foreach (var key in document.WrappedKeys) WriteWrappedKey(file, key);
 
         file.WriteBytes(VaultCrypto.Seal(
-            secretsKey.ReadOnlySpan, hosts.ToArray(), SectionContext(HostSection, document.Revision)));
+            secretsKey.ReadOnlySpan,
+            hosts.ToArray(),
+            SectionContext(HostSection, document.Revision, VaultDocument.SchemaVersion)));
         file.WriteBytes(VaultCrypto.Seal(
-            secretsKey.ReadOnlySpan, credentials.ToArray(), SectionContext(CredentialSection, document.Revision)));
+            secretsKey.ReadOnlySpan,
+            credentials.ToArray(),
+            SectionContext(CredentialSection, document.Revision, VaultDocument.SchemaVersion)));
         return file.ToArray();
     }
 
-    /// <summary>
-    /// Reads the header alone.
-    /// </summary>
-    /// <remarks>
-    /// This is what runs before the vault is unlocked: it is the only way to find
-    /// the wrapped key the device — or the recovery code — has to open, and it
-    /// must work when the device key is gone.
-    /// </remarks>
     public static VaultHeader ReadHeader(ReadOnlySpan<byte> bytes)
     {
         var reader = new VaultReader(bytes);
         return ReadHeader(ref reader);
     }
 
-    /// <summary>Opens the sealed sections. Requires the unlocked key ring.</summary>
-    /// <exception cref="CryptographicException">
-    /// The key is wrong, or the file was tampered with — including a section
-    /// lifted from an older copy of this same vault.
-    /// </exception>
     public static VaultDocument Read(ReadOnlySpan<byte> bytes, VaultKeyRing keyRing)
     {
         ArgumentNullException.ThrowIfNull(keyRing);
@@ -94,13 +66,17 @@ public static class VaultFile
         using var secretsKey = keyRing.DerivePurposeKey(VaultKeyPurpose.Secrets);
 
         using var hostBytes = VaultCrypto.Open(
-            secretsKey.ReadOnlySpan, sealedHosts, SectionContext(HostSection, header.Revision));
+            secretsKey.ReadOnlySpan,
+            sealedHosts,
+            SectionContext(HostSection, header.Revision, header.SchemaVersion));
         var hostReader = new VaultReader(hostBytes.ReadOnlySpan);
         var hosts = new HostRecord[ReadCount(ref hostReader)];
-        for (var i = 0; i < hosts.Length; i++) hosts[i] = ReadHost(ref hostReader);
+        for (var i = 0; i < hosts.Length; i++) hosts[i] = ReadHost(ref hostReader, header.SchemaVersion);
 
         using var credentialBytes = VaultCrypto.Open(
-            secretsKey.ReadOnlySpan, sealedCredentials, SectionContext(CredentialSection, header.Revision));
+            secretsKey.ReadOnlySpan,
+            sealedCredentials,
+            SectionContext(CredentialSection, header.Revision, header.SchemaVersion));
         var credentialReader = new VaultReader(credentialBytes.ReadOnlySpan);
         var credentials = new CredentialRecord[ReadCount(ref credentialReader)];
         for (var i = 0; i < credentials.Length; i++) credentials[i] = ReadCredential(ref credentialReader);
@@ -121,16 +97,16 @@ public static class VaultFile
             throw new VaultFormatException("This file is not a MeowSSH vault.");
 
         var schemaVersion = reader.ReadInt32();
-        if (schemaVersion > VaultDocument.SchemaVersion)
+        if (schemaVersion is < 1 or > VaultDocument.SchemaVersion)
             throw new VaultFormatException(
-                $"This vault was written by a newer version of MeowSSH (schema {schemaVersion}). Update the app to open it.");
+                schemaVersion > VaultDocument.SchemaVersion
+                    ? $"This vault was written by a newer version of MeowSSH (schema {schemaVersion}). Update the app to open it."
+                    : $"Unsupported vault schema {schemaVersion}.");
 
         var deviceId = reader.ReadString();
         var revision = reader.ReadInt64();
 
         var keyCount = reader.ReadInt32();
-        // A wrapped key is allocated from this number before any of it is
-        // authenticated, so an implausible header is refused rather than sized.
         if (keyCount is < 0 or > 64)
             throw new VaultFormatException("The vault header claims an implausible number of keys.");
 
@@ -148,15 +124,11 @@ public static class VaultFile
         return count;
     }
 
-    private static byte[] SectionContext(string section, long revision) =>
-        // The revision is the record id, so a section pasted in from an earlier
-        // save of this same vault fails to authenticate against the current one.
+    private static byte[] SectionContext(string section, long revision, int schemaVersion) =>
         VaultCrypto.RecordContext(
             "vault.section." + section,
             revision.ToString(CultureInfo.InvariantCulture),
-            VaultDocument.SchemaVersion);
-
-    // Records -------------------------------------------------------------
+            schemaVersion);
 
     private static void WriteHost(VaultWriter writer, HostRecord host)
     {
@@ -174,25 +146,75 @@ public static class VaultFile
         writer.WriteTimestamp(host.UpdatedAt);
         writer.WriteNullableString(host.OriginDeviceId);
         writer.WriteNullableTimestamp(host.DeletedAt);
+        writer.WriteInt32((int)host.Protocol);
+        writer.WriteBoolean(host.AutoReconnect);
+        writer.WriteInt32(host.SerialBaudRate);
+        writer.WriteInt32(host.SerialDataBits);
+        writer.WriteInt32((int)host.SerialStopBits);
+        writer.WriteInt32((int)host.SerialParity);
     }
 
-    private static HostRecord ReadHost(ref VaultReader reader) => new()
+    private static HostRecord ReadHost(ref VaultReader reader, int schemaVersion)
     {
-        Id = reader.ReadGuid(),
-        Label = reader.ReadString(),
-        Address = reader.ReadString(),
-        Port = reader.ReadInt32(),
-        Username = reader.ReadNullableString(),
-        Transport = (SshTransport)reader.ReadInt32(),
-        Tags = reader.ReadStringList(),
-        JumpHostId = reader.ReadNullableGuid(),
-        CredentialId = reader.ReadNullableGuid(),
-        LastConnectedAt = reader.ReadNullableTimestamp(),
-        Revision = reader.ReadInt64(),
-        UpdatedAt = reader.ReadTimestamp(),
-        OriginDeviceId = reader.ReadNullableString(),
-        DeletedAt = reader.ReadNullableTimestamp(),
-    };
+        var id = reader.ReadGuid();
+        var label = reader.ReadString();
+        var address = reader.ReadString();
+        var port = reader.ReadInt32();
+        var username = reader.ReadNullableString();
+        var transport = (SshTransport)reader.ReadInt32();
+        var tags = reader.ReadStringList();
+        var jumpHostId = reader.ReadNullableGuid();
+        var credentialId = reader.ReadNullableGuid();
+        var lastConnectedAt = reader.ReadNullableTimestamp();
+        var revision = reader.ReadInt64();
+        var updatedAt = reader.ReadTimestamp();
+        var originDeviceId = reader.ReadNullableString();
+        var deletedAt = reader.ReadNullableTimestamp();
+
+        var protocol = HostProtocol.Ssh;
+        var autoReconnect = true;
+        var serialBaudRate = 115200;
+        var serialDataBits = 8;
+        var serialStopBits = SerialStopBits.One;
+        var serialParity = SerialParity.None;
+        if (schemaVersion >= 2)
+        {
+            protocol = (HostProtocol)reader.ReadInt32();
+            if (!Enum.IsDefined(protocol))
+                throw new VaultFormatException($"A host contains unsupported protocol value {(int)protocol}.");
+            autoReconnect = reader.ReadBoolean();
+            serialBaudRate = reader.ReadInt32();
+            serialDataBits = reader.ReadInt32();
+            serialStopBits = (SerialStopBits)reader.ReadInt32();
+            serialParity = (SerialParity)reader.ReadInt32();
+            if (!Enum.IsDefined(serialStopBits) || !Enum.IsDefined(serialParity))
+                throw new VaultFormatException("A host contains unsupported serial line settings.");
+        }
+
+        return new HostRecord
+        {
+            Id = id,
+            Label = label,
+            Address = address,
+            Port = port,
+            Username = username,
+            Transport = transport,
+            Protocol = protocol,
+            AutoReconnect = autoReconnect,
+            SerialBaudRate = serialBaudRate,
+            SerialDataBits = serialDataBits,
+            SerialStopBits = serialStopBits,
+            SerialParity = serialParity,
+            Tags = tags,
+            JumpHostId = jumpHostId,
+            CredentialId = credentialId,
+            LastConnectedAt = lastConnectedAt,
+            Revision = revision,
+            UpdatedAt = updatedAt,
+            OriginDeviceId = originDeviceId,
+            DeletedAt = deletedAt,
+        };
+    }
 
     private static void WriteCredential(VaultWriter writer, CredentialRecord credential)
     {

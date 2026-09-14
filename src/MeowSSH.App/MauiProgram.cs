@@ -15,9 +15,6 @@ public static class MauiProgram
         builder.UseMauiApp<App>();
         builder.Services.AddMauiBlazorWebView();
 
-        // Everything the app runs on is the real implementation: the Keystore,
-        // the biometric prompt, the encrypted vault on disk, and the Meowshell
-        // agent.
         builder.Services.AddSingleton<IDeviceKeyStore>(_ => new AndroidDeviceKeyStore());
         builder.Services.AddSingleton<IBiometricGate>(_ => new AndroidBiometricGate(() => Platform.CurrentActivity));
 
@@ -28,36 +25,35 @@ public static class MauiProgram
         builder.Services.AddSingleton(sp => new VaultStore(sp.GetRequiredService<IVaultStorage>()));
         builder.Services.AddSingleton<IVaultSession, StoredVaultSession>();
 
-        // One object, three roles, so the list, the editor and the connection
-        // path all see the same open vault rather than three views of it.
         builder.Services.AddSingleton<VaultHostDirectory>();
         builder.Services.AddSingleton<IHostDirectory>(sp => sp.GetRequiredService<VaultHostDirectory>());
         builder.Services.AddSingleton<IHostEditor>(sp => sp.GetRequiredService<VaultHostDirectory>());
         builder.Services.AddSingleton<ICredentialResolver>(sp => sp.GetRequiredService<VaultHostDirectory>());
 
-        // One object, two roles: the engine asks it the handshake's questions,
-        // and the shell watches it to know what to put on screen.
         builder.Services.AddSingleton<InteractiveSshPrompts>();
         builder.Services.AddSingleton<ISshPrompts>(sp => sp.GetRequiredService<InteractiveSshPrompts>());
         builder.Services.AddSingleton<IActiveSessionLifetime, AndroidActiveSessionLifetime>();
         builder.Services.AddSingleton<ILocalFileTransferService, AndroidLocalFileTransferService>();
-        builder.Services.AddSingleton<ISshEngine>(_ => new MeowshellSshEngine(
-            new MeowshellSshEngineOptions(
-                // App-private storage: the agent needs a writable HOME, and
-                // known_hosts must not be readable by other apps.
-                WorkingDirectory: Path.Combine(FileSystem.AppDataDirectory, "agent"),
-                KnownHostsPath: Path.Combine(FileSystem.AppDataDirectory, "agent", "known_hosts"),
-                // Required on Android, not an optimisation. An app targeting
-                // API 29 or later may only execute a file from
-                // ApplicationInfo.NativeLibraryDir, and Meowshell's own search
-                // looks beside the assemblies instead -- where, on Android,
-                // nothing executable ever is. Left unset it finds no binaries
-                // and every connection fails before it starts.
-                BinaryDirectory: global::Android.App.Application.Context.ApplicationInfo!.NativeLibraryDir)));
+        builder.Services.AddSingleton<ISerialDeviceService, AndroidUsbSerialDeviceService>();
+
+        var engineOptions = new MeowshellSshEngineOptions(
+            WorkingDirectory: Path.Combine(FileSystem.AppDataDirectory, "agent"),
+            KnownHostsPath: Path.Combine(FileSystem.AppDataDirectory, "agent", "known_hosts"),
+            BinaryDirectory: global::Android.App.Application.Context.ApplicationInfo!.NativeLibraryDir);
+        builder.Services.AddSingleton(engineOptions);
+        builder.Services.AddSingleton<ISshEngine>(sp =>
+            new MeowshellSshEngine(sp.GetRequiredService<MeowshellSshEngineOptions>()));
+        builder.Services.AddSingleton<IProtocolConnectionEngine>(sp =>
+            new SshProtocolConnectionEngine(sp.GetRequiredService<ISshEngine>()));
+        builder.Services.AddSingleton<IProtocolConnectionEngine>(sp =>
+            new MoshConnectionEngine(sp.GetRequiredService<MeowshellSshEngineOptions>()));
+        builder.Services.AddSingleton<IProtocolConnectionEngine, TelnetConnectionEngine>();
+        builder.Services.AddSingleton<IProtocolConnectionEngine, SerialConnectionEngine>();
+        builder.Services.AddSingleton<IProtocolConnectionEngine>(sp =>
+            new LocalTerminalConnectionEngine(sp.GetRequiredService<MeowshellSshEngineOptions>()));
+        builder.Services.AddSingleton<IConnectionEngine, ConnectionEngine>();
 
 #if DEBUG
-        // Lets the WebView be inspected from chrome://inspect on a tethered
-        // machine, which is the only way to see a JS error from the terminal.
         builder.Services.AddBlazorWebViewDeveloperTools();
 #endif
 

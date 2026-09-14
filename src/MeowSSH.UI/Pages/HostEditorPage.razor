@@ -1,12 +1,7 @@
 @inject IHostEditor Editor
+@inject ISerialDeviceService SerialDevices
 
-@*
-    Adding and editing a host. One screen for both, because the fields are the
-    same and a separate "edit" screen is a second place for a field to be
-    forgotten.
-*@
-
-<AppShell Title="@(IsNew ? "New host" : "Edit host")" ActiveTab="hosts">
+<AppShell Title="@(IsNew ? "New connection" : "Edit connection")" ActiveTab="hosts">
     <Actions>
         <button type="button" class="btn btn--icon" aria-label="Cancel"
                 data-testid="cancel-host" @onclick="OnCancelled">
@@ -21,56 +16,145 @@
                 <input class="field__input" type="text" data-testid="host-label"
                        placeholder="build-01" autocomplete="off" spellcheck="false"
                        @bind="_label" @bind:event="oninput" />
-                <span class="field__hint">What you will call this host in the list.</span>
+                <span class="field__hint">What you will call this connection in the list.</span>
             </label>
 
             <fieldset class="field">
-                <legend class="field__label">How to reach it</legend>
-                <div class="segmented" role="radiogroup" aria-label="Transport">
-                    @foreach (var option in Transports)
+                <legend class="field__label">Protocol</legend>
+                <div class="segmented" role="radiogroup" aria-label="Protocol">
+                    @foreach (var option in Protocols)
                     {
                         <button type="button"
-                                class="segmented__option @(_transport == option.Value ? "segmented__option--on" : "")"
+                                class="segmented__option @(_protocol == option.Value ? "segmented__option--on" : "")"
                                 role="radio"
-                                aria-checked="@(_transport == option.Value ? "true" : "false")"
-                                data-testid="@($"transport-{option.Value}")"
-                                @onclick="() => SetTransport(option.Value)">
+                                aria-checked="@(_protocol == option.Value ? "true" : "false")"
+                                data-testid="@($"protocol-{option.Value}")"
+                                @onclick="() => SetProtocol(option.Value)">
                             @option.Label
                         </button>
                     }
                 </div>
-                <span class="field__hint">@TransportHint</span>
+                <span class="field__hint">@ProtocolHint</span>
             </fieldset>
 
-            <label class="field">
-                <span class="field__label">@AddressLabel</span>
-                <input class="field__input mono" type="text" data-testid="host-address"
-                       placeholder="@AddressPlaceholder" autocomplete="off"
-                       autocapitalize="none" spellcheck="false"
-                       @bind="_address" @bind:event="oninput" />
-            </label>
-
-            @if (_transport != SshTransport.Tailcat)
+            @if (_protocol == HostProtocol.Ssh)
             {
+                <fieldset class="field">
+                    <legend class="field__label">How to reach it</legend>
+                    <div class="segmented" role="radiogroup" aria-label="Transport">
+                        @foreach (var option in Transports)
+                        {
+                            <button type="button"
+                                    class="segmented__option @(_transport == option.Value ? "segmented__option--on" : "")"
+                                    role="radio"
+                                    aria-checked="@(_transport == option.Value ? "true" : "false")"
+                                    data-testid="@($"transport-{option.Value}")"
+                                    @onclick="() => SetTransport(option.Value)">
+                                @option.Label
+                            </button>
+                        }
+                    </div>
+                    <span class="field__hint">@TransportHint</span>
+                </fieldset>
+            }
+
+            @if (_protocol == HostProtocol.Serial)
+            {
+                <label class="field">
+                    <span class="field__label">USB serial device</span>
+                    <select class="field__input" data-testid="serial-device" @bind="_address">
+                        <option value="">Select a connected device</option>
+                        @if (!string.IsNullOrWhiteSpace(_address) && !_serialDevices.Any(d => d.Id == _address))
+                        {
+                            <option value="@_address">Saved device (currently unavailable)</option>
+                        }
+                        @foreach (var device in _serialDevices)
+                        {
+                            <option value="@device.Id">@device.Label</option>
+                        }
+                    </select>
+                    <button type="button" class="btn btn--ghost" data-testid="refresh-serial-devices"
+                            @onclick="RefreshSerialDevicesAsync">Refresh devices</button>
+                </label>
+
                 <div class="form__row">
                     <label class="field field--grow">
-                        <span class="field__label">Username</span>
-                        <input class="field__input mono" type="text" data-testid="host-username"
-                               placeholder="deploy" autocomplete="off"
-                               autocapitalize="none" spellcheck="false"
-                               @bind="_username" @bind:event="oninput" />
+                        <span class="field__label">Baud rate</span>
+                        <input class="field__input mono" type="number" min="1" data-testid="serial-baud"
+                               @bind="_serialBaudRate" />
                     </label>
-
                     <label class="field field--narrow">
-                        <span class="field__label">Port</span>
-                        <input class="field__input mono" type="number" inputmode="numeric"
-                               min="1" max="65535" data-testid="host-port"
-                               @bind="_port" @bind:event="oninput" />
+                        <span class="field__label">Data bits</span>
+                        <select class="field__input" data-testid="serial-data-bits" @bind="_serialDataBits">
+                            <option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option>
+                        </select>
+                    </label>
+                </div>
+                <div class="form__row">
+                    <label class="field field--grow">
+                        <span class="field__label">Parity</span>
+                        <select class="field__input" data-testid="serial-parity" @bind="_serialParity">
+                            @foreach (var value in Enum.GetValues<SerialParity>())
+                            {
+                                <option value="@value">@value</option>
+                            }
+                        </select>
+                    </label>
+                    <label class="field field--grow">
+                        <span class="field__label">Stop bits</span>
+                        <select class="field__input" data-testid="serial-stop-bits" @bind="_serialStopBits">
+                            <option value="@SerialStopBits.One">1</option>
+                            <option value="@SerialStopBits.OnePointFive">1.5</option>
+                            <option value="@SerialStopBits.Two">2</option>
+                        </select>
                     </label>
                 </div>
             }
+            else if (_protocol != HostProtocol.Local)
+            {
+                <label class="field">
+                    <span class="field__label">@AddressLabel</span>
+                    <input class="field__input mono" type="text" data-testid="host-address"
+                           placeholder="@AddressPlaceholder" autocomplete="off"
+                           autocapitalize="none" spellcheck="false"
+                           @bind="_address" @bind:event="oninput" />
+                </label>
 
-            @if (_transport != SshTransport.TailscaleSsh)
+                @if (_protocol is HostProtocol.Ssh or HostProtocol.Mosh or HostProtocol.Telnet)
+                {
+                    <div class="form__row">
+                        @if (_protocol is HostProtocol.Ssh or HostProtocol.Mosh && _transport != SshTransport.Tailcat)
+                        {
+                            <label class="field field--grow">
+                                <span class="field__label">Username</span>
+                                <input class="field__input mono" type="text" data-testid="host-username"
+                                       placeholder="deploy" autocomplete="off"
+                                       autocapitalize="none" spellcheck="false"
+                                       @bind="_username" @bind:event="oninput" />
+                            </label>
+                        }
+                        @if (!(_protocol == HostProtocol.Ssh && _transport == SshTransport.Tailcat))
+                        {
+                            <label class="field field--narrow">
+                                <span class="field__label">@(_protocol == HostProtocol.Mosh ? "SSH port" : "Port")</span>
+                                <input class="field__input mono" type="number" inputmode="numeric"
+                                       min="1" max="65535" data-testid="host-port"
+                                       @bind="_port" @bind:event="oninput" />
+                            </label>
+                        }
+                    </div>
+                }
+            }
+
+            @if (_protocol == HostProtocol.Telnet)
+            {
+                <p class="note" data-testid="telnet-warning">
+                    <Icon Name="alert" />
+                    Telnet is unencrypted. Usernames, passwords and terminal traffic can be read or changed by anyone able to intercept the connection.
+                </p>
+            }
+
+            @if (UsesSshCredentials)
             {
                 <label class="field">
                     <span class="field__label">Sign in with</span>
@@ -88,13 +172,23 @@
                     </span>
                 </label>
             }
-            else
+            else if (_protocol == HostProtocol.Ssh && _transport == SshTransport.TailscaleSsh)
             {
                 <p class="note" data-testid="tailscale-note">
                     <Icon Name="shield" />
-                    Tailscale SSH authenticates with your tailnet identity, so there is no key to
-                    choose. Tailscale must be connected on this device.
+                    Tailscale SSH authenticates with your tailnet identity. Tailscale must be connected on this device.
                 </p>
+            }
+
+            @if (_protocol != HostProtocol.Local)
+            {
+                <label class="forward-option">
+                    <input type="checkbox" data-testid="auto-reconnect" @bind="_autoReconnect" />
+                    <span>
+                        <strong>Automatically reconnect</strong>
+                        <small>Retries unexpected disconnects with exponential backoff. Authentication and host-key failures are never retried automatically.</small>
+                    </span>
+                </label>
             }
 
             @if (_error is not null)
@@ -105,14 +199,14 @@
             <div class="form__actions">
                 <button type="button" class="btn btn--primary btn--block"
                         disabled="@(_busy || !IsComplete)" data-testid="save-host" @onclick="SaveAsync">
-                    @(_busy ? "Saving…" : "Save host")
+                    @(_busy ? "Saving…" : "Save connection")
                 </button>
 
                 @if (!IsNew)
                 {
                     <button type="button" class="btn btn--danger btn--block"
                             disabled="@_busy" data-testid="delete-host" @onclick="DeleteAsync">
-                        <Icon Name="trash" /> Delete host
+                        <Icon Name="trash" /> Delete connection
                     </button>
                 }
             </div>
@@ -126,19 +220,32 @@
     private string _username = "";
     private int _port = 22;
     private string _credentialId = "";
+    private HostProtocol _protocol = HostProtocol.Ssh;
     private SshTransport _transport = SshTransport.Tcp;
+    private bool _autoReconnect = true;
+    private int _serialBaudRate = 115200;
+    private int _serialDataBits = 8;
+    private SerialParity _serialParity = SerialParity.None;
+    private SerialStopBits _serialStopBits = SerialStopBits.One;
     private IReadOnlyList<CredentialSummary> _credentials = [];
+    private IReadOnlyList<SerialDeviceInfo> _serialDevices = [];
     private string? _error;
     private bool _busy;
 
-    /// <summary>The host being edited, or null to add a new one.</summary>
     [Parameter] public HostRecord? Host { get; set; }
-
     [Parameter] public EventCallback OnSaved { get; set; }
-
     [Parameter] public EventCallback OnCancelled { get; set; }
 
     private bool IsNew => Host is null;
+
+    private static (HostProtocol Value, string Label)[] Protocols =>
+    [
+        (HostProtocol.Ssh, "SSH"),
+        (HostProtocol.Mosh, "Mosh"),
+        (HostProtocol.Telnet, "Telnet"),
+        (HostProtocol.Serial, "Serial"),
+        (HostProtocol.Local, "Local"),
+    ];
 
     private static (SshTransport Value, string Label)[] Transports =>
     [
@@ -147,30 +254,45 @@
         (SshTransport.TailscaleSsh, "Tailscale"),
     ];
 
+    private string ProtocolHint => _protocol switch
+    {
+        HostProtocol.Mosh => "Roaming terminal over UDP, bootstrapped through SSH. The remote host must have mosh-server installed.",
+        HostProtocol.Telnet => "Legacy unencrypted terminal protocol.",
+        HostProtocol.Serial => "Direct USB serial console using Android USB Host.",
+        HostProtocol.Local => "A real local PTY served by Meowshell and connected through an ephemeral tailcat session.",
+        _ => "Secure Shell with terminal, SFTP and port forwarding.",
+    };
+
     private string TransportHint => _transport switch
     {
-        SshTransport.Tailcat =>
-            "A tailcat address is the credential: the machine needs no open port, and nothing has to be forwarded.",
-        SshTransport.TailscaleSsh =>
-            "Reached across your tailnet. Identity comes from Tailscale rather than from an SSH key.",
+        SshTransport.Tailcat => "A tailcat address reaches the machine without an open inbound port.",
+        SshTransport.TailscaleSsh => "Reached across your tailnet using Tailscale SSH identity.",
         _ => "An ordinary SSH server reached over TCP.",
     };
 
-    private string AddressLabel => _transport == SshTransport.Tailcat ? "tailcat address" : "Hostname or IP";
+    private string AddressLabel => _transport == SshTransport.Tailcat && _protocol == HostProtocol.Ssh
+        ? "tailcat address"
+        : "Hostname or IP";
 
-    private string AddressPlaceholder => _transport switch
+    private string AddressPlaceholder => _protocol switch
     {
-        SshTransport.Tailcat => "tc…",
-        SshTransport.TailscaleSsh => "100.84.12.7",
+        HostProtocol.Telnet => "router.local",
+        HostProtocol.Mosh => "shell.example.com",
+        _ when _transport == SshTransport.Tailcat => "tc…",
+        _ when _transport == SshTransport.TailscaleSsh => "100.84.12.7",
         _ => "build.example.com",
     };
 
-    // A host with no address cannot be connected to, and one with no name is a
-    // blank row in the list. Everything else has a sensible default.
+    private bool UsesSshCredentials =>
+        _protocol == HostProtocol.Mosh
+        || (_protocol == HostProtocol.Ssh && _transport != SshTransport.TailscaleSsh);
+
     private bool IsComplete =>
         !string.IsNullOrWhiteSpace(_label)
-        && !string.IsNullOrWhiteSpace(_address)
-        && _port is > 0 and <= 65535;
+        && (_protocol == HostProtocol.Local
+            || (_protocol == HostProtocol.Serial
+                ? !string.IsNullOrWhiteSpace(_address) && _serialBaudRate > 0 && _serialDataBits is >= 5 and <= 8
+                : !string.IsNullOrWhiteSpace(_address) && _port is > 0 and <= 65535));
 
     protected override async Task OnInitializedAsync()
     {
@@ -180,19 +302,59 @@
             _address = host.Address;
             _username = host.Username ?? "";
             _port = host.Port;
+            _protocol = host.Protocol;
             _transport = host.Transport;
+            _autoReconnect = host.AutoReconnect;
+            _serialBaudRate = host.SerialBaudRate;
+            _serialDataBits = host.SerialDataBits;
+            _serialParity = host.SerialParity;
+            _serialStopBits = host.SerialStopBits;
             _credentialId = host.CredentialId?.ToString() ?? "";
         }
 
         _credentials = await Editor.GetCredentialsAsync();
+        await RefreshSerialDevicesAsync();
+    }
+
+    private void SetProtocol(HostProtocol protocol)
+    {
+        if (_protocol == protocol) return;
+        if (protocol == HostProtocol.Telnet && _port == 22) _port = 23;
+        else if (_protocol == HostProtocol.Telnet && _port == 23 && protocol is HostProtocol.Ssh or HostProtocol.Mosh) _port = 22;
+        _protocol = protocol;
+        if (protocol == HostProtocol.Local)
+        {
+            _address = "";
+            _username = "";
+            _credentialId = "";
+            _autoReconnect = false;
+        }
+        else if (protocol == HostProtocol.Telnet)
+        {
+            _username = "";
+            _credentialId = "";
+        }
+        else if (protocol == HostProtocol.Serial)
+        {
+            _username = "";
+            _credentialId = "";
+        }
+        else if (!_autoReconnect)
+        {
+            _autoReconnect = true;
+        }
     }
 
     private void SetTransport(SshTransport transport)
     {
         _transport = transport;
-        // A tailcat address carries its own identity, so a username left over
-        // from an SSH host would be sent nowhere and read as a setting that works.
         if (transport == SshTransport.Tailcat) _username = "";
+    }
+
+    private async Task RefreshSerialDevicesAsync()
+    {
+        try { _serialDevices = await SerialDevices.ListDevicesAsync(); }
+        catch { _serialDevices = []; }
     }
 
     private async Task SaveAsync()
@@ -205,21 +367,25 @@
             {
                 Id = Host?.Id ?? Guid.NewGuid(),
                 Label = _label.Trim(),
-                Address = _address.Trim(),
+                Address = _protocol == HostProtocol.Local ? "" : _address.Trim(),
                 Port = _port,
                 Username = string.IsNullOrWhiteSpace(_username) ? null : _username.Trim(),
-                Transport = _transport,
+                Protocol = _protocol,
+                Transport = _protocol == HostProtocol.Mosh ? SshTransport.Tcp : _transport,
+                AutoReconnect = _protocol != HostProtocol.Local && _autoReconnect,
+                SerialBaudRate = _serialBaudRate,
+                SerialDataBits = _serialDataBits,
+                SerialParity = _serialParity,
+                SerialStopBits = _serialStopBits,
                 Tags = Host?.Tags ?? [],
                 JumpHostId = Host?.JumpHostId,
-                CredentialId = Guid.TryParse(_credentialId, out var id) ? id : null,
+                CredentialId = UsesSshCredentials && Guid.TryParse(_credentialId, out var id) ? id : null,
                 LastConnectedAt = Host?.LastConnectedAt,
             });
             await OnSaved.InvokeAsync();
         }
         catch (InvalidOperationException ex)
         {
-            // The vault locked while this screen was open. Saying so beats a
-            // silent no-op that looks like the button is broken.
             _error = ex.Message;
         }
         finally { _busy = false; }

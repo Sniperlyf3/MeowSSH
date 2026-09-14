@@ -3,11 +3,10 @@
 
   <uses-permission android:name="android.permission.INTERNET" />
   <uses-permission android:name="android.permission.USE_BIOMETRIC" />
-  <!-- Keeps an open session alive while the app is backgrounded; without it
-       Android reclaims the process and every connection dies on a screen lock. -->
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+  <uses-feature android:name="android.hardware.usb.host" android:required="false" />
 
   <application android:allowBackup="false"
                android:extractNativeLibs="true"
@@ -19,7 +18,7 @@
              android:exported="false"
              android:foregroundServiceType="specialUse">
       <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Keeps a user-initiated SSH session alive while MeowSSH is backgrounded" />
+                android:value="Keeps a user-initiated terminal session alive while MeowSSH is backgrounded" />
     </service>
   </application>
 
