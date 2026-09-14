@@ -40,6 +40,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<InteractiveSshPrompts>();
         builder.Services.AddSingleton<ISshPrompts>(sp => sp.GetRequiredService<InteractiveSshPrompts>());
         builder.Services.AddSingleton<IActiveSessionLifetime, AndroidActiveSessionLifetime>();
+        builder.Services.AddSingleton<ILocalFileTransferService, AndroidLocalFileTransferService>();
         builder.Services.AddSingleton<ISshEngine>(_ => new MeowshellSshEngine(
             new MeowshellSshEngineOptions(
                 // App-private storage: the agent needs a writable HOME, and
