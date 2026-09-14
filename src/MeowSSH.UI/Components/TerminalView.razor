@@ -6,6 +6,18 @@
     <div class="terminal__surface" id="@_elementId"></div>
 
     <div class="keybar" role="toolbar" aria-label="Terminal keys" data-testid="keybar">
+        <button type="button" class="keybar__key keybar__key--action"
+                data-testid="key-copy" title="Copy selection"
+                @onpointerdown:preventDefault @onclick="CopySelectionAsync">Copy</button>
+        <button type="button" class="keybar__key keybar__key--action"
+                data-testid="key-paste" title="Paste clipboard"
+                @onpointerdown:preventDefault @onclick="PasteClipboardAsync">Paste</button>
+        <button type="button" class="keybar__key keybar__key--action"
+                data-testid="key-clear" title="Clear visible terminal"
+                @onpointerdown:preventDefault @onclick="ClearTerminalAsync">Clear</button>
+
+        <span class="keybar__divider" aria-hidden="true"></span>
+
         <button type="button" class="keybar__key @(_ctrlArmed ? "is-armed" : "")"
                 aria-pressed="@(_ctrlArmed ? "true" : "false")"
                 data-testid="key-ctrl"
@@ -47,6 +59,8 @@
     [
         new("esc", "Esc", [Escape]),
         new("tab", "Tab", [0x09]),
+        new("insert", "Ins", [Escape, (byte)'[', (byte)'2', (byte)'~']),
+        new("delete", "Del", [Escape, (byte)'[', (byte)'3', (byte)'~']),
         new("home", "Home", [Escape, (byte)'[', (byte)'H']),
         new("end", "End", [Escape, (byte)'[', (byte)'F']),
         new("pgup", "PgUp", [Escape, (byte)'[', (byte)'5', (byte)'~']),
@@ -60,6 +74,18 @@
         new("slash", "/", [(byte)'/']),
         new("dash", "-", [(byte)'-']),
         new("underscore", "_", [(byte)'_']),
+        new("f1", "F1", [Escape, (byte)'O', (byte)'P']),
+        new("f2", "F2", [Escape, (byte)'O', (byte)'Q']),
+        new("f3", "F3", [Escape, (byte)'O', (byte)'R']),
+        new("f4", "F4", [Escape, (byte)'O', (byte)'S']),
+        new("f5", "F5", [Escape, (byte)'[', (byte)'1', (byte)'5', (byte)'~']),
+        new("f6", "F6", [Escape, (byte)'[', (byte)'1', (byte)'7', (byte)'~']),
+        new("f7", "F7", [Escape, (byte)'[', (byte)'1', (byte)'8', (byte)'~']),
+        new("f8", "F8", [Escape, (byte)'[', (byte)'1', (byte)'9', (byte)'~']),
+        new("f9", "F9", [Escape, (byte)'[', (byte)'2', (byte)'0', (byte)'~']),
+        new("f10", "F10", [Escape, (byte)'[', (byte)'2', (byte)'1', (byte)'~']),
+        new("f11", "F11", [Escape, (byte)'[', (byte)'2', (byte)'3', (byte)'~']),
+        new("f12", "F12", [Escape, (byte)'[', (byte)'2', (byte)'4', (byte)'~']),
     ];
 
     protected override void OnParametersSet()
@@ -84,7 +110,6 @@
         {
             fontFamily = "'JetBrains Mono', ui-monospace, monospace",
             fontSize = 13,
-            theme = TerminalTheme,
         });
 
         await Shell.ResizeAsync(size.Cols, size.Rows);
@@ -148,11 +173,28 @@
     }
 
     private void ToggleCtrl() => _ctrlArmed = !_ctrlArmed;
-
     private void ToggleAlt() => _altArmed = !_altArmed;
 
     private async Task SendKeyAsync(QuickKey key) =>
         await WriteAsync(ApplyModifiers(key.Bytes));
+
+    private async Task CopySelectionAsync()
+    {
+        if (_module is null) return;
+        await _module.InvokeAsync<bool>("copySelection", _elementId);
+    }
+
+    private async Task PasteClipboardAsync()
+    {
+        if (_module is null) return;
+        await _module.InvokeAsync<bool>("pasteClipboard", _elementId);
+    }
+
+    private async Task ClearTerminalAsync()
+    {
+        if (_module is null) return;
+        await _module.InvokeVoidAsync("clearTerminal", _elementId);
+    }
 
     private byte[] ApplyModifiers(ReadOnlySpan<byte> input)
     {
@@ -201,20 +243,6 @@
         var upper = (byte)char.ToUpperInvariant((char)b);
         return upper is >= 0x40 and < 0x60 ? (byte)(upper & 0x1f) : b;
     }
-
-    private static object TerminalTheme => new
-    {
-        background = "#0b0e13",
-        foreground = "#e7ebf2",
-        cursor = "#ff8a5b",
-        cursorAccent = "#0b0e13",
-        selectionBackground = "rgba(255, 138, 91, 0.28)",
-        black = "#12171f", red = "#f2555a", green = "#3fbf8f", yellow = "#e3b341",
-        blue = "#59a9ff", magenta = "#c98bdb", cyan = "#4fc4cf", white = "#c8cfdb",
-        brightBlack = "#5d6676", brightRed = "#ff7a7e", brightGreen = "#62d6a8",
-        brightYellow = "#f0c75e", brightBlue = "#82bfff", brightMagenta = "#dba6e8",
-        brightCyan = "#74d8e1", brightWhite = "#f2f5fa",
-    };
 
     private sealed record TerminalSize(int Cols, int Rows);
 
