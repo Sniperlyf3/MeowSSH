@@ -52,6 +52,33 @@ public class KeysTests(TestHostFixture fixture)
     }
 
     [Fact]
+    public async Task AGeneratedSshKeyIsSavedWithItsPublicKeyAndCanBeReused()
+    {
+        var page = await fixture.NewPageAsync("/?keys");
+        await page.GetByTestId("add-credential").ClickAsync();
+        await page.GetByTestId("credential-label").FillAsync("generated deploy key");
+
+        await page.GetByTestId("generate-ssh-key").ClickAsync();
+
+        await Assertions.Expect(page.GetByTestId("credential-secret"))
+            .ToContainTextAsync("BEGIN PRIVATE KEY");
+        await Assertions.Expect(page.GetByTestId("generated-public-key"))
+            .ToHaveValueAsync(new System.Text.RegularExpressions.Regex("^ssh-rsa "));
+        await Assertions.Expect(page.GetByTestId("save-credential")).ToBeEnabledAsync();
+
+        await page.GetByTestId("save-credential").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("show-public-key")).ToBeVisibleAsync();
+
+        await page.GetByTestId("show-public-key").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("public-key-value"))
+            .ToHaveValueAsync(new System.Text.RegularExpressions.Regex("^ssh-rsa "));
+
+        await page.GetByTestId("tab-hosts").ClickAsync();
+        await page.GetByTestId("add-host").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("host-credential")).ToContainTextAsync("generated deploy key");
+    }
+
+    [Fact]
     public async Task APasswordIsMaskedUntilTheUserAsksToSeeIt()
     {
         var page = await fixture.NewPageAsync("/?keys");
