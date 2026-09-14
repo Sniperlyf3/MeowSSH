@@ -1,7 +1,6 @@
 @using MeowSSH.Core.Ssh
 @implements IAsyncDisposable
 @inject IJSRuntime Js
-@inject MeowSSH.UI.Services.ITextSelectionActionService TextSelectionActions
 
 <div class="terminal" data-testid="terminal">
     <div class="terminal__surface" id="@_elementId"></div>
@@ -158,13 +157,6 @@
     {
         data = ApplyModifiers(data);
         await WriteAsync(data);
-    }
-
-    [JSInvokable]
-    public async Task OnNativeSelectionRequestedAsync(string text)
-    {
-        if (string.IsNullOrWhiteSpace(text)) return;
-        await TextSelectionActions.ShowAsync(text);
     }
 
     [JSInvokable]
