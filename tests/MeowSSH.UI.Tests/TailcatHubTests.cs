@@ -56,6 +56,28 @@ public class TailcatHubTests(TestHostFixture fixture)
     }
 
     [Fact]
+    public async Task ShellCanUseTailcatCredentialInsteadOfSshKeysWithWarning()
+    {
+        var page = await OpenTailcatAsync();
+
+        await page.GetByTestId("tailcat-exit-node").UncheckAsync();
+        await page.GetByTestId("tailcat-allowed-clients").FillAsync("nodekey:test-client");
+        await page.GetByTestId("tailcat-shell").CheckAsync();
+        await page.GetByTestId("tailcat-insecure-shell").CheckAsync();
+
+        await Assertions.Expect(page.GetByTestId("tailcat-authorized-ssh")).ToHaveCountAsync(0);
+        await Assertions.Expect(page.GetByTestId("tailcat-insecure-shell-warning")).ToBeVisibleAsync();
+        await Assertions.Expect(page.GetByTestId("tailcat-insecure-shell-warning")).ToContainTextAsync("Tailcat address is the shell credential");
+        await Assertions.Expect(page.GetByTestId("start-tailcat-server")).ToBeDisabledAsync();
+
+        await page.GetByTestId("tailcat-insecure-shell-confirm").CheckAsync();
+        await Assertions.Expect(page.GetByTestId("start-tailcat-server")).ToBeEnabledAsync();
+
+        await page.GetByTestId("start-tailcat-server").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("tailcat-server-running")).ToContainTextAsync("Shell (Tailcat credential only)");
+    }
+
+    [Fact]
     public async Task SocksGatewayAndPortForwardCanRunTogether()
     {
         var page = await OpenTailcatAsync();
