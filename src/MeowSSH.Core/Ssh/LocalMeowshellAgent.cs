@@ -73,11 +73,12 @@ internal sealed class LocalMeowshellAgentConnection : IAsyncDisposable
         {
             try
             {
-                while (!process.StandardError.EndOfStream)
-                    _ = await process.StandardError.ReadLineAsync().ConfigureAwait(false);
+                while (await process.StandardError.ReadLineAsync().ConfigureAwait(false) is not null)
+                {
+                }
             }
             catch { }
-        });
+        }, CancellationToken.None);
 
         try
         {
@@ -242,7 +243,7 @@ internal sealed class LocalMeowshellAgentConnection : IAsyncDisposable
         foreach (var pending in _pendingOpens.Values) pending.TrySetException(ex);
         foreach (var channel in _channels.Values) channel.OnFailure(ex);
         _channels.Clear();
-        ConnectionLost?.Invoke(this, new SshConnectionLost(ex.Message));
+        ConnectionLost?.Invoke(this, new SshConnectionLost(SshFailure.ConnectionLost, ex.Message));
     }
 
     private Task WriteControlAsync(uint channelId, WireMessage message, CancellationToken cancellationToken) =>
