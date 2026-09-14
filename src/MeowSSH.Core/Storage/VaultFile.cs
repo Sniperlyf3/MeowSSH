@@ -148,6 +148,10 @@ public static class VaultFile
         writer.WriteNullableTimestamp(host.DeletedAt);
         writer.WriteInt32((int)host.Protocol);
         writer.WriteBoolean(host.AutoReconnect);
+        writer.WriteInt32(host.SerialBaudRate);
+        writer.WriteInt32(host.SerialDataBits);
+        writer.WriteInt32((int)host.SerialStopBits);
+        writer.WriteInt32((int)host.SerialParity);
     }
 
     private static HostRecord ReadHost(ref VaultReader reader, int schemaVersion)
@@ -169,12 +173,22 @@ public static class VaultFile
 
         var protocol = HostProtocol.Ssh;
         var autoReconnect = true;
+        var serialBaudRate = 115200;
+        var serialDataBits = 8;
+        var serialStopBits = SerialStopBits.One;
+        var serialParity = SerialParity.None;
         if (schemaVersion >= 2)
         {
             protocol = (HostProtocol)reader.ReadInt32();
             if (!Enum.IsDefined(protocol))
                 throw new VaultFormatException($"A host contains unsupported protocol value {(int)protocol}.");
             autoReconnect = reader.ReadBoolean();
+            serialBaudRate = reader.ReadInt32();
+            serialDataBits = reader.ReadInt32();
+            serialStopBits = (SerialStopBits)reader.ReadInt32();
+            serialParity = (SerialParity)reader.ReadInt32();
+            if (!Enum.IsDefined(serialStopBits) || !Enum.IsDefined(serialParity))
+                throw new VaultFormatException("A host contains unsupported serial line settings.");
         }
 
         return new HostRecord
@@ -187,6 +201,10 @@ public static class VaultFile
             Transport = transport,
             Protocol = protocol,
             AutoReconnect = autoReconnect,
+            SerialBaudRate = serialBaudRate,
+            SerialDataBits = serialDataBits,
+            SerialStopBits = serialStopBits,
+            SerialParity = serialParity,
             Tags = tags,
             JumpHostId = jumpHostId,
             CredentialId = credentialId,
