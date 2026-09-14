@@ -42,6 +42,10 @@
                                         role="radio" aria-checked="@(_kind == CredentialKind.PrivateKey ? "true" : "false")"
                                         data-testid="kind-key" @onclick="() => _kind = CredentialKind.PrivateKey">Private key</button>
                                 <button type="button"
+                                        class="segmented__option @(_kind == CredentialKind.PublicKey ? "segmented__option--on" : "")"
+                                        role="radio" aria-checked="@(_kind == CredentialKind.PublicKey ? "true" : "false")"
+                                        data-testid="kind-public-key" @onclick="() => _kind = CredentialKind.PublicKey">Public key</button>
+                                <button type="button"
                                         class="segmented__option @(_kind == CredentialKind.Password ? "segmented__option--on" : "")"
                                         role="radio" aria-checked="@(_kind == CredentialKind.Password ? "true" : "false")"
                                         data-testid="kind-password" @onclick="() => _kind = CredentialKind.Password">Password</button>
@@ -91,6 +95,18 @@
                                 <input class="field__input mono" type="password" data-testid="credential-passphrase"
                                        autocomplete="off" @bind="_passphrase" @bind:event="oninput" />
                                 <span class="field__hint">Leave blank if the key has none.</span>
+                            </label>
+                        }
+                        else if (_kind == CredentialKind.PublicKey)
+                        {
+                            <label class="field">
+                                <span class="field__label">Public key</span>
+                                <textarea class="field__input field__input--code mono" rows="5"
+                                          data-testid="credential-public-key"
+                                          placeholder="ssh-ed25519 AAAA... user@host"
+                                          autocomplete="off" autocapitalize="none" spellcheck="false"
+                                          @bind="_publicKey" @bind:event="oninput"></textarea>
+                                <span class="field__hint">Authorization-only key. Useful for Tailcat shell allowlists; no private key is stored.</span>
                             </label>
                         }
                         else
@@ -152,7 +168,7 @@
                             <span class="credential-card__body">
                                 <span class="credential-card__title-row">
                                     <strong class="credential-card__title">@credential.Label</strong>
-                                    <span class="credential-card__kind">@(credential.Kind == CredentialKind.Password ? "Password" : "Private key")</span>
+                                    <span class="credential-card__kind">@CredentialKindLabel(credential.Kind)</span>
                                 </span>
                                 <span class="credential-card__hint mono">@credential.DisplayHint</span>
                             </span>
@@ -215,7 +231,8 @@
 
     [Parameter] public EventCallback<string> OnTabSelected { get; set; }
 
-    private bool IsComplete => !string.IsNullOrWhiteSpace(_label) && _secret.Length > 0;
+    private bool IsComplete => !string.IsNullOrWhiteSpace(_label)
+        && (_kind == CredentialKind.PublicKey ? !string.IsNullOrWhiteSpace(_publicKey) : _secret.Length > 0);
 
     protected override Task OnInitializedAsync() => ReloadAsync();
     private async Task ReloadAsync() => _credentials = await Editor.GetCredentialsAsync();
@@ -245,9 +262,9 @@
                 Label = _label.Trim(),
                 Kind = _kind,
                 Username = string.IsNullOrWhiteSpace(_username) ? null : _username.Trim(),
-                Secret = Encoding.UTF8.GetBytes(_secret),
-                Passphrase = _passphrase.Length == 0 ? null : Encoding.UTF8.GetBytes(_passphrase),
-                PublicKey = _kind == CredentialKind.PrivateKey && !string.IsNullOrWhiteSpace(_publicKey)
+                Secret = _kind == CredentialKind.PublicKey ? [] : Encoding.UTF8.GetBytes(_secret),
+                Passphrase = _kind == CredentialKind.PrivateKey && _passphrase.Length > 0 ? Encoding.UTF8.GetBytes(_passphrase) : null,
+                PublicKey = _kind is CredentialKind.PrivateKey or CredentialKind.PublicKey && !string.IsNullOrWhiteSpace(_publicKey)
                     ? _publicKey.Trim()
                     : null,
             });
@@ -257,6 +274,13 @@
         }
         finally { _busy = false; }
     }
+
+    private static string CredentialKindLabel(CredentialKind kind) => kind switch
+    {
+        CredentialKind.Password => "Password",
+        CredentialKind.PublicKey => "Public key",
+        _ => "Private key",
+    };
 
     private void GenerateSshKey()
     {
