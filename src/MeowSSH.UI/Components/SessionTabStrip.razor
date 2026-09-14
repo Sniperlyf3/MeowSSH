@@ -8,7 +8,7 @@
                     @onclick="() => OnSelected.InvokeAsync(tab.Id)">
                 <span class="session-tabs__dot @(tab.IsConnected ? "is-connected" : "is-disconnected")" aria-hidden="true"></span>
                 <span class="session-tabs__label">@tab.Label</span>
-                <span class="session-tabs__kind">@ViewLabel(tab.View)</span>
+                <span class="session-tabs__kind">@ViewLabel(tab)</span>
             </button>
             @if (tab.Id == ActiveId && tab.SupportsFiles)
             {
@@ -50,11 +50,11 @@
     [Parameter] public EventCallback<Guid> OnOpenForwards { get; set; }
     [Parameter] public EventCallback OnNew { get; set; }
 
-    private static string ViewLabel(SessionView view) => view switch
+    private static string ViewLabel(SessionTabInfo tab) => tab.View switch
     {
-        SessionView.Terminal => "Terminal",
+        SessionView.Terminal => tab.TerminalLabel,
         SessionView.Files => "Files",
         SessionView.Forwards => "Forwards",
-        _ => view.ToString(),
+        _ => tab.View.ToString(),
     };
 }
