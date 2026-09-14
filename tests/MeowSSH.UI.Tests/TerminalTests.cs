@@ -5,7 +5,6 @@ namespace MeowSSH.UI.Tests;
 [Collection(nameof(TestHostCollection))]
 public class TerminalTests(TestHostFixture fixture)
 {
-    /// <summary>Opens a session on the first host and waits for the shell banner.</summary>
     private async Task<IPage> OpenSessionAsync()
     {
         var page = await fixture.NewPageAsync();
@@ -16,7 +15,6 @@ public class TerminalTests(TestHostFixture fixture)
         return page;
     }
 
-    /// <summary>Reads what the terminal is actually displaying.</summary>
     private static Task<string> ScreenTextAsync(IPage page) =>
         page.Locator(".xterm-rows").InnerTextAsync();
 
@@ -37,9 +35,6 @@ public class TerminalTests(TestHostFixture fixture)
         await page.Keyboard.TypeAsync("pwd");
         await page.Keyboard.PressAsync("Enter");
 
-        // "/home/deploy" appears only if the command actually ran. Asserting on
-        // "deploy" alone would pass without any input reaching the shell at all,
-        // because the prompt already reads deploy@prod-web-01.
         await Assertions.Expect(page.Locator(".xterm-rows"))
             .ToContainTextAsync("/home/deploy", new() { Timeout = 10_000 });
         Assert.Contains("pwd", await ScreenTextAsync(page), StringComparison.Ordinal);
@@ -54,48 +49,97 @@ public class TerminalTests(TestHostFixture fixture)
         await page.Keyboard.PressAsync("Backspace");
         await page.Keyboard.PressAsync("Enter");
 
-        // If backspace only moved the cursor without erasing, the shell would
-        // have received "pwdx" and reported it as not found.
         await Assertions.Expect(page.Locator(".xterm-rows"))
             .ToContainTextAsync("/home/deploy", new() { Timeout = 10_000 });
         Assert.DoesNotContain("command not found", await ScreenTextAsync(page), StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task TheKeyBarSendsKeysAPhoneKeyboardDoesNotHave()
+    public async Task TheKeyBarContainsMobileShellKeys()
     {
         var page = await OpenSessionAsync();
         await Assertions.Expect(page.GetByTestId("keybar")).ToBeVisibleAsync();
 
-        foreach (var key in new[] { "ctrl", "esc", "tab", "up", "down", "left", "right" })
+        foreach (var key in new[]
+                 {
+                     "ctrl", "alt", "esc", "tab", "home", "end", "pgup", "pgdn",
+                     "up", "down", "left", "right", "pipe", "tilde", "slash", "dash", "underscore"
+                 })
+        {
             await Assertions.Expect(page.GetByTestId($"key-{key}")).ToBeVisibleAsync();
+        }
     }
 
     [Fact]
-    public async Task CtrlLatchesAndTurnsTheNextKeystrokeIntoAControlCode()
+    public async Task CtrlDoesNotStealTerminalFocusAndCtrlCStillWorks()
     {
-        // A touch screen cannot hold one key while pressing another, so Ctrl
-        // latches. Ctrl then C must reach the shell as 0x03, which the fake
-        // answers with "^C" -- proof the byte arrived, not just the letter.
         var page = await OpenSessionAsync();
+        var input = page.Locator(".xterm-helper-textarea");
+        await input.FocusAsync();
         await page.Keyboard.TypeAsync("partial-command");
 
         await page.GetByTestId("key-ctrl").ClickAsync();
         await Assertions.Expect(page.GetByTestId("key-ctrl")).ToHaveAttributeAsync("aria-pressed", "true");
 
-        await page.Locator(".xterm-helper-textarea").PressAsync("c");
+        var terminalStillFocused = await page.EvaluateAsync<bool>(
+            "() => document.activeElement?.classList.contains('xterm-helper-textarea') === true");
+        Assert.True(terminalStillFocused, "Tapping Ctrl moved focus away from xterm and would close the Android soft keyboard.");
 
-        await Assertions.Expect(page.Locator(".xterm-rows")).ToContainTextAsync("^C", new() { Timeout = 10_000 });
-        // The latch is one-shot: leaving it armed would send the next ordinary
-        // keystroke somewhere the user did not intend.
+        // Deliberately type through the currently focused element. The old test
+        // explicitly targeted xterm after tapping Ctrl, which masked this bug.
+        await page.Keyboard.PressAsync("c");
+
+        await Assertions.Expect(page.Locator(".xterm-rows"))
+            .ToContainTextAsync("^C", new() { Timeout = 10_000 });
         await Assertions.Expect(page.GetByTestId("key-ctrl")).ToHaveAttributeAsync("aria-pressed", "false");
+    }
+
+    [Fact]
+    public async Task CtrlCanBeCancelledByTappingItAgain()
+    {
+        var page = await OpenSessionAsync();
+
+        await page.GetByTestId("key-ctrl").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("key-ctrl")).ToHaveAttributeAsync("aria-pressed", "true");
+        await page.GetByTestId("key-ctrl").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("key-ctrl")).ToHaveAttributeAsync("aria-pressed", "false");
+    }
+
+    [Fact]
+    public async Task AltLatchesWithoutStealingTerminalFocus()
+    {
+        var page = await OpenSessionAsync();
+        var input = page.Locator(".xterm-helper-textarea");
+        await input.FocusAsync();
+
+        await page.GetByTestId("key-alt").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("key-alt")).ToHaveAttributeAsync("aria-pressed", "true");
+
+        var terminalStillFocused = await page.EvaluateAsync<bool>(
+            "() => document.activeElement?.classList.contains('xterm-helper-textarea') === true");
+        Assert.True(terminalStillFocused, "Tapping Alt moved focus away from xterm.");
+
+        await page.Keyboard.PressAsync("x");
+        await Assertions.Expect(page.GetByTestId("key-alt")).ToHaveAttributeAsync("aria-pressed", "false");
+    }
+
+    [Fact]
+    public async Task ToolbarKeysDoNotStealTerminalFocus()
+    {
+        var page = await OpenSessionAsync();
+        var input = page.Locator(".xterm-helper-textarea");
+        await input.FocusAsync();
+
+        await page.GetByTestId("key-esc").ClickAsync();
+
+        var terminalStillFocused = await page.EvaluateAsync<bool>(
+            "() => document.activeElement?.classList.contains('xterm-helper-textarea') === true");
+        Assert.True(terminalStillFocused, "A terminal toolbar key moved focus away from xterm.");
     }
 
     [Fact]
     public async Task TheRemotePtyIsToldTheSizeTheTerminalActuallyAchieved()
     {
-        // Not the size the app guessed. A mismatch makes every full-screen
-        // program draw wrong until something happens to resize it.
         var page = await OpenSessionAsync();
 
         await page.Keyboard.TypeAsync("tput cols");
@@ -103,10 +147,6 @@ public class TerminalTests(TestHostFixture fixture)
         await Assertions.Expect(page.Locator(".xterm-rows"))
             .ToContainTextAsync("tput cols", new() { Timeout = 10_000 });
 
-        // The fake echoes back the width the component told it, so this compares
-        // what the pty was told against what the terminal actually measured.
-        var measured = await page.EvaluateAsync<int>(
-            "() => document.querySelector('.terminal__surface').__cols ?? 0");
         var screen = await ScreenTextAsync(page);
         var reported = System.Text.RegularExpressions.Regex.Matches(screen, @"^\s*(\d{2,3})\s*$",
             System.Text.RegularExpressions.RegexOptions.Multiline);
@@ -141,11 +181,6 @@ public class TerminalTests(TestHostFixture fixture)
     [Fact]
     public async Task TheTerminalInputAsksForAKeyboardThatDoesNotCompose()
     {
-        // A phone keyboard's predictive text holds the word being typed as
-        // uncommitted composition, draws it over the terminal, and leaves the
-        // real caret one word behind until something commits it. The hidden
-        // capture element is password-style so Android treats it as literal
-        // input rather than a normal predictive text field.
         var page = await fixture.NewPageAsync("/");
         await page.GetByTestId("host-row").First.ClickAsync();
         await Assertions.Expect(page.GetByTestId("terminal")).ToBeVisibleAsync();
@@ -154,14 +189,7 @@ public class TerminalTests(TestHostFixture fixture)
         await Assertions.Expect(textarea).ToHaveAttributeAsync("type", "password");
         Assert.Null(await textarea.GetAttributeAsync("inputmode"));
         await Assertions.Expect(textarea).ToHaveAttributeAsync("autocomplete", "off");
-
-        // The hidden capture element is deliberately a password-style input.
-        // Android/Samsung treats that as literal text and disables predictive
-        // composition, while xterm still receives ordinary input events.
         Assert.Equal("INPUT", await textarea.EvaluateAsync<string>("element => element.tagName"));
-
-        // The ones xterm sets itself, asserted so that an upgrade dropping them
-        // is noticed here rather than on a phone.
         await Assertions.Expect(textarea).ToHaveAttributeAsync("spellcheck", "false");
         await Assertions.Expect(textarea).ToHaveAttributeAsync("autocorrect", "off");
     }
@@ -189,7 +217,6 @@ public class TerminalTests(TestHostFixture fixture)
         await Assertions.Expect(page.GetByTestId("terminal-zoom-value")).ToHaveTextAsync("140%");
     }
 
-
     [Fact]
     public async Task FilesTabCanBeSelected()
     {
@@ -199,5 +226,4 @@ public class TerminalTests(TestHostFixture fixture)
         await Assertions.Expect(page.GetByTestId("tab-files")).ToHaveAttributeAsync("aria-current", "page");
         await Assertions.Expect(page.GetByTestId("files-host-list")).ToBeVisibleAsync();
     }
-
 }
