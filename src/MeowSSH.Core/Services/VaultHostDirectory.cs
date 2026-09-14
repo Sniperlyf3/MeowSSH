@@ -130,6 +130,7 @@ public sealed class VaultHostDirectory : IHostDirectory, IHostEditor, ICredentia
                     ? null
                     : SecretBuffer.CopyFrom(credential.Passphrase),
             },
+            CredentialKind.PublicKey => SshCredentials.None,
             _ => SshCredentials.None,
         });
     }
