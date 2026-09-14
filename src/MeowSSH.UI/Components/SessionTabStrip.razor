@@ -1,0 +1,31 @@
+@using MeowSSH.UI.Services
+
+<nav class="session-tabs" aria-label="Open sessions" data-testid="session-tabs">
+    @foreach (var tab in Tabs)
+    {
+        <div class="session-tabs__item @(tab.Id == ActiveId ? "is-active" : "")" @key="tab.Id">
+            <button type="button" class="session-tabs__select"
+                    aria-current="@(tab.Id == ActiveId ? "page" : null)"
+                    data-testid="session-tab"
+                    @onclick="() => OnSelected.InvokeAsync(tab.Id)">
+                <span class="session-tabs__dot @(tab.IsConnected ? "is-connected" : "is-disconnected")" aria-hidden="true"></span>
+                <span class="session-tabs__label">@tab.Label</span>
+                <span class="session-tabs__kind">@(tab.View == SessionView.Files ? "Files" : "SSH")</span>
+            </button>
+            <button type="button" class="session-tabs__close"
+                    aria-label="Close @tab.Label"
+                    data-testid="close-session-tab"
+                    @onclick="() => OnClosed.InvokeAsync(tab.Id)">×</button>
+        </div>
+    }
+    <button type="button" class="session-tabs__new" aria-label="Open another session"
+            data-testid="new-session-tab" @onclick="() => OnNew.InvokeAsync()">+</button>
+</nav>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<SessionTabInfo> Tabs { get; set; } = [];
+    [Parameter] public Guid? ActiveId { get; set; }
+    [Parameter] public EventCallback<Guid> OnSelected { get; set; }
+    [Parameter] public EventCallback<Guid> OnClosed { get; set; }
+    [Parameter] public EventCallback OnNew { get; set; }
+}
