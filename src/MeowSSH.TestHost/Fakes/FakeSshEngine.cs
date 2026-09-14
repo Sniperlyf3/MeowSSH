@@ -57,27 +57,65 @@ public sealed class FakeSshEngine : ISshEngine
             string listenAddress,
             string remoteAddress,
             bool allowNonLoopbackBind = false,
+            int maxConnections = 256,
             CancellationToken cancellationToken = default) =>
             OpenForwardAsync(SshForwardKind.Local, listenAddress, remoteAddress, cancellationToken);
+
+        public Task<ISshForward> OpenLocalForwardOnUnixSocketAsync(
+            string socketPath,
+            string remoteAddress,
+            int maxConnections = 256,
+            CancellationToken cancellationToken = default) =>
+            OpenForwardAsync(SshForwardKind.Local, socketPath, remoteAddress, cancellationToken);
 
         public Task<ISshForward> OpenRemoteForwardAsync(
             string listenAddress,
             string localAddress,
+            int maxConnections = 256,
             CancellationToken cancellationToken = default) =>
             OpenForwardAsync(SshForwardKind.Remote, listenAddress, localAddress, cancellationToken);
 
         public Task<ISshForward> OpenSocksForwardAsync(
             string listenAddress,
             bool requireAuth = true,
+            string? socksUsername = null,
+            string? socksPassword = null,
+            bool allowNonLoopbackBind = false,
+            int maxConnections = 256,
             CancellationToken cancellationToken = default) =>
-            OpenForwardAsync(SshForwardKind.Socks, listenAddress, null, cancellationToken, requireAuth);
+            OpenForwardAsync(
+                SshForwardKind.Socks,
+                listenAddress,
+                null,
+                cancellationToken,
+                requireAuth,
+                socksUsername,
+                socksPassword);
+
+        public Task<ISshForward> OpenSocksForwardOnUnixSocketAsync(
+            string socketPath,
+            bool requireAuth = false,
+            string? socksUsername = null,
+            string? socksPassword = null,
+            int maxConnections = 256,
+            CancellationToken cancellationToken = default) =>
+            OpenForwardAsync(
+                SshForwardKind.Socks,
+                socketPath,
+                null,
+                cancellationToken,
+                requireAuth,
+                socksUsername,
+                socksPassword);
 
         private Task<ISshForward> OpenForwardAsync(
             SshForwardKind kind,
             string listenAddress,
             string? destination,
             CancellationToken cancellationToken,
-            bool socksAuth = false)
+            bool socksAuth = false,
+            string? socksUsername = null,
+            string? socksPassword = null)
         {
             cancellationToken.ThrowIfCancellationRequested();
             ObjectDisposedException.ThrowIf(_disposed, this);
@@ -88,8 +126,8 @@ public sealed class FakeSshEngine : ISshEngine
                 kind,
                 bound,
                 destination,
-                socksAuth ? "meowssh" : null,
-                socksAuth ? "test-token" : null);
+                socksAuth ? socksUsername ?? "meowssh" : null,
+                socksAuth ? socksPassword ?? "test-token" : null);
             return Task.FromResult(forward);
         }
 
