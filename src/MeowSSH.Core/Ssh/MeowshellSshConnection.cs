@@ -31,29 +31,69 @@ internal sealed class MeowshellSshConnection(Guid hostId, MeowshellAgentConnecti
         string listenAddress,
         string remoteAddress,
         bool allowNonLoopbackBind = false,
+        int maxConnections = 256,
         CancellationToken cancellationToken = default) =>
         OpenForwardAsync(
-            () => agent.OpenLocalForwardAsync(listenAddress, remoteAddress, allowNonLoopbackBind,
-                cancellationToken: cancellationToken),
+            () => agent.OpenLocalForwardAsync(listenAddress, remoteAddress, allowNonLoopbackBind, maxConnections,
+                cancellationToken),
+            SshForwardKind.Local,
+            remoteAddress);
+
+    public Task<ISshForward> OpenLocalForwardOnUnixSocketAsync(
+        string socketPath,
+        string remoteAddress,
+        int maxConnections = 256,
+        CancellationToken cancellationToken = default) =>
+        OpenForwardAsync(
+            () => agent.OpenLocalForwardOnUnixSocketAsync(socketPath, remoteAddress, maxConnections, cancellationToken),
             SshForwardKind.Local,
             remoteAddress);
 
     public Task<ISshForward> OpenRemoteForwardAsync(
         string listenAddress,
         string localAddress,
+        int maxConnections = 256,
         CancellationToken cancellationToken = default) =>
         OpenForwardAsync(
-            () => agent.OpenRemoteForwardAsync(listenAddress, localAddress, cancellationToken: cancellationToken),
+            () => agent.OpenRemoteForwardAsync(listenAddress, localAddress, maxConnections, cancellationToken),
             SshForwardKind.Remote,
             localAddress);
 
     public Task<ISshForward> OpenSocksForwardAsync(
         string listenAddress,
         bool requireAuth = true,
+        string? socksUsername = null,
+        string? socksPassword = null,
+        bool allowNonLoopbackBind = false,
+        int maxConnections = 256,
         CancellationToken cancellationToken = default) =>
         OpenForwardAsync(
-            () => agent.OpenSocksForwardAsync(listenAddress, requireAuth,
-                cancellationToken: cancellationToken),
+            () => agent.OpenSocksForwardAsync(
+                listenAddress,
+                requireAuth,
+                socksUsername,
+                socksPassword,
+                allowNonLoopbackBind,
+                maxConnections,
+                cancellationToken),
+            SshForwardKind.Socks,
+            null);
+
+    public Task<ISshForward> OpenSocksForwardOnUnixSocketAsync(
+        string socketPath,
+        bool requireAuth = false,
+        string? socksUsername = null,
+        string? socksPassword = null,
+        int maxConnections = 256,
+        CancellationToken cancellationToken = default) =>
+        OpenForwardAsync(
+            () => agent.OpenSocksForwardOnUnixSocketAsync(
+                socketPath,
+                requireAuth,
+                socksUsername,
+                socksPassword,
+                maxConnections,
+                cancellationToken),
             SshForwardKind.Socks,
             null);
 
