@@ -5,7 +5,7 @@
     @if (_notice is not null) { <p class="note" role="status">@_notice</p> }
     <article class="tailcat-card">
         <h2>Remote files</h2>
-        <label class="field"><span class="field__label">Tailcat server</span><input class="field__input mono" data-testid="tailcat-files-address" placeholder="tc… or DNS name" @bind="_address" /></label>
+        <label class="field"><span class="field__label">Tailcat server</span><input class="field__input mono" data-testid="tailcat-files-address" placeholder="tc… or DNS name" @bind="_address" @bind:event="oninput" /></label>
         <label class="field"><span class="field__label">Remote path</span><input class="field__input mono" data-testid="tailcat-files-path" placeholder="/" @bind="_remotePath" /></label>
         <button class="btn btn--primary btn--block" disabled="@(_busy || string.IsNullOrWhiteSpace(_address))" data-testid="tailcat-list-files" @onclick="ListAsync">List files</button>
         @foreach (var entry in _entries)
@@ -19,7 +19,7 @@
     <article class="tailcat-card">
         <h2>Copy files</h2>
         <fieldset class="field"><legend class="field__label">Direction</legend><div class="segmented"><button type="button" class="segmented__option @(_upload ? "segmented__option--on" : "")" @onclick="() => _upload = true">Upload</button><button type="button" class="segmented__option @(!_upload ? "segmented__option--on" : "")" @onclick="() => _upload = false">Download</button></div></fieldset>
-        <label class="field"><span class="field__label">Local path</span><input class="field__input mono" data-testid="tailcat-copy-local" @bind="_localPath" /></label>
+        <label class="field"><span class="field__label">Local path</span><input class="field__input mono" data-testid="tailcat-copy-local" @bind="_localPath" @bind:event="oninput" /></label>
         <label class="field"><span class="field__label">Remote path</span><input class="field__input mono" data-testid="tailcat-copy-remote" @bind="_copyRemotePath" /></label>
         <label class="forward-option"><input type="checkbox" @bind="_recursive" /><span><strong>Recursive</strong><small>Copy directories recursively.</small></span></label>
         <button class="btn btn--primary btn--block" disabled="@(_busy || string.IsNullOrWhiteSpace(_address) || string.IsNullOrWhiteSpace(_localPath))" data-testid="tailcat-copy" @onclick="CopyAsync">@(_upload ? "Upload" : "Download")</button>
