@@ -52,7 +52,7 @@ public class SftpActionTests(TestHostFixture fixture)
         await Actions(page, "start.sh").ClickAsync();
         await page.GetByTestId("view-text").ClickAsync();
         await Assertions.Expect(page.GetByTestId("text-viewer")).ToBeVisibleAsync();
-        await Assertions.Expect(page.GetByTestId("text-content")).ToContainTextAsync("echo hello from MeowSSH");
+        await Assertions.Expect(page.GetByTestId("text-content")).ToHaveValueAsync("#!/bin/sh\necho hello from MeowSSH\n");
 
         await page.GetByTestId("text-content").FillAsync("#!/bin/sh\necho changed\n");
         await page.GetByTestId("save-text").ClickAsync();
