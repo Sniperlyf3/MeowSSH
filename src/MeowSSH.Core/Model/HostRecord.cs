@@ -13,21 +13,25 @@ public enum HostProtocol
 /// <summary>How MeowSSH reaches an SSH or Mosh host.</summary>
 public enum SshTransport
 {
-    /// <summary>An ordinary SSH server reached over TCP.</summary>
     Tcp,
-
-    /// <summary>
-    /// A tailcat address: Tailscale's data plane with no control plane, where the
-    /// address itself is the credential and no port needs to be open anywhere.
-    /// </summary>
     Tailcat,
-
-    /// <summary>
-    /// A Tailscale SSH host, reached over TCP across the tailnet. Requires the
-    /// Tailscale app to be connected on this device; identity comes from the
-    /// tailnet rather than from an SSH key.
-    /// </summary>
     TailscaleSsh,
+}
+
+public enum SerialParity
+{
+    None,
+    Odd,
+    Even,
+    Mark,
+    Space,
+}
+
+public enum SerialStopBits
+{
+    One,
+    OnePointFive,
+    Two,
 }
 
 public enum ConnectionState
@@ -42,8 +46,6 @@ public enum ConnectionState
 public sealed record HostRecord
 {
     public required Guid Id { get; init; }
-
-    /// <summary>What the user calls this endpoint.</summary>
     public required string Label { get; init; }
 
     /// <summary>
@@ -53,29 +55,23 @@ public sealed record HostRecord
     public required string Address { get; init; }
 
     public int Port { get; init; } = 22;
-
     public string? Username { get; init; }
-
-    /// <summary>The terminal protocol. Older vaults migrate to SSH.</summary>
     public HostProtocol Protocol { get; init; } = HostProtocol.Ssh;
-
     public SshTransport Transport { get; init; } = SshTransport.Tcp;
 
     /// <summary>Automatically reconnect after an unexpected network/session loss.</summary>
     public bool AutoReconnect { get; init; } = true;
 
-    /// <summary>Free-form labels the user groups hosts by.</summary>
+    /// <summary>USB serial line settings. Ignored unless <see cref="Protocol"/> is Serial.</summary>
+    public int SerialBaudRate { get; init; } = 115200;
+    public int SerialDataBits { get; init; } = 8;
+    public SerialStopBits SerialStopBits { get; init; } = SerialStopBits.One;
+    public SerialParity SerialParity { get; init; } = SerialParity.None;
+
     public IReadOnlyList<string> Tags { get; init; } = [];
-
-    /// <summary>Id of the host this one is reached through, if it sits behind a bastion.</summary>
     public Guid? JumpHostId { get; init; }
-
-    /// <summary>The credential this host signs in with, if one has been chosen.</summary>
     public Guid? CredentialId { get; init; }
-
     public DateTimeOffset? LastConnectedAt { get; init; }
-
-    // Sync bookkeeping ----------------------------------------------------
 
     public long Revision { get; init; }
     public DateTimeOffset UpdatedAt { get; init; }
@@ -84,11 +80,12 @@ public sealed record HostRecord
 
     public bool IsDeleted => DeletedAt is not null;
 
-    /// <summary>Human-readable endpoint shown in lists and session headers.</summary>
     public string DisplayAddress => Protocol switch
     {
         HostProtocol.Local => "Local terminal",
-        HostProtocol.Serial => string.IsNullOrWhiteSpace(Address) ? "USB serial" : Address,
+        HostProtocol.Serial => string.IsNullOrWhiteSpace(Address)
+            ? $"USB serial · {SerialBaudRate} baud"
+            : $"{Address} · {SerialBaudRate} baud",
         HostProtocol.Telnet => Address + (Port == 23 ? "" : $":{Port}"),
         HostProtocol.Mosh => (Username is null ? Address : $"{Username}@{Address}") + (Port == 22 ? "" : $":{Port}"),
         _ => Transport switch
@@ -98,7 +95,6 @@ public sealed record HostRecord
         },
     };
 
-    /// <summary>Two letters for the host's avatar, taken from its label.</summary>
     public string Initials
     {
         get
