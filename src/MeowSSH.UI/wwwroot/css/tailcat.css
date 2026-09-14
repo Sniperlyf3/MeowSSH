@@ -26,6 +26,17 @@
 .tailcat-card h2 { font-size: var(--text-lg); }
 .tailcat-card--active { border-color: var(--accent); }
 
+.tailcat-danger-warning {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 2px solid var(--danger);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface));
+}
+.tailcat-danger-warning > strong { color: var(--danger); }
+.tailcat-danger-warning p { margin: 0; }
+
 .tailcat-card__heading {
   display: flex;
   gap: var(--space-3);
