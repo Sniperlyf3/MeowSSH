@@ -38,6 +38,7 @@ public sealed record TailcatServerSnapshot(
     bool ShellEnabled,
     bool FilesEnabled,
     bool ExitNodeEnabled,
+    bool AllowsAnyClient,
     string? SharedFolder,
     string FileMode);
 
@@ -59,6 +60,7 @@ public sealed record TailcatServeRequest(
     string? SharedFolder,
     string FileMode,
     bool EnableExitNode,
+    bool AllowAnyClient = false,
     bool FullAddress = false,
     bool UsePresharedKey = true);
 
