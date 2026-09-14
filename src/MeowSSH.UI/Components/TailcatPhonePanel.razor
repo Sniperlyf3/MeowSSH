@@ -20,7 +20,7 @@
     {
         <article class="tailcat-card">
             <h2>Share this phone</h2>
-            <label class="field"><span class="field__label">Allowed Tailcat client keys</span><textarea class="field__input mono" rows="3" data-testid="tailcat-allowed-clients" placeholder="nodekey:..." disabled="@_allowAnyClient" @bind="_allowedClients"></textarea><span class="field__hint">@(_allowAnyClient ? "Disabled while insecure mode is selected." : "Required. Comma-separate trusted client public keys.")</span></label>
+            <label class="field"><span class="field__label">Allowed Tailcat client keys</span><textarea class="field__input mono" rows="3" data-testid="tailcat-allowed-clients" placeholder="nodekey:..." disabled="@_allowAnyClient" @bind="_allowedClients" @bind:event="oninput"></textarea><span class="field__hint">@(_allowAnyClient ? "Disabled while insecure mode is selected." : "Required. Comma-separate trusted client public keys.")</span></label>
             <label class="field"><span class="field__label">Lifetime (hours)</span><input class="field__input" type="number" min="1" max="24" data-testid="tailcat-lifetime" @bind="_hours" /></label>
             <label class="forward-option"><input type="checkbox" data-testid="tailcat-exit-node" @bind="_exitNode" /><span><strong>Exit node</strong><small>Allow approved Tailcat clients to route through this phone.</small></span></label>
             @if (_exitNode)
@@ -66,13 +66,13 @@
                             <span class="field__hint">Selected keys are added to the shell's authorized_keys list. Private key material never leaves the vault.</span>
                         </fieldset>
                     }
-                    <label class="field"><span class="field__label">Additional authorized SSH keys</span><textarea class="field__input mono" rows="3" data-testid="tailcat-authorized-ssh" placeholder="ssh-ed25519 AAAA..." @bind="_authorizedSsh"></textarea><span class="field__hint">Optional when at least one saved public key is selected.</span></label>
+                    <label class="field"><span class="field__label">Additional authorized SSH keys</span><textarea class="field__input mono" rows="3" data-testid="tailcat-authorized-ssh" placeholder="ssh-ed25519 AAAA..." @bind="_authorizedSsh" @bind:event="oninput"></textarea><span class="field__hint">Optional when at least one saved public key is selected.</span></label>
                 }
             }
             <label class="forward-option"><input type="checkbox" data-testid="tailcat-files" @bind="_files" /><span><strong>Share a folder</strong><small>Expose one directory over Tailcat SFTP.</small></span></label>
             @if (_files)
             {
-                <label class="field"><span class="field__label">Folder path</span><input class="field__input mono" data-testid="tailcat-share-path" @bind="_folder" /></label>
+                <label class="field"><span class="field__label">Folder path</span><input class="field__input mono" data-testid="tailcat-share-path" @bind="_folder" @bind:event="oninput" /></label>
                 <label class="field"><span class="field__label">Access</span><select class="field__input" data-testid="tailcat-file-mode" @bind="_fileMode"><option value="ro">Read only</option><option value="rw">Read / write</option><option value="wo">Upload only</option><option value="wo+">Upload + directories</option></select></label>
             }
             @if (_exitNode) { <p class="note"><Icon Name="alert" /> Only authorize client keys you trust.</p> }
