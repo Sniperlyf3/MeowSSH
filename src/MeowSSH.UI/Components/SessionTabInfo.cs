@@ -13,4 +13,5 @@ public sealed record SessionTabInfo(
     SessionView View,
     bool IsConnected,
     bool SupportsFiles = true,
-    bool SupportsForwards = true);
+    bool SupportsForwards = true,
+    string TerminalLabel = "SSH");
