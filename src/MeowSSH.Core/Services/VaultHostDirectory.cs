@@ -109,15 +109,28 @@ public sealed class VaultHostDirectory : IHostDirectory, IHostEditor, ICredentia
         ArgumentNullException.ThrowIfNull(host);
 
         var credential = FindCredential(host);
-        if (credential is null || credential.Kind != CredentialKind.PrivateKey)
+        if (credential is null)
             return ValueTask.FromResult(SshCredentials.None);
 
         // A fresh copy per attempt: SshCredentials is disposed by the caller once
-        // the handshake is done, and handing out the vault's own array would mean
+        // the handshake is done, and handing out the vault's own arrays would mean
         // zeroing the record the vault is still holding.
-        return ValueTask.FromResult(new SshCredentials
+        return ValueTask.FromResult(credential.Kind switch
         {
-            PrivateKeys = [SecretBuffer.CopyFrom(credential.Secret)],
+            CredentialKind.Password => new SshCredentials
+            {
+                Username = credential.Username,
+                Password = SecretBuffer.CopyFrom(credential.Secret),
+            },
+            CredentialKind.PrivateKey => new SshCredentials
+            {
+                Username = credential.Username,
+                PrivateKeys = [SecretBuffer.CopyFrom(credential.Secret)],
+                KeyPassphrase = credential.Passphrase is null
+                    ? null
+                    : SecretBuffer.CopyFrom(credential.Passphrase),
+            },
+            _ => SshCredentials.None,
         });
     }
 
