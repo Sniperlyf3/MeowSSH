@@ -19,18 +19,18 @@ public sealed class ProxyJumpConnector(
     private const int MaxJumpDepth = 8;
 
     public async Task<IHostConnection> ConnectAsync(
-        HostRecord destination,
-        SshCredentials destinationCredentials,
-        ISshPrompts destinationPrompts,
+        HostRecord host,
+        SshCredentials credentials,
+        ISshPrompts prompts,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(destination);
-        ArgumentNullException.ThrowIfNull(destinationCredentials);
-        ArgumentNullException.ThrowIfNull(destinationPrompts);
+        ArgumentNullException.ThrowIfNull(host);
+        ArgumentNullException.ThrowIfNull(credentials);
+        ArgumentNullException.ThrowIfNull(prompts);
 
-        var chain = await ResolveChainAsync(destination, cancellationToken).ConfigureAwait(false);
+        var chain = await ResolveChainAsync(host, cancellationToken).ConfigureAwait(false);
         if (chain.Count == 1)
-            return await inner.ConnectAsync(destination, destinationCredentials, destinationPrompts, cancellationToken).ConfigureAwait(false);
+            return await inner.ConnectAsync(host, credentials, prompts, cancellationToken).ConfigureAwait(false);
 
         var openedConnections = new List<IHostConnection>();
         var openedForwards = new List<ISshForward>();
@@ -60,13 +60,10 @@ public sealed class ProxyJumpConnector(
                 IHostConnection connection;
                 if (isFinal)
                 {
-                    // AppRoot already resolved the destination credential and wrapped
-                    // the UI prompts with it. Preserve that exact credential/prompt
-                    // pair here rather than resolving it again.
                     connection = await inner.ConnectAsync(
                         routed,
-                        destinationCredentials,
-                        destinationPrompts,
+                        credentials,
+                        prompts,
                         cancellationToken).ConfigureAwait(false);
                 }
                 else
@@ -88,7 +85,7 @@ public sealed class ProxyJumpConnector(
                 if (isFinal)
                 {
                     var wrapped = new ChainedSshConnection(
-                        destination.Id,
+                        host.Id,
                         connection,
                         openedConnections,
                         openedForwards);
@@ -166,8 +163,8 @@ public sealed class ProxyJumpConnector(
     }
 
     private static async Task DisposePartialAsync(
-        IReadOnlyList<IHostConnection> connections,
-        IReadOnlyList<ISshForward> forwards)
+        List<IHostConnection> connections,
+        List<ISshForward> forwards)
     {
         for (var i = forwards.Count - 1; i >= 0; i--)
         {
@@ -182,15 +179,15 @@ public sealed class ProxyJumpConnector(
     private sealed class ChainedSshConnection : ISshConnection
     {
         private readonly ISshConnection _final;
-        private readonly IReadOnlyList<IHostConnection> _connections;
-        private readonly IReadOnlyList<ISshForward> _forwards;
+        private readonly List<IHostConnection> _connections;
+        private readonly List<ISshForward> _forwards;
         private bool _disposed;
 
         public ChainedSshConnection(
             Guid hostId,
             IHostConnection final,
-            IReadOnlyList<IHostConnection> connections,
-            IReadOnlyList<ISshForward> forwards)
+            List<IHostConnection> connections,
+            List<ISshForward> forwards)
         {
             HostId = hostId;
             _final = final as ISshConnection
