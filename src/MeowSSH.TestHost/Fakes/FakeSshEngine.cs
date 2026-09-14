@@ -107,8 +107,6 @@ public sealed class FakeSshEngine : ISshEngine
         string? socksUsername,
         string? socksPassword) : ISshForward
     {
-        private bool _closed;
-
         public SshForwardKind Kind { get; } = kind;
         public string BoundAddress { get; } = boundAddress;
         public string? Destination { get; } = destination;
@@ -118,14 +116,9 @@ public sealed class FakeSshEngine : ISshEngine
         public Task CloseAsync(CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            _closed = true;
             return Task.CompletedTask;
         }
 
-        public ValueTask DisposeAsync()
-        {
-            _closed = true;
-            return ValueTask.CompletedTask;
-        }
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 }
