@@ -11,6 +11,4 @@
     <PackageReference Include="Meowshell" Version="0.1.749" />
   </ItemGroup>
 
-  <!-- Meowshell 0.1.749 adds native Mosh and offline local-terminal transports. -->
-
 </Project>
