@@ -5,19 +5,21 @@
 <div class="terminal" data-testid="terminal">
     <div class="terminal__surface" id="@_elementId"></div>
 
-    @* A phone keyboard has no Ctrl, Esc, Tab or arrows, and a shell is unusable
-       without them. This bar is not a convenience; it is what makes the terminal
-       usable on the device the app actually ships to. *@
     <div class="keybar" role="toolbar" aria-label="Terminal keys" data-testid="keybar">
-        @* aria-pressed is bound as an explicit string: given a bool, Blazor emits
-           it as a boolean attribute, and ARIA needs the literal "true"/"false"
-           for a screen reader to announce whether the latch is armed. *@
         <button type="button" class="keybar__key @(_ctrlArmed ? "is-armed" : "")"
                 aria-pressed="@(_ctrlArmed ? "true" : "false")"
-                data-testid="key-ctrl" @onclick="ToggleCtrl">Ctrl</button>
+                data-testid="key-ctrl"
+                @onpointerdown:preventDefault
+                @onclick="ToggleCtrl">Ctrl</button>
+        <button type="button" class="keybar__key @(_altArmed ? "is-armed" : "")"
+                aria-pressed="@(_altArmed ? "true" : "false")"
+                data-testid="key-alt"
+                @onpointerdown:preventDefault
+                @onclick="ToggleAlt">Alt</button>
         @foreach (var key in QuickKeys)
         {
             <button type="button" class="keybar__key" data-testid="key-@key.Id"
+                    @onpointerdown:preventDefault
                     @onclick="() => SendKeyAsync(key)">@key.Label</button>
         }
     </div>
@@ -28,12 +30,9 @@
     private IJSObjectReference? _module;
     private DotNetObjectReference<TerminalView>? _self;
     private bool _ctrlArmed;
+    private bool _altArmed;
     private ISshShell? _subscribedShell;
 
-    // Output that arrived before the terminal existed to draw it. Loading the JS
-    // module is asynchronous, and a server sends its banner and MOTD the instant
-    // the shell opens -- without this, the first thing the user is told is the
-    // first thing thrown away.
     private readonly List<byte[]> _pendingOutput = [];
     private bool _terminalReady;
 
@@ -48,10 +47,19 @@
     [
         new("esc", "Esc", [Escape]),
         new("tab", "Tab", [0x09]),
+        new("home", "Home", [Escape, (byte)'[', (byte)'H']),
+        new("end", "End", [Escape, (byte)'[', (byte)'F']),
+        new("pgup", "PgUp", [Escape, (byte)'[', (byte)'5', (byte)'~']),
+        new("pgdn", "PgDn", [Escape, (byte)'[', (byte)'6', (byte)'~']),
         new("up", "↑", [Escape, (byte)'[', (byte)'A']),
         new("down", "↓", [Escape, (byte)'[', (byte)'B']),
         new("left", "←", [Escape, (byte)'[', (byte)'D']),
         new("right", "→", [Escape, (byte)'[', (byte)'C']),
+        new("pipe", "|", [(byte)'|']),
+        new("tilde", "~", [(byte)'~']),
+        new("slash", "/", [(byte)'/']),
+        new("dash", "-", [(byte)'-']),
+        new("underscore", "_", [(byte)'_']),
     ];
 
     protected override void OnParametersSet()
@@ -79,13 +87,8 @@
             theme = TerminalTheme,
         });
 
-        // The pty has to be created at the size the terminal actually achieved,
-        // not a guess: a mismatch makes every full-screen program draw wrong
-        // until something happens to resize it.
         await Shell.ResizeAsync(size.Cols, size.Rows);
 
-        // Drain anything that arrived while the module was loading, in order,
-        // before any further output can be written.
         byte[][] backlog;
         lock (_pendingOutput)
         {
@@ -120,7 +123,6 @@
             }
             catch (JSDisconnectedException)
             {
-                // The circuit went away mid-write; nothing left to draw to.
             }
         });
     }
@@ -128,12 +130,7 @@
     [JSInvokable]
     public async Task OnInputAsync(byte[] data)
     {
-        if (_ctrlArmed && data.Length == 1)
-        {
-            data = [ToControlCode(data[0])];
-            _ctrlArmed = false;
-            StateHasChanged();
-        }
+        data = ApplyModifiers(data);
         await WriteAsync(data);
     }
 
@@ -150,9 +147,47 @@
         }
     }
 
-    private void ToggleCtrl() => _ctrlArmed = !_ctrlArmed;
+    private void ToggleCtrl()
+    {
+        _ctrlArmed = !_ctrlArmed;
+    }
 
-    private Task SendKeyAsync(QuickKey key) => WriteAsync(key.Bytes);
+    private void ToggleAlt()
+    {
+        _altArmed = !_altArmed;
+    }
+
+    private async Task SendKeyAsync(QuickKey key)
+    {
+        await WriteAsync(ApplyModifiers(key.Bytes));
+    }
+
+    private byte[] ApplyModifiers(ReadOnlySpan<byte> input)
+    {
+        if (!_ctrlArmed && !_altArmed)
+            return input.ToArray();
+
+        var transformed = input.ToArray();
+
+        if (_ctrlArmed)
+        {
+            if (transformed.Length == 1)
+                transformed[0] = ToControlCode(transformed[0]);
+            _ctrlArmed = false;
+        }
+
+        if (_altArmed)
+        {
+            var withEscape = new byte[transformed.Length + 1];
+            withEscape[0] = Escape;
+            transformed.CopyTo(withEscape, 1);
+            transformed = withEscape;
+            _altArmed = false;
+        }
+
+        StateHasChanged();
+        return transformed;
+    }
 
     private async Task WriteAsync(ReadOnlyMemory<byte> data)
     {
@@ -162,10 +197,6 @@
         }
         catch (Exception ex)
         {
-            // JS invokes OnInputAsync without awaiting the returned promise.
-            // Letting a dead pipe escape here turns the failure into an
-            // unobserved browser rejection and leaves the UI claiming the
-            // session is healthy. Report it to the owning session instead.
             await ReportWriteFailureAsync(ex);
         }
     }
@@ -173,9 +204,6 @@
     private Task ReportWriteFailureAsync(Exception ex) =>
         OnWriteFailed.HasDelegate ? OnWriteFailed.InvokeAsync(ex) : Task.CompletedTask;
 
-    // Ctrl+A..Z is the letter with its top three bits cleared, so Ctrl+C is 0x03.
-    // Anything outside that range passes through unchanged rather than silently
-    // becoming a different character.
     private static byte ToControlCode(byte b)
     {
         var upper = (byte)char.ToUpperInvariant((char)b);
@@ -208,7 +236,9 @@
                 await _module.InvokeVoidAsync("dispose", _elementId);
                 await _module.DisposeAsync();
             }
-            catch (JSDisconnectedException) { /* circuit already gone */ }
+            catch (JSDisconnectedException)
+            {
+            }
         }
         _self?.Dispose();
     }
