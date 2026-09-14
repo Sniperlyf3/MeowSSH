@@ -100,6 +100,18 @@
     white-space: nowrap;
 }
 
+.credential-card__actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+}
+
+.credential-card__public-key {
+    grid-column: 1 / -1;
+    width: 100%;
+    margin-top: var(--space-2);
+}
+
 .credential-card__delete {
     color: var(--text-faint);
 }
