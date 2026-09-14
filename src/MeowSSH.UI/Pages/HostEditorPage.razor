@@ -180,6 +180,22 @@
                 </p>
             }
 
+            @if (SupportsProxy)
+            {
+                <label class="field">
+                    <span class="field__label">Upstream proxy</span>
+                    <input class="field__input mono" type="text" data-testid="ssh-proxy-url"
+                           placeholder="socks5://127.0.0.1:1080" autocomplete="off"
+                           autocapitalize="none" spellcheck="false"
+                           @bind="_proxyUrl" @bind:event="oninput" />
+                    <span class="field__hint">Optional. Route the SSH bootstrap through a SOCKS5 or HTTP CONNECT proxy.</span>
+                    @if (!ProxyIsValid)
+                    {
+                        <span class="field__error" data-testid="ssh-proxy-validation">Use a socks5:// or http:// proxy URL.</span>
+                    }
+                </label>
+            }
+
             @if (_protocol != HostProtocol.Local)
             {
                 <label class="forward-option">
@@ -220,6 +236,7 @@
     private string _username = "";
     private int _port = 22;
     private string _credentialId = "";
+    private string _proxyUrl = "";
     private HostProtocol _protocol = HostProtocol.Ssh;
     private SshTransport _transport = SshTransport.Tcp;
     private bool _autoReconnect = true;
@@ -259,7 +276,7 @@
         HostProtocol.Mosh => "Roaming terminal over UDP, bootstrapped through SSH. The remote host must have mosh-server installed.",
         HostProtocol.Telnet => "Legacy unencrypted terminal protocol.",
         HostProtocol.Serial => "Direct USB serial console using Android USB Host.",
-        HostProtocol.Local => "A real local PTY served by Meowshell and connected through an ephemeral tailcat session.",
+        HostProtocol.Local => "A real local PTY running fully offline inside MeowSSH's app sandbox.",
         _ => "Secure Shell with terminal, SFTP and port forwarding.",
     };
 
@@ -287,8 +304,24 @@
         _protocol == HostProtocol.Mosh
         || (_protocol == HostProtocol.Ssh && _transport != SshTransport.TailscaleSsh);
 
+    private bool SupportsProxy =>
+        _protocol == HostProtocol.Mosh
+        || (_protocol == HostProtocol.Ssh && _transport == SshTransport.Tcp);
+
+    private bool ProxyIsValid
+    {
+        get
+        {
+            if (!SupportsProxy || string.IsNullOrWhiteSpace(_proxyUrl)) return true;
+            if (!Uri.TryCreate(_proxyUrl.Trim(), UriKind.Absolute, out var uri)) return false;
+            return uri.Scheme.Equals("socks5", StringComparison.OrdinalIgnoreCase)
+                || uri.Scheme.Equals("http", StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
     private bool IsComplete =>
         !string.IsNullOrWhiteSpace(_label)
+        && ProxyIsValid
         && (_protocol == HostProtocol.Local
             || (_protocol == HostProtocol.Serial
                 ? !string.IsNullOrWhiteSpace(_address) && _serialBaudRate > 0 && _serialDataBits is >= 5 and <= 8
@@ -305,6 +338,7 @@
             _protocol = host.Protocol;
             _transport = host.Transport;
             _autoReconnect = host.AutoReconnect;
+            _proxyUrl = host.ProxyUrl ?? "";
             _serialBaudRate = host.SerialBaudRate;
             _serialDataBits = host.SerialDataBits;
             _serialParity = host.SerialParity;
@@ -373,6 +407,8 @@
                 Protocol = _protocol,
                 Transport = _protocol == HostProtocol.Mosh ? SshTransport.Tcp : _transport,
                 AutoReconnect = _protocol != HostProtocol.Local && _autoReconnect,
+                ProxyUrl = SupportsProxy && !string.IsNullOrWhiteSpace(_proxyUrl) ? _proxyUrl.Trim() : null,
+                ForwardAgent = Host?.ForwardAgent ?? false,
                 SerialBaudRate = _serialBaudRate,
                 SerialDataBits = _serialDataBits,
                 SerialParity = _serialParity,
