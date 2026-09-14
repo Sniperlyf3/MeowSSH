@@ -37,7 +37,7 @@
                     <article class="forward-card" data-testid="forward-row" @key="forward.Id">
                         <div class="forward-card__header">
                             <span class="forward-card__kind">@KindLabel(forward.Kind)</span>
-                            <span class="status status--ok"><span class="status__dot"></span>Running</span>
+                            <span>Running</span>
                         </div>
                         <div class="forward-card__route mono">
                             @if (forward.Kind == SshForwardKind.Socks)
@@ -80,7 +80,7 @@
             @foreach (var kind in Enum.GetValues<SshForwardKind>())
             {
                 <button type="button" class="btn @(_kind == kind ? "btn--primary" : "btn--ghost")"
-                        data-testid="forward-kind-@kind.ToString().ToLowerInvariant()"
+                        data-testid="@($"forward-kind-{kind.ToString().ToLowerInvariant()}")"
                         aria-pressed="@(_kind == kind ? "true" : "false")"
                         @onclick="() => SelectKind(kind)">@KindLabel(kind)</button>
             }
@@ -194,7 +194,6 @@
     {
         _kind = kind;
         _validation = null;
-        _bind = kind == SshForwardKind.Remote ? "127.0.0.1" : "127.0.0.1";
     }
 
     private async Task StartForwardAsync()
@@ -232,7 +231,7 @@
             if (string.IsNullOrWhiteSpace(_destinationHost)) return "Enter a destination host.";
             if (_destinationPort is < 1 or > 65535) return "Destination port must be between 1 and 65535.";
         }
-        if (_kind is SshForwardKind.Local or SshForwardKind.Socks
+        if ((_kind is SshForwardKind.Local or SshForwardKind.Socks)
             && !_allowNonLoopback
             && !IsLoopback(_bind.Trim()))
             return "Enable non-loopback binding before listening on an address other than localhost.";
@@ -247,8 +246,8 @@
 
     private static string Address(string host, int port)
     {
-        if (host.StartsWith('[', StringComparison.Ordinal)) return $"{host}:{port}";
-        return host.Contains(':', StringComparison.Ordinal) ? $"[{host}]:{port}" : $"{host}:{port}";
+        if (host.StartsWith("[", StringComparison.Ordinal)) return $"{host}:{port}";
+        return host.Contains(':') ? $"[{host}]:{port}" : $"{host}:{port}";
     }
 
     private static string KindLabel(SshForwardKind kind) => kind switch
