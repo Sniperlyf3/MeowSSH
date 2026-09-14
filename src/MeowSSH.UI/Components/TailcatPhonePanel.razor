@@ -10,7 +10,7 @@
         <article class="tailcat-card" data-testid="tailcat-server-running">
             <h2>This phone is shared</h2>
             <label class="field"><span class="field__label">Tailcat address</span><input class="field__input mono" readonly value="@server.Address" data-testid="tailcat-server-address" /></label>
-            <p>@(server.ExitNodeEnabled ? "Exit node · " : "")@(server.AllowsAnyClient ? "INSECURE: any Tailcat client · " : "")@(server.ShellEnabled ? "Shell · " : "")@(server.FilesEnabled ? $"Files ({server.FileMode})" : "")</p>
+            <p>@(server.ExitNodeEnabled ? "Exit node · " : "")@(server.AllowsAnyClient ? "INSECURE: any Tailcat client · " : "")@(server.ShellEnabled ? (server.UseTailcatCredentialForShell ? "Shell (Tailcat credential only) · " : "Shell · ") : "")@(server.FilesEnabled ? $"Files ({server.FileMode})" : "")</p>
             <p class="field__hint">Expires @server.ExpiresAt.ToLocalTime().ToString("g").</p>
             <button class="btn btn--danger btn--block" disabled="@_busy" data-testid="stop-tailcat-server" @onclick="StopAsync">Stop sharing</button>
         </article>
@@ -34,8 +34,23 @@
                     </div>
                 }
             }
-            <label class="forward-option"><input type="checkbox" data-testid="tailcat-shell" @bind="_shell" /><span><strong>Remote shell</strong><small>Expose a shell protected by SSH authorized keys.</small></span></label>
-            @if (_shell) { <label class="field"><span class="field__label">Authorized SSH keys</span><textarea class="field__input mono" rows="3" data-testid="tailcat-authorized-ssh" @bind="_authorizedSsh"></textarea></label> }
+            <label class="forward-option"><input type="checkbox" data-testid="tailcat-shell" @bind="_shell" /><span><strong>Remote shell</strong><small>Expose a shell over the encrypted Tailcat tunnel.</small></span></label>
+            @if (_shell)
+            {
+                <label class="forward-option"><input type="checkbox" data-testid="tailcat-insecure-shell" @bind="_useTailcatCredentialForShell" /><span><strong>Insecure shell: no SSH keys</strong><small>Use possession of the Tailcat tunnel credential instead of SSH authorized keys.</small></span></label>
+                @if (_useTailcatCredentialForShell)
+                {
+                    <div class="tailcat-danger-warning" role="alert" data-testid="tailcat-insecure-shell-warning">
+                        <strong>Warning: the Tailcat address is the shell credential.</strong>
+                        <p>The WireGuard tunnel remains encrypted. Anyone who obtains this Tailcat address can get a shell unless a Tailcat client-key allowlist also restricts access. Keep the address secret and never publish it in DNS or another public location.</p>
+                        <label class="forward-option"><input type="checkbox" data-testid="tailcat-insecure-shell-confirm" @bind="_insecureShellConfirmed" /><span><strong>I understand the risk</strong><small>Required before starting a shell without SSH authorized keys.</small></span></label>
+                    </div>
+                }
+                else
+                {
+                    <label class="field"><span class="field__label">Authorized SSH keys</span><textarea class="field__input mono" rows="3" data-testid="tailcat-authorized-ssh" @bind="_authorizedSsh"></textarea></label>
+                }
+            }
             <label class="forward-option"><input type="checkbox" data-testid="tailcat-files" @bind="_files" /><span><strong>Share a folder</strong><small>Expose one directory over Tailcat SFTP.</small></span></label>
             @if (_files)
             {
@@ -55,6 +70,8 @@
     private bool _allowAnyClient;
     private bool _insecureConfirmed;
     private bool _shell;
+    private bool _useTailcatCredentialForShell;
+    private bool _insecureShellConfirmed;
     private string _authorizedSsh = "";
     private bool _files;
     private string _folder = "";
@@ -65,7 +82,8 @@
 
     private bool CanStart => (_allowAnyClient || !string.IsNullOrWhiteSpace(_allowedClients)) && (_exitNode || _shell || _files)
         && (!_allowAnyClient || (_exitNode && _insecureConfirmed))
-        && (!_shell || !string.IsNullOrWhiteSpace(_authorizedSsh)) && (!_files || !string.IsNullOrWhiteSpace(_folder))
+        && (!_useTailcatCredentialForShell || (_shell && _insecureShellConfirmed))
+        && (!_shell || _useTailcatCredentialForShell || !string.IsNullOrWhiteSpace(_authorizedSsh)) && (!_files || !string.IsNullOrWhiteSpace(_folder))
         && _hours is >= 1 and <= 24;
 
     private bool HasLongLivedTailcat()
@@ -81,7 +99,7 @@
         try
         {
             if (!wasActive) await SessionLifetime.StartAsync();
-            try { await Hub.StartServerAsync(new TailcatServeRequest(TimeSpan.FromHours(_hours), _allowedClients, _shell, _authorizedSsh, _files, _folder, _fileMode, _exitNode, _allowAnyClient)); }
+            try { await Hub.StartServerAsync(new TailcatServeRequest(TimeSpan.FromHours(_hours), _allowedClients, _shell, _authorizedSsh, _files, _folder, _fileMode, _exitNode, _allowAnyClient, _useTailcatCredentialForShell)); }
             catch { if (!wasActive) await SessionLifetime.StopAsync(); throw; }
             _notice = "Tailcat sharing started.";
         }
