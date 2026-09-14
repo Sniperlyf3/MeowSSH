@@ -25,6 +25,8 @@ public class VaultFileTests
                 // Not the zero value of the enum on purpose: a writer that
                 // dropped this field entirely would still round-trip Tcp.
                 Transport = SshTransport.TailscaleSsh,
+                ProxyUrl = "socks5://127.0.0.1:1080",
+                ForwardAgent = true,
                 Tags = ["prod", "eu-west"],
                 CredentialId = Guid.Parse("33333333-3333-3333-3333-333333333333"),
                 JumpHostId = Guid.Parse("22222222-2222-2222-2222-222222222222"),

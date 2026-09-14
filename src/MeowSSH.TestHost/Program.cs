@@ -16,7 +16,8 @@ builder.Services.AddScoped<IHostEditor>(sp => sp.GetRequiredService<FakeHostDire
 builder.Services.AddScoped<ISshEngine, FakeSshEngine>();
 builder.Services.AddScoped<IProtocolConnectionEngine>(sp =>
     new SshProtocolConnectionEngine(sp.GetRequiredService<ISshEngine>()));
-builder.Services.AddScoped<IConnectionEngine, ConnectionEngine>();
+builder.Services.AddScoped<ConnectionEngine>();
+builder.Services.AddScoped<IConnectionEngine, ProxyJumpConnector>();
 builder.Services.AddScoped<ICredentialResolver, FakeCredentialResolver>();
 builder.Services.AddScoped<ISerialDeviceService, UnsupportedSerialDeviceService>();
 builder.Services.AddScoped(_ => new FakeVaultSession(

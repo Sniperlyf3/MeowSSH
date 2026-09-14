@@ -7,7 +7,11 @@ public sealed record ForwardRequest(
     string ListenAddress,
     string? Destination,
     bool AllowNonLoopbackBind = false,
-    bool RequireSocksAuth = true);
+    bool RequireSocksAuth = true,
+    string? SocksUsername = null,
+    string? SocksPassword = null,
+    int MaxConnections = 256,
+    bool UseUnixSocket = false);
 
 public sealed record ForwardInfo(
     Guid Id,

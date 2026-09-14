@@ -14,7 +14,6 @@ public class HostEditorTests(TestHostFixture fixture)
 
         await Assertions.Expect(page.GetByTestId("host-editor")).ToBeVisibleAsync();
         await Assertions.Expect(page.GetByTestId("host-label")).ToHaveValueAsync("");
-        // Deleting a host that does not exist yet is not an offer worth making.
         await Assertions.Expect(page.GetByTestId("delete-host")).ToHaveCountAsync(0);
     }
 
@@ -27,7 +26,6 @@ public class HostEditorTests(TestHostFixture fixture)
         await Assertions.Expect(save).ToBeDisabledAsync();
 
         await page.GetByTestId("host-label").FillAsync("build-01");
-        // A name with no address is a row in the list that cannot be connected to.
         await Assertions.Expect(save).ToBeDisabledAsync();
 
         await page.GetByTestId("host-address").FillAsync("build.example.com");
@@ -55,11 +53,37 @@ public class HostEditorTests(TestHostFixture fixture)
         await page.GetByTestId("edit-host").First.ClickAsync();
 
         await Assertions.Expect(page.GetByTestId("host-editor")).ToBeVisibleAsync();
-        // Blank fields on an edit screen read as "this host has no username",
-        // and saving would then quietly erase one.
         await Assertions.Expect(page.GetByTestId("host-label")).Not.ToHaveValueAsync("");
         await Assertions.Expect(page.GetByTestId("host-address")).Not.ToHaveValueAsync("");
         await Assertions.Expect(page.GetByTestId("delete-host")).ToBeVisibleAsync();
+    }
+
+    [Fact]
+    public async Task TcpSshOffersAnUpstreamProxyAndValidatesItsScheme()
+    {
+        var page = await fixture.NewPageAsync("/?newhost");
+        await page.GetByTestId("host-label").FillAsync("proxied-host");
+        await page.GetByTestId("host-address").FillAsync("server.internal");
+
+        var proxy = page.GetByTestId("ssh-proxy-url");
+        await Assertions.Expect(proxy).ToBeVisibleAsync();
+        await proxy.FillAsync("https://proxy.example.com:8443");
+        await Assertions.Expect(page.GetByTestId("ssh-proxy-validation")).ToBeVisibleAsync();
+        await Assertions.Expect(page.GetByTestId("save-host")).ToBeDisabledAsync();
+
+        await proxy.FillAsync("socks5://127.0.0.1:1080");
+        await Assertions.Expect(page.GetByTestId("ssh-proxy-validation")).ToHaveCountAsync(0);
+        await Assertions.Expect(page.GetByTestId("save-host")).ToBeEnabledAsync();
+    }
+
+    [Fact]
+    public async Task NonTcpSshTransportHidesTheUpstreamProxy()
+    {
+        var page = await fixture.NewPageAsync("/?newhost");
+        await Assertions.Expect(page.GetByTestId("ssh-proxy-url")).ToBeVisibleAsync();
+
+        await page.GetByTestId("transport-Tailcat").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("ssh-proxy-url")).ToHaveCountAsync(0);
     }
 
     [Fact]
@@ -69,8 +93,6 @@ public class HostEditorTests(TestHostFixture fixture)
 
         await page.GetByTestId("transport-Tailcat").ClickAsync();
 
-        // The address is the credential, so a username and port are not merely
-        // unnecessary -- filling them in would look like a setting that works.
         await Assertions.Expect(page.GetByTestId("host-username")).ToHaveCountAsync(0);
         await Assertions.Expect(page.GetByTestId("host-port")).ToHaveCountAsync(0);
     }
@@ -93,8 +115,6 @@ public class HostEditorTests(TestHostFixture fixture)
 
         await page.GetByTestId("transport-Tailcat").ClickAsync();
 
-        // aria-checked has to be the literal string, not a bare attribute:
-        // a boolean attribute here reads as "checked" whatever its value.
         await Assertions.Expect(page.GetByTestId("transport-Tailcat")).ToHaveAttributeAsync("aria-checked", "true");
         await Assertions.Expect(page.GetByTestId("transport-Tcp")).ToHaveAttributeAsync("aria-checked", "false");
     }
@@ -132,8 +152,6 @@ public class HostEditorTests(TestHostFixture fixture)
 
         await address.FillAsync("Build.Example.COM");
 
-        // The recovery-code field uppercases on purpose; that styling must not
-        // reach a field holding a case-sensitive value.
         var transform = await address.EvaluateAsync<string>("el => getComputedStyle(el).textTransform");
         Assert.Equal("none", transform);
         await Assertions.Expect(address).ToHaveValueAsync("Build.Example.COM");

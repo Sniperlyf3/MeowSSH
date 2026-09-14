@@ -62,6 +62,12 @@ public sealed record HostRecord
     /// <summary>Automatically reconnect after an unexpected network/session loss.</summary>
     public bool AutoReconnect { get; init; } = true;
 
+    /// <summary>Optional SOCKS5 or HTTP CONNECT proxy used to reach the first TCP SSH hop.</summary>
+    public string? ProxyUrl { get; init; }
+
+    /// <summary>Forward the local ssh-agent into this SSH session.</summary>
+    public bool ForwardAgent { get; init; }
+
     /// <summary>USB serial line settings. Ignored unless <see cref="Protocol"/> is Serial.</summary>
     public int SerialBaudRate { get; init; } = 115200;
     public int SerialDataBits { get; init; } = 8;

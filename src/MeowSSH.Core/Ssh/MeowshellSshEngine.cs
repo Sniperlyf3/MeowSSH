@@ -9,11 +9,6 @@ namespace MeowSSH.Core.Ssh;
 /// The real engine: <see cref="ISshEngine"/> over Meowshell's agent, which runs
 /// one long-lived subprocess per connection and multiplexes every channel over it.
 /// </summary>
-/// <remarks>
-/// One agent per host, not per feature. A user who opens a shell and then browses
-/// files should authenticate once — with a one-time code, per-feature connections
-/// would mean reaching for their phone again for each.
-/// </remarks>
 public sealed class MeowshellSshEngine(MeowshellSshEngineOptions options) : ISshEngine
 {
     public async Task<ISshConnection> ConnectAsync(
@@ -40,13 +35,13 @@ public sealed class MeowshellSshEngine(MeowshellSshEngineOptions options) : ISsh
             agent = await MeowshellAgentConnection.ConnectAsync(
                 clientOptions,
                 destination: Destination(host, credentials),
-                configure: Configure(credentials),
+                configure: Configure(host, credentials),
                 port: host.Transport == SshTransport.Tailcat
                     ? null
                     : host.Port.ToString(CultureInfo.InvariantCulture),
                 jumpHosts: null,
                 knownHostsPath: options.KnownHostsPath,
-                proxyUrl: options.ProxyUrl,
+                proxyUrl: string.IsNullOrWhiteSpace(host.ProxyUrl) ? options.ProxyUrl : host.ProxyUrl,
                 configureConnection: connection => Attach(connection, prompts, credentials),
                 cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
@@ -100,9 +95,10 @@ public sealed class MeowshellSshEngine(MeowshellSshEngineOptions options) : ISsh
         if ((mode & sharedAccess) != 0) File.SetUnixFileMode(path, mode & ~sharedAccess);
     }
 
-    private MeowshellAgentConfigureOptions Configure(SshCredentials credentials) => new()
+    private MeowshellAgentConfigureOptions Configure(HostRecord host, SshCredentials credentials) => new()
     {
-        DisableLocalAgent = true,
+        DisableLocalAgent = !host.ForwardAgent,
+        ForwardLocalAgent = host.ForwardAgent,
         AllowLegacyKeyAlgorithms = options.AllowLegacyKeyAlgorithms,
         PrivateKeys = [.. credentials.PrivateKeys.Select(k => k.ReadOnlySpan.ToArray())],
         Certificates = [.. credentials.Certificates],
@@ -114,9 +110,6 @@ public sealed class MeowshellSshEngine(MeowshellSshEngineOptions options) : ISsh
     {
         if (host.Transport == SshTransport.Tailcat) return host.Address;
 
-        // A username stored with the selected credential belongs to that
-        // credential and therefore takes precedence over the host-level default.
-        // This lets one credential carry the complete login identity.
         var username = string.IsNullOrWhiteSpace(credentials.Username)
             ? host.Username
             : credentials.Username;
@@ -152,10 +145,6 @@ public sealed class MeowshellSshEngine(MeowshellSshEngineOptions options) : ISsh
 
         agent.KeyboardInteractiveRequested += async (prompt, ct) =>
         {
-            // PAM-backed SSH servers often expose an ordinary password through
-            // keyboard-interactive rather than the SSH password method. Use the
-            // stored password only for the unambiguous single hidden password
-            // question; OTP/MFA challenges must remain interactive.
             if (credentials.Password is { } stored
                 && prompt.Questions.Count == 1
                 && prompt.Echos.Count == 1
@@ -225,7 +214,7 @@ public sealed class MeowshellSshEngine(MeowshellSshEngineOptions options) : ISsh
 /// <param name="WorkingDirectory">Writable directory the agent uses as its HOME.</param>
 /// <param name="KnownHostsPath">Where accepted host keys are recorded.</param>
 /// <param name="BinaryDirectory">Override for where the native binaries live.</param>
-/// <param name="ProxyUrl">socks5:// or http:// proxy to dial through.</param>
+/// <param name="ProxyUrl">Default socks5:// or http:// proxy to dial through.</param>
 /// <param name="ConnectTimeout">How long to wait for the connection to settle.</param>
 /// <param name="AllowLegacyKeyAlgorithms">
 /// Offer SHA-1 <c>ssh-rsa</c> to servers predating RFC 8332. Off by default:

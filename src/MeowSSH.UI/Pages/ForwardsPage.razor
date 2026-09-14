@@ -87,23 +87,47 @@
         </div>
 
         <div class="stack">
-            <label class="field">
-                <span class="field__label">@ListenLabel</span>
-                <input class="field__input mono" data-testid="forward-bind"
-                       autocomplete="off" autocapitalize="none" spellcheck="false"
-                       @bind="_bind" @bind:event="oninput" />
-                @if (_kind is SshForwardKind.Local or SshForwardKind.Socks)
-                {
-                    <span class="field__hint">Use 127.0.0.1 unless other devices should be able to connect.</span>
-                }
-            </label>
+            @if (_kind is SshForwardKind.Local or SshForwardKind.Socks)
+            {
+                <label class="forward-option">
+                    <input type="checkbox" data-testid="forward-unix-socket" @bind="_useUnixSocket" />
+                    <span>
+                        <strong>Use Unix domain socket</strong>
+                        <small>Listen on a local socket path instead of a TCP port.</small>
+                    </span>
+                </label>
+            }
 
-            <label class="field">
-                <span class="field__label">Listen port</span>
-                <input class="field__input mono" type="number" min="0" max="65535" inputmode="numeric"
-                       data-testid="forward-listen-port" @bind="_listenPort" />
-                <span class="field__hint">Port 0 asks the OS/server to choose an available port.</span>
-            </label>
+            @if (_useUnixSocket && _kind is SshForwardKind.Local or SshForwardKind.Socks)
+            {
+                <label class="field">
+                    <span class="field__label">Socket path</span>
+                    <input class="field__input mono" data-testid="forward-socket-path"
+                           autocomplete="off" autocapitalize="none" spellcheck="false"
+                           @bind="_socketPath" @bind:event="oninput" />
+                    <span class="field__hint">The path must be writable by MeowSSH and must not already be in use.</span>
+                </label>
+            }
+            else
+            {
+                <label class="field">
+                    <span class="field__label">@ListenLabel</span>
+                    <input class="field__input mono" data-testid="forward-bind"
+                           autocomplete="off" autocapitalize="none" spellcheck="false"
+                           @bind="_bind" @bind:event="oninput" />
+                    @if (_kind is SshForwardKind.Local or SshForwardKind.Socks)
+                    {
+                        <span class="field__hint">Use 127.0.0.1 unless other devices should be able to connect.</span>
+                    }
+                </label>
+
+                <label class="field">
+                    <span class="field__label">Listen port</span>
+                    <input class="field__input mono" type="number" min="0" max="65535" inputmode="numeric"
+                           data-testid="forward-listen-port" @bind="_listenPort" />
+                    <span class="field__hint">Port 0 asks the OS/server to choose an available port.</span>
+                </label>
+            }
 
             @if (_kind != SshForwardKind.Socks)
             {
@@ -120,7 +144,7 @@
                 </label>
             }
 
-            @if (_kind is SshForwardKind.Local or SshForwardKind.Socks)
+            @if (!_useUnixSocket && _kind is SshForwardKind.Local or SshForwardKind.Socks)
             {
                 <label class="forward-option">
                     <input type="checkbox" data-testid="forward-public-bind" @bind="_allowNonLoopback" />
@@ -137,10 +161,43 @@
                     <input type="checkbox" data-testid="forward-socks-auth" @bind="_socksAuth" />
                     <span>
                         <strong>Require SOCKS authentication</strong>
-                        <small>Recommended. MeowSSH generates credentials for this running proxy.</small>
+                        <small>Recommended for TCP listeners. MeowSSH generates credentials unless you provide your own.</small>
                     </span>
                 </label>
+
+                @if (_socksAuth)
+                {
+                    <label class="forward-option">
+                        <input type="checkbox" data-testid="forward-custom-socks-auth" @bind="_customSocksAuth" />
+                        <span>
+                            <strong>Use custom SOCKS credentials</strong>
+                            <small>Otherwise a random username and password are generated for this proxy.</small>
+                        </span>
+                    </label>
+
+                    @if (_customSocksAuth)
+                    {
+                        <label class="field">
+                            <span class="field__label">SOCKS username</span>
+                            <input class="field__input mono" data-testid="forward-socks-username"
+                                   autocomplete="off" autocapitalize="none" spellcheck="false"
+                                   @bind="_socksUsername" @bind:event="oninput" />
+                        </label>
+                        <label class="field">
+                            <span class="field__label">SOCKS password</span>
+                            <input class="field__input mono" type="password" data-testid="forward-socks-password"
+                                   autocomplete="new-password" @bind="_socksPassword" @bind:event="oninput" />
+                        </label>
+                    }
+                }
             }
+
+            <label class="field">
+                <span class="field__label">Maximum simultaneous connections</span>
+                <input class="field__input mono" type="number" min="0" max="65535" inputmode="numeric"
+                       data-testid="forward-max-connections" @bind="_maxConnections" />
+                <span class="field__hint">Default 256. Set 0 only when you intentionally want no limit.</span>
+            </label>
 
             @if (_validation is not null)
             {
@@ -173,6 +230,12 @@
     private int _destinationPort = 80;
     private bool _allowNonLoopback;
     private bool _socksAuth = true;
+    private bool _customSocksAuth;
+    private string _socksUsername = "";
+    private string _socksPassword = "";
+    private int _maxConnections = 256;
+    private bool _useUnixSocket;
+    private string _socketPath = "/tmp/meowssh.sock";
     private string? _validation;
 
     private string ListenLabel => _kind == SshForwardKind.Remote ? "Remote bind address" : "Local bind address";
@@ -193,6 +256,7 @@
     private void SelectKind(SshForwardKind kind)
     {
         _kind = kind;
+        if (kind == SshForwardKind.Remote) _useUnixSocket = false;
         _validation = null;
     }
 
@@ -204,7 +268,10 @@
         _starting = true;
         try
         {
-            var listen = Address(_bind.Trim(), _listenPort);
+            var unixSocket = _useUnixSocket && _kind is SshForwardKind.Local or SshForwardKind.Socks;
+            var listen = unixSocket
+                ? _socketPath.Trim()
+                : Address(_bind.Trim(), _listenPort);
             var destination = _kind == SshForwardKind.Socks
                 ? null
                 : Address(_destinationHost.Trim(), _destinationPort);
@@ -213,7 +280,11 @@
                 listen,
                 destination,
                 _allowNonLoopback,
-                _socksAuth));
+                _socksAuth,
+                _socksAuth && _customSocksAuth ? _socksUsername : null,
+                _socksAuth && _customSocksAuth ? _socksPassword : null,
+                _maxConnections,
+                unixSocket));
             _adding = false;
         }
         finally
@@ -224,17 +295,43 @@
 
     private string? Validate()
     {
-        if (string.IsNullOrWhiteSpace(_bind)) return "Enter a bind address.";
-        if (_listenPort is < 0 or > 65535) return "Listen port must be between 0 and 65535.";
+        var unixSocket = _useUnixSocket && _kind is SshForwardKind.Local or SshForwardKind.Socks;
+        if (unixSocket)
+        {
+            if (string.IsNullOrWhiteSpace(_socketPath)) return "Enter a Unix socket path.";
+            if (!Path.IsPathFullyQualified(_socketPath.Trim())) return "Unix socket path must be absolute.";
+        }
+        else
+        {
+            if (string.IsNullOrWhiteSpace(_bind)) return "Enter a bind address.";
+            if (_listenPort is < 0 or > 65535) return "Listen port must be between 0 and 65535.";
+        }
+
+        if (_maxConnections is < 0 or > 65535)
+            return "Maximum connections must be between 0 and 65535.";
+
         if (_kind != SshForwardKind.Socks)
         {
             if (string.IsNullOrWhiteSpace(_destinationHost)) return "Enter a destination host.";
             if (_destinationPort is < 1 or > 65535) return "Destination port must be between 1 and 65535.";
         }
-        if ((_kind is SshForwardKind.Local or SshForwardKind.Socks)
+
+        if (!unixSocket
+            && (_kind is SshForwardKind.Local or SshForwardKind.Socks)
             && !_allowNonLoopback
             && !IsLoopback(_bind.Trim()))
             return "Enable non-loopback binding before listening on an address other than localhost.";
+
+        if (_kind == SshForwardKind.Socks && _socksAuth && _customSocksAuth)
+        {
+            if (string.IsNullOrEmpty(_socksUsername) || string.IsNullOrEmpty(_socksPassword))
+                return "Enter both a SOCKS username and password.";
+            if (System.Text.Encoding.UTF8.GetByteCount(_socksUsername) > 255)
+                return "SOCKS username must fit in 255 UTF-8 bytes.";
+            if (System.Text.Encoding.UTF8.GetByteCount(_socksPassword) > 255)
+                return "SOCKS password must fit in 255 UTF-8 bytes.";
+        }
+
         return null;
     }
 

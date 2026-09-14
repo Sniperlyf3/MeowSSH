@@ -31,16 +31,36 @@ public interface ISshConnection : IHostConnection
         string listenAddress,
         string remoteAddress,
         bool allowNonLoopbackBind = false,
+        int maxConnections = 256,
+        CancellationToken cancellationToken = default);
+
+    Task<ISshForward> OpenLocalForwardOnUnixSocketAsync(
+        string socketPath,
+        string remoteAddress,
+        int maxConnections = 256,
         CancellationToken cancellationToken = default);
 
     Task<ISshForward> OpenRemoteForwardAsync(
         string listenAddress,
         string localAddress,
+        int maxConnections = 256,
         CancellationToken cancellationToken = default);
 
     Task<ISshForward> OpenSocksForwardAsync(
         string listenAddress,
         bool requireAuth = true,
+        string? socksUsername = null,
+        string? socksPassword = null,
+        bool allowNonLoopbackBind = false,
+        int maxConnections = 256,
+        CancellationToken cancellationToken = default);
+
+    Task<ISshForward> OpenSocksForwardOnUnixSocketAsync(
+        string socketPath,
+        bool requireAuth = false,
+        string? socksUsername = null,
+        string? socksPassword = null,
+        int maxConnections = 256,
         CancellationToken cancellationToken = default);
 }
 

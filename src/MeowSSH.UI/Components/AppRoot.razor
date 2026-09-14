@@ -421,16 +421,32 @@ else
     private static Task<ISshForward> OpenForwardAsync(ISshConnection connection, ForwardRequest request) =>
         request.Kind switch
         {
+            SshForwardKind.Local when request.UseUnixSocket => connection.OpenLocalForwardOnUnixSocketAsync(
+                request.ListenAddress,
+                RequiredDestination(request),
+                request.MaxConnections),
             SshForwardKind.Local => connection.OpenLocalForwardAsync(
                 request.ListenAddress,
                 RequiredDestination(request),
-                request.AllowNonLoopbackBind),
+                request.AllowNonLoopbackBind,
+                request.MaxConnections),
             SshForwardKind.Remote => connection.OpenRemoteForwardAsync(
                 request.ListenAddress,
-                RequiredDestination(request)),
+                RequiredDestination(request),
+                request.MaxConnections),
+            SshForwardKind.Socks when request.UseUnixSocket => connection.OpenSocksForwardOnUnixSocketAsync(
+                request.ListenAddress,
+                request.RequireSocksAuth,
+                request.SocksUsername,
+                request.SocksPassword,
+                request.MaxConnections),
             SshForwardKind.Socks => connection.OpenSocksForwardAsync(
                 request.ListenAddress,
-                request.RequireSocksAuth),
+                request.RequireSocksAuth,
+                request.SocksUsername,
+                request.SocksPassword,
+                request.AllowNonLoopbackBind,
+                request.MaxConnections),
             _ => throw new ArgumentOutOfRangeException(nameof(request.Kind)),
         };
 
