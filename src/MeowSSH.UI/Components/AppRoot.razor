@@ -9,13 +9,6 @@
 @inject ICredentialResolver Credentials
 @inject IActiveSessionLifetime SessionLifetime
 
-@*
-    The whole app, composed from services. Both hosts render this: the Android
-    app with the real engine and vault, the test host with fakes. Keeping the
-    composition here rather than in each host is what stops the two from drifting
-    into testing something the app does not do.
-*@
-
 @if (!_ready)
 {
     <div class="lock" data-testid="app-loading">
@@ -30,20 +23,46 @@ else if (Vault.State is not VaultState.Unlocked)
 {
     <VaultLockScreen OnUnlocked="OnUnlockedAsync" />
 }
-else if (_session is not null)
+else if (_activeSessionId is not null && _sessions.Count > 0)
 {
-    <SessionPage Host="_session.Host"
-                 Shell="_session.Shell"
-                 IsConnected="_sessionConnected"
-                 IsReconnecting="_reconnecting"
-                 DisconnectMessage="_sessionStatus"
-                 OnReconnect="ReconnectAsync"
-                 OnWriteFailed="OnShellWriteFailedAsync"
-                 OnClosed="CloseSessionAsync" />
-}
-else if (_files is not null)
-{
-    <FilesPage Host="_files.Host" Sftp="_files.Sftp" OnClosed="CloseFilesAsync" />
+    @foreach (var session in _sessions)
+    {
+        var isActive = session.Id == _activeSessionId;
+        <section class="session-workspace @(isActive ? "is-active" : "")"
+                 data-testid="session-workspace" @key="session.Id">
+            <SessionTabStrip Tabs="SessionTabs"
+                             ActiveId="_activeSessionId"
+                             OnSelected="SelectSession"
+                             OnClosed="CloseSessionAsync"
+                             OnToggleView="ToggleSessionViewAsync"
+                             OnNew="OpenNewSession" />
+
+            <div class="session-workspace__pane @(session.View == SessionView.Terminal ? "is-active" : "")">
+                @if (session.Shell is not null)
+                {
+                    <SessionPage Host="session.DisplayHost"
+                                 Shell="session.Shell"
+                                 IsConnected="session.IsConnected"
+                                 IsReconnecting="session.IsReconnecting"
+                                 DisconnectMessage="session.Status"
+                                 OnReconnect="() => ReconnectAsync(session.Id)"
+                                 OnWriteFailed="ex => OnShellWriteFailedAsync(session.Id, ex)"
+                                 OnOpenFiles="() => ShowFilesAsync(session.Id)"
+                                 OnClosed="LeaveWorkspace" />
+                }
+            </div>
+
+            <div class="session-workspace__pane @(session.View == SessionView.Files ? "is-active" : "")">
+                @if (session.Sftp is not null)
+                {
+                    <FilesPage @key="session.Sftp"
+                               Host="session.DisplayHost"
+                               Sftp="session.Sftp"
+                               OnClosed="LeaveWorkspace" />
+                }
+            </div>
+        </section>
+    }
 }
 else if (_editing is not null)
 {
@@ -52,24 +71,6 @@ else if (_editing is not null)
 else if (_tab == "files")
 {
     <FilesLandingPage OnHostSelected="OpenFilesAsync" OnTabSelected="SelectTab" />
-
-    @if (_connecting is not null)
-    {
-        <div class="sheet" role="status" data-testid="connecting">
-            <p class="sheet__title">Opening files on @_connecting</p>
-            <p class="sheet__body">Connecting to the host and starting SFTP.</p>
-        </div>
-    }
-    @if (_failure is not null)
-    {
-        <div class="sheet sheet--danger" role="alert" data-testid="connect-error">
-            <p class="sheet__title">@_failure.Title</p>
-            <p class="sheet__body">@_failure.Body</p>
-            <button type="button" class="btn btn--ghost btn--block"
-                    data-testid="dismiss-error" @onclick="() => _failure = null">Dismiss</button>
-        </div>
-    }
-    <SshPromptSheets Questions="Questions" />
 }
 else if (_tab == "keys")
 {
@@ -81,140 +82,73 @@ else if (_tab == "settings")
 }
 else
 {
-    <HostsPage OnHostSelected="ConnectAsync" OnAddHost="AddHost" OnEditHost="EditHost" OnTabSelected="SelectTab" />
+    <HostsPage OnHostSelected="ConnectAsync"
+               OnAddHost="AddHost"
+               OnEditHost="EditHost"
+               OnTabSelected="SelectTab"
+               OpenSessionCount="_sessions.Count"
+               OnOpenSessions="ResumeSessions" />
+}
 
-    @if (_connecting is not null)
-    {
-        <div class="sheet" role="status" data-testid="connecting">
-            <p class="sheet__title">Connecting to @_connecting</p>
-            <p class="sheet__body">Waiting for the host to answer.</p>
-        </div>
-    }
-    @if (Questions.PendingHostKey is { } hostKey)
-    {
-        <div class="sheet sheet--danger" role="alertdialog" data-testid="host-key-prompt">
-            <p class="sheet__title">Trust this server?</p>
-            <p class="sheet__body">
-                MeowSSH has not seen <strong>@hostKey.Prompt.Host</strong> before. Check the
-                fingerprint against the server itself before accepting it — if it does not match,
-                something is intercepting the connection.
-            </p>
-            <code class="recovery__code mono" data-testid="host-key-fingerprint">@hostKey.Prompt.Fingerprint</code>
-            <div class="form__actions">
-                <button type="button" class="btn btn--primary btn--block"
-                        data-testid="trust-host-key" @onclick="() => hostKey.Answer(true)">
-                    Trust and connect
-                </button>
-                <button type="button" class="btn btn--ghost btn--block"
-                        data-testid="reject-host-key" @onclick="() => hostKey.Answer(false)">
-                    Cancel
-                </button>
-            </div>
-        </div>
-    }
-    @if (Questions.PendingPassword is { } password)
-    {
-        <div class="sheet" role="alertdialog" data-testid="password-prompt">
-            <p class="sheet__title">Password required</p>
-            <p class="sheet__body">@password.Prompt</p>
-            <div class="form__actions">
-                <label class="field">
-                    <span class="field__label">Password</span>
-                    <input class="field__input mono" type="password" data-testid="password-input"
-                           autocomplete="off" autocapitalize="none" spellcheck="false"
-                           @bind="_password" @bind:event="oninput"
-                           @onkeydown="e => OnPasswordKey(e, password)" />
-                </label>
-                <button type="button" class="btn btn--primary btn--block"
-                        data-testid="submit-password" @onclick="() => SubmitPassword(password)">
-                    Sign in
-                </button>
-                <button type="button" class="btn btn--ghost btn--block"
-                        data-testid="cancel-password" @onclick="() => CancelPassword(password)">
-                    Cancel
-                </button>
-            </div>
-        </div>
-    }
-    @if (Questions.PendingChallenge is { } challenge)
-    {
-        <div class="sheet" role="alertdialog" data-testid="challenge-prompt">
-            <p class="sheet__title">@(string.IsNullOrWhiteSpace(challenge.Prompt.Name) ? "Sign in" : challenge.Prompt.Name)</p>
-            @if (!string.IsNullOrWhiteSpace(challenge.Prompt.Instruction))
-            {
-                <p class="sheet__body">@challenge.Prompt.Instruction</p>
-            }
+@if (Vault.State == VaultState.Unlocked)
+{
+    <SshPromptSheets Questions="Questions" />
+}
 
-            <div class="form__actions">
-                @for (var i = 0; i < challenge.Prompt.Questions.Count; i++)
-                {
-                    // Captured per iteration: the lambdas below outlive the loop,
-                    // and sharing the counter would make every field write to the
-                    // last answer.
-                    var index = i;
-                    <label class="field">
-                        <span class="field__label">@challenge.Prompt.Questions[index]</span>
-                        <input class="field__input mono"
-                               data-testid="@($"challenge-answer-{index}")"
-                               type="@(challenge.Echoes(index) ? "text" : "password")"
-                               autocomplete="off" autocapitalize="none" spellcheck="false"
-                               value="@challenge.Answers[index]"
-                               @oninput="e => challenge.Answers[index] = e.Value?.ToString() ?? string.Empty"
-                               @onkeydown="e => OnChallengeKey(e, challenge)" />
-                    </label>
-                }
+@if (_connecting is not null)
+{
+    <div class="sheet" role="status" data-testid="connecting">
+        <p class="sheet__title">@(_connectingForFiles ? $"Opening files on {_connecting}" : $"Connecting to {_connecting}")</p>
+        <p class="sheet__body">@(_connectingForFiles ? "Connecting to the host and starting SFTP." : "Waiting for the host to answer.")</p>
+    </div>
+}
 
-                <button type="button" class="btn btn--primary btn--block"
-                        data-testid="submit-challenge" @onclick="() => SubmitChallenge(challenge)">
-                    Sign in
-                </button>
-                <button type="button" class="btn btn--ghost btn--block"
-                        data-testid="cancel-challenge" @onclick="() => challenge.Answer(null)">
-                    Cancel
-                </button>
-            </div>
-        </div>
-    }
-    @if (_failure is not null)
-    {
-        <div class="sheet sheet--danger" role="alert" data-testid="connect-error">
-            <p class="sheet__title">@_failure.Title</p>
-            <p class="sheet__body">@_failure.Body</p>
-            <button type="button" class="btn btn--ghost btn--block"
-                    data-testid="dismiss-error" @onclick="() => _failure = null">Dismiss</button>
-        </div>
-    }
+@if (_failure is not null)
+{
+    <div class="sheet sheet--danger" role="alert" data-testid="connect-error">
+        <p class="sheet__title">@_failure.Title</p>
+        <p class="sheet__body">@_failure.Body</p>
+        <button type="button" class="btn btn--ghost btn--block"
+                data-testid="dismiss-error" @onclick="() => _failure = null">Dismiss</button>
+    </div>
 }
 
 @code {
-    private SessionState? _session;
-    private FilesState? _files;
+    private readonly List<OpenSession> _sessions = [];
+    private Guid? _activeSessionId;
     private EditorState? _editing;
     private string _tab = "hosts";
     private string? _connecting;
+    private bool _connectingForFiles;
     private Failure? _failure;
-    private ISshConnection? _connection;
     private bool _ready;
-    private bool _sessionConnected;
-    private bool _reconnecting;
-    private string _sessionStatus = "The SSH session is no longer connected.";
-    private string _password = "";
 
-    private sealed record SessionState(HostRecord Host, ISshShell Shell);
-    private sealed record FilesState(HostRecord Host, ISftpSession Sftp);
-    /// <summary>Null Host means the editor is adding rather than changing one.</summary>
     private sealed record EditorState(HostRecord? Host);
     private sealed record Failure(string Title, string Body);
+
+    private sealed class OpenSession(HostRecord sourceHost, HostRecord displayHost, ISshConnection connection)
+    {
+        public Guid Id { get; } = Guid.NewGuid();
+        public HostRecord SourceHost { get; } = sourceHost;
+        public HostRecord DisplayHost { get; set; } = displayHost;
+        public ISshConnection Connection { get; set; } = connection;
+        public ISshShell? Shell { get; set; }
+        public ISftpSession? Sftp { get; set; }
+        public SessionView View { get; set; }
+        public bool IsConnected { get; set; } = true;
+        public bool IsReconnecting { get; set; }
+        public string Status { get; set; } = "Connected.";
+        public EventHandler<SshConnectionLost>? ConnectionLostHandler { get; set; }
+        public EventHandler<int>? ShellExitedHandler { get; set; }
+    }
+
+    private IReadOnlyList<SessionTabInfo> SessionTabs =>
+        [.. _sessions.Select(s => new SessionTabInfo(s.Id, s.DisplayHost.Label, s.View, s.IsConnected))];
 
     protected override async Task OnInitializedAsync()
     {
         Vault.StateChanged += OnVaultChanged;
-        // The handshake raises its questions on the agent's thread, so the shell
-        // has to be told to repaint rather than noticing on its own.
         Questions.Changed += OnQuestionsChanged;
-        // Nothing is drawn until this answers: a first run and a locked vault are
-        // different screens, and showing the wrong one offers a fingerprint that
-        // cannot work or a setup flow that would refuse to run.
         await Vault.InitializeAsync();
         _ready = true;
     }
@@ -222,42 +156,6 @@ else
     private void OnVaultChanged(object? sender, EventArgs e) => _ = InvokeAsync(StateHasChanged);
 
     private void OnQuestionsChanged(object? sender, EventArgs e) => _ = InvokeAsync(StateHasChanged);
-
-    private void SubmitPassword(PasswordRequest request)
-    {
-        var answer = _password;
-        // Cleared before the answer is handed over, so the field is not still
-        // holding it when the sheet closes.
-        _password = "";
-        request.Answer(answer);
-    }
-
-    private void CancelPassword(PasswordRequest request)
-    {
-        _password = "";
-        // Null, not empty: an empty password is an attempt, and the server would
-        // count it as a failed one.
-        request.Answer(null);
-    }
-
-    private void OnPasswordKey(KeyboardEventArgs e, PasswordRequest request)
-    {
-        if (e.Key == "Enter") SubmitPassword(request);
-    }
-
-    private static void SubmitChallenge(ChallengeRequest request)
-    {
-        // Every question gets an answer, empty or not: the server counts them,
-        // and a short list is refused as malformed rather than as wrong.
-        var answers = request.Answers.Select(a => a ?? string.Empty).ToArray();
-        Array.Clear(request.Answers);
-        request.Answer(answers);
-    }
-
-    private static void OnChallengeKey(KeyboardEventArgs e, ChallengeRequest request)
-    {
-        if (e.Key == "Enter") SubmitChallenge(request);
-    }
 
     private Task OnUnlockedAsync()
     {
@@ -267,6 +165,7 @@ else
 
     private Task SelectTab(string tab)
     {
+        _activeSessionId = null;
         _tab = tab;
         StateHasChanged();
         return Task.CompletedTask;
@@ -285,199 +184,311 @@ else
         return Task.CompletedTask;
     }
 
-    private async Task OpenFilesAsync(HostRecord host)
+    private Task ConnectAsync(HostRecord host) => OpenSessionAsync(host, SessionView.Terminal);
+
+    private Task OpenFilesAsync(HostRecord host) => OpenSessionAsync(host, SessionView.Files);
+
+    private async Task OpenSessionAsync(HostRecord host, SessionView initialView)
     {
+        if (_connecting is not null) return;
+
         _connecting = host.Label;
+        _connectingForFiles = initialView == SessionView.Files;
         _failure = null;
         StateHasChanged();
 
+        ISshConnection? connection = null;
+        ISshShell? shell = null;
+        ISftpSession? sftp = null;
         try
         {
-            await SessionLifetime.StartAsync();
-            using var credentials = await Credentials.ResolveAsync(host);
-            _connection = await Engine.ConnectAsync(host, credentials, Prompts);
-            _connection.ConnectionLost += OnConnectionLost;
-            var sftp = await _connection.OpenSftpAsync();
-            _files = new FilesState(host, sftp);
+            if (!_sessions.Any(s => s.IsConnected))
+                await SessionLifetime.StartAsync();
+
+            var connected = await ConnectHostAsync(host);
+            connection = connected.Connection;
+            var session = new OpenSession(host, connected.DisplayHost, connection)
+            {
+                View = initialView,
+            };
+            WireConnection(session);
+
+            if (initialView == SessionView.Terminal)
+            {
+                shell = await connection.OpenShellAsync(80, 24);
+                session.Shell = shell;
+                WireShell(session);
+            }
+            else
+            {
+                sftp = await connection.OpenSftpAsync();
+                session.Sftp = sftp;
+            }
+
+            _sessions.Add(session);
+            _activeSessionId = session.Id;
+            connection = null;
+            shell = null;
+            sftp = null;
         }
         catch (SshException ex)
         {
-            _failure = ex.Failure switch
-            {
-                SshFailure.HostKeyChanged => new("Host key changed", ex.Message),
-                SshFailure.HostKeyUnknown => new("Host not trusted yet", ex.Message),
-                SshFailure.AuthenticationFailed => new("Could not sign in", ex.Message),
-                _ => new("Could not open files", ex.Message),
-            };
-            await DropConnectionAsync();
-            await SessionLifetime.StopAsync();
+            _failure = MapFailure(initialView == SessionView.Files ? "Could not open files" : "Could not connect", ex);
         }
         finally
         {
+            if (sftp is not null) await sftp.DisposeAsync();
+            if (shell is not null) await shell.DisposeAsync();
+            if (connection is not null) await connection.DisposeAsync();
+            if (_sessions.Count == 0) await SessionLifetime.StopAsync();
             _connecting = null;
             StateHasChanged();
         }
     }
 
-    private async Task ConnectAsync(HostRecord host)
+    private async Task<(HostRecord DisplayHost, ISshConnection Connection)> ConnectHostAsync(HostRecord host)
     {
-        _connecting = host.Label;
-        _failure = null;
-        StateHasChanged();
+        using var credentials = await Credentials.ResolveAsync(host);
+        var displayHost = !string.IsNullOrWhiteSpace(credentials.Username)
+            ? host with { Username = credentials.Username }
+            : host;
+        var credentialPrompts = new CredentialSshPrompts(Prompts, credentials);
+        var connection = await Engine.ConnectAsync(displayHost, credentials, credentialPrompts);
+        return (displayHost, connection);
+    }
+
+    private void WireConnection(OpenSession session)
+    {
+        EventHandler<SshConnectionLost> handler = (_, lost) =>
+            _ = InvokeAsync(() => MarkSessionDisconnectedAsync(session.Id, lost.Message));
+        session.ConnectionLostHandler = handler;
+        session.Connection.ConnectionLost += handler;
+    }
+
+    private void WireShell(OpenSession session)
+    {
+        if (session.Shell is null) return;
+        EventHandler<int> handler = (_, exitCode) =>
+            _ = InvokeAsync(() => MarkSessionDisconnectedAsync(
+                session.Id,
+                exitCode == 0 ? "The remote shell exited." : $"The remote shell exited with status {exitCode}."));
+        session.ShellExitedHandler = handler;
+        session.Shell.Exited += handler;
+    }
+
+    private async Task ToggleSessionViewAsync(Guid id)
+    {
+        var session = FindSession(id);
+        if (session is null || !session.IsConnected) return;
+
+        if (session.View == SessionView.Terminal)
+            await ShowFilesAsync(id);
+        else
+            await ShowTerminalAsync(id);
+    }
+
+    private async Task ShowFilesAsync(Guid id)
+    {
+        var session = FindSession(id);
+        if (session is null || !session.IsConnected) return;
 
         try
         {
-            // Start the platform lifetime before the handshake. A user can
-            // background the app while authentication is still in progress,
-            // and Android 12+ may reject a foreground-service start attempted
-            // only after the app is already backgrounded.
-            await SessionLifetime.StartAsync();
-
-            // Unsealed here and disposed as soon as the handshake is done, so the
-            // key exists in memory for the length of one connection rather than
-            // for the length of the session.
-            using var credentials = await Credentials.ResolveAsync(host);
-            _connection = await Engine.ConnectAsync(host, credentials, Prompts);
-            _connection.ConnectionLost += OnConnectionLost;
-            var shell = await _connection.OpenShellAsync(80, 24);
-            shell.Exited += OnShellExited;
-            _session = new SessionState(host, shell);
-            _sessionConnected = true;
-            _sessionStatus = "Connected.";
+            session.Sftp ??= await session.Connection.OpenSftpAsync();
+            session.View = SessionView.Files;
+            _activeSessionId = id;
         }
         catch (SshException ex)
         {
-            // A changed host key is the one failure that must never read as a
-            // routine retry, so it gets its own words.
-            _failure = ex.Failure switch
-            {
-                SshFailure.HostKeyChanged => new("Host key changed", ex.Message),
-                SshFailure.HostKeyUnknown => new("Host not trusted yet", ex.Message),
-                SshFailure.AuthenticationFailed => new("Could not sign in", ex.Message),
-                _ => new("Could not connect", ex.Message),
-            };
-            await DropConnectionAsync();
-            await SessionLifetime.StopAsync();
+            _failure = MapFailure("Could not open files", ex);
         }
-        finally
-        {
-            _connecting = null;
-            StateHasChanged();
-        }
+        StateHasChanged();
     }
 
-    private void OnConnectionLost(object? sender, SshConnectionLost lost) =>
-        _ = InvokeAsync(() => MarkSessionDisconnectedAsync(lost.Message));
-
-    private void OnShellExited(object? sender, int exitCode) =>
-        _ = InvokeAsync(() => MarkSessionDisconnectedAsync(
-            exitCode == 0
-                ? "The remote shell exited."
-                : $"The remote shell exited with status {exitCode}."));
-
-    private Task OnShellWriteFailedAsync(Exception exception) =>
-        MarkSessionDisconnectedAsync("The shell stopped accepting input. Reconnect to continue.");
-
-    private async Task MarkSessionDisconnectedAsync(string? message)
+    private async Task ShowTerminalAsync(Guid id)
     {
-        if (_session is null || !_sessionConnected) return;
+        var session = FindSession(id);
+        if (session is null || !session.IsConnected) return;
 
-        _sessionConnected = false;
-        _sessionStatus = string.IsNullOrWhiteSpace(message)
+        try
+        {
+            if (session.Shell is null)
+            {
+                session.Shell = await session.Connection.OpenShellAsync(80, 24);
+                WireShell(session);
+            }
+            session.View = SessionView.Terminal;
+            _activeSessionId = id;
+        }
+        catch (SshException ex)
+        {
+            _failure = MapFailure("Could not open terminal", ex);
+        }
+        StateHasChanged();
+    }
+
+    private Task SelectSession(Guid id)
+    {
+        if (FindSession(id) is not null) _activeSessionId = id;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private Task OpenNewSession()
+    {
+        _activeSessionId = null;
+        _tab = "hosts";
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private Task LeaveWorkspace()
+    {
+        _activeSessionId = null;
+        _tab = "hosts";
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private Task ResumeSessions()
+    {
+        if (_sessions.Count > 0) _activeSessionId = _sessions[^1].Id;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private Task OnShellWriteFailedAsync(Guid id, Exception exception) =>
+        MarkSessionDisconnectedAsync(id, "The shell stopped accepting input. Reconnect to continue.");
+
+    private async Task MarkSessionDisconnectedAsync(Guid id, string? message)
+    {
+        var session = FindSession(id);
+        if (session is null || !session.IsConnected) return;
+
+        session.IsConnected = false;
+        session.Status = string.IsNullOrWhiteSpace(message)
             ? "The SSH session is no longer connected."
             : message;
 
-        // There is no live SSH work left to protect. Stop the foreground
-        // service immediately rather than leaving an "active session" notice
-        // attached to a dead connection.
-        await SessionLifetime.StopAsync();
+        if (!_sessions.Any(s => s.IsConnected)) await SessionLifetime.StopAsync();
         StateHasChanged();
     }
 
-    private async Task ReconnectAsync()
+    private async Task ReconnectAsync(Guid id)
     {
-        if (_session is null || _reconnecting) return;
+        var session = FindSession(id);
+        if (session is null || session.IsReconnecting) return;
 
-        var host = _session.Host;
-        var oldShell = _session.Shell;
-        _reconnecting = true;
-        _sessionConnected = false;
-        _sessionStatus = "Reconnecting…";
+        var hadShell = session.Shell is not null;
+        var hadSftp = session.Sftp is not null;
+        session.IsReconnecting = true;
+        session.IsConnected = false;
+        session.Status = "Reconnecting…";
         StateHasChanged();
 
         try
         {
             await SessionLifetime.StartAsync();
+            await DisposeConnectionAsync(session);
 
-            oldShell.Exited -= OnShellExited;
-            await oldShell.DisposeAsync();
-            await DropConnectionAsync();
+            var connected = await ConnectHostAsync(session.SourceHost);
+            session.DisplayHost = connected.DisplayHost;
+            session.Connection = connected.Connection;
+            WireConnection(session);
 
-            using var credentials = await Credentials.ResolveAsync(host);
-            _connection = await Engine.ConnectAsync(host, credentials, Prompts);
-            _connection.ConnectionLost += OnConnectionLost;
-            var shell = await _connection.OpenShellAsync(80, 24);
-            shell.Exited += OnShellExited;
+            if (hadShell)
+            {
+                session.Shell = await session.Connection.OpenShellAsync(80, 24);
+                WireShell(session);
+            }
+            if (hadSftp)
+                session.Sftp = await session.Connection.OpenSftpAsync();
 
-            // TerminalView swaps its event subscription when this parameter
-            // changes but keeps the existing xterm instance, so scrollback from
-            // the failed session remains visible above the fresh prompt.
-            _session = new SessionState(host, shell);
-            _sessionConnected = true;
-            _sessionStatus = "Connected.";
+            session.IsConnected = true;
+            session.Status = "Connected.";
         }
         catch (Exception ex) when (ex is SshException or IOException or ObjectDisposedException)
         {
-            _sessionConnected = false;
-            _sessionStatus = ex is SshException ssh
-                ? ssh.Message
-                : "Could not reconnect the SSH session.";
-            await DropConnectionAsync();
-            await SessionLifetime.StopAsync();
+            session.IsConnected = false;
+            session.Status = ex is SshException ssh ? ssh.Message : "Could not reconnect the SSH session.";
+            await DisposeConnectionAsync(session);
+            if (!_sessions.Any(s => s.IsConnected)) await SessionLifetime.StopAsync();
         }
         finally
         {
-            _reconnecting = false;
+            session.IsReconnecting = false;
             StateHasChanged();
         }
     }
 
-    private async Task CloseSessionAsync()
+    private async Task CloseSessionAsync(Guid id)
     {
-        if (_session is not null)
+        var session = FindSession(id);
+        if (session is null) return;
+
+        var index = _sessions.IndexOf(session);
+        await DisposeConnectionAsync(session);
+        _sessions.Remove(session);
+
+        if (_activeSessionId == id)
         {
-            _session.Shell.Exited -= OnShellExited;
-            await _session.Shell.DisposeAsync();
+            if (_sessions.Count == 0)
+            {
+                _activeSessionId = null;
+                _tab = "hosts";
+            }
+            else
+            {
+                var next = Math.Min(index, _sessions.Count - 1);
+                _activeSessionId = _sessions[next].Id;
+            }
         }
-        _session = null;
-        _sessionConnected = false;
-        await DropConnectionAsync();
-        await SessionLifetime.StopAsync();
+
+        if (_sessions.Count == 0) await SessionLifetime.StopAsync();
+        StateHasChanged();
     }
 
-    private async Task CloseFilesAsync()
+    private async Task DisposeConnectionAsync(OpenSession session)
     {
-        if (_files is not null) await _files.Sftp.DisposeAsync();
-        _files = null;
-        await DropConnectionAsync();
-        await SessionLifetime.StopAsync();
+        if (session.Shell is not null)
+        {
+            if (session.ShellExitedHandler is not null)
+                session.Shell.Exited -= session.ShellExitedHandler;
+            await session.Shell.DisposeAsync();
+            session.Shell = null;
+            session.ShellExitedHandler = null;
+        }
+
+        if (session.Sftp is not null)
+        {
+            await session.Sftp.DisposeAsync();
+            session.Sftp = null;
+        }
+
+        if (session.ConnectionLostHandler is not null)
+            session.Connection.ConnectionLost -= session.ConnectionLostHandler;
+        await session.Connection.DisposeAsync();
+        session.ConnectionLostHandler = null;
     }
 
-    private async Task DropConnectionAsync()
+    private OpenSession? FindSession(Guid id) => _sessions.FirstOrDefault(s => s.Id == id);
+
+    private static Failure MapFailure(string fallbackTitle, SshException ex) => ex.Failure switch
     {
-        if (_connection is not null)
-        {
-            _connection.ConnectionLost -= OnConnectionLost;
-            await _connection.DisposeAsync();
-        }
-        _connection = null;
-    }
+        SshFailure.HostKeyChanged => new("Host key changed", ex.Message),
+        SshFailure.HostKeyUnknown => new("Host not trusted yet", ex.Message),
+        SshFailure.AuthenticationFailed => new("Could not sign in", ex.Message),
+        _ => new(fallbackTitle, ex.Message),
+    };
 
     public async ValueTask DisposeAsync()
     {
         Vault.StateChanged -= OnVaultChanged;
         Questions.Changed -= OnQuestionsChanged;
-        await CloseSessionAsync();
-        await CloseFilesAsync();
+
+        foreach (var session in _sessions.ToArray())
+            await DisposeConnectionAsync(session);
+        _sessions.Clear();
+        await SessionLifetime.StopAsync();
     }
 }
