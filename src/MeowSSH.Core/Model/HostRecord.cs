@@ -3,11 +3,11 @@ namespace MeowSSH.Core.Model;
 /// <summary>The terminal protocol used for a saved connection.</summary>
 public enum HostProtocol
 {
-    Ssh,
-    Mosh,
-    Telnet,
-    Serial,
-    Local,
+    Ssh = 1,
+    Mosh = 2,
+    Telnet = 3,
+    Serial = 4,
+    Local = 5,
 }
 
 /// <summary>How MeowSSH reaches an SSH or Mosh host.</summary>
@@ -20,18 +20,18 @@ public enum SshTransport
 
 public enum SerialParity
 {
-    None,
-    Odd,
-    Even,
-    Mark,
-    Space,
+    None = 1,
+    Odd = 2,
+    Even = 3,
+    Mark = 4,
+    Space = 5,
 }
 
 public enum SerialStopBits
 {
-    One,
-    OnePointFive,
-    Two,
+    One = 1,
+    OnePointFive = 2,
+    Two = 3,
 }
 
 public enum ConnectionState
