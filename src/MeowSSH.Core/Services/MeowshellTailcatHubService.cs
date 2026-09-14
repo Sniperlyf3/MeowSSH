@@ -68,8 +68,8 @@ public sealed class MeowshellTailcatHubService : ITailcatHubService
                 DerpMapUrl = _runtime.DerpMapUrl,
                 Lifetime = request.Lifetime,
                 AllowClientKeys = request.AllowAnyClient ? null : request.AllowedClientKeys.Trim(),
-                AuthorizedKeys = request.EnableShell && !request.InsecureShell ? request.AuthorizedSshKeys!.Trim() : null,
-                InsecureNoAuth = request.EnableShell && request.InsecureShell,
+                AuthorizedKeys = request.EnableShell && !request.UseTailcatCredentialForShell ? request.AuthorizedSshKeys!.Trim() : null,
+                InsecureNoAuth = request.EnableShell && request.UseTailcatCredentialForShell,
                 Files = files,
                 AllowExitNode = request.EnableExitNode,
                 FullAddress = request.FullAddress,
@@ -86,7 +86,7 @@ public sealed class MeowshellTailcatHubService : ITailcatHubService
                 request.EnableFiles,
                 request.EnableExitNode,
                 request.AllowAnyClient,
-                request.InsecureShell,
+                request.UseTailcatCredentialForShell,
                 request.EnableFiles ? request.SharedFolder!.Trim() : null,
                 request.FileMode);
             server.Log += AddLog;
@@ -374,9 +374,9 @@ public sealed class MeowshellTailcatHubService : ITailcatHubService
             if (keys.Length == 0 || keys.Any(key => !key.StartsWith("nodekey:", StringComparison.Ordinal)))
                 throw new ArgumentException("Allowed clients must be comma-separated nodekey: public keys.", nameof(request));
         }
-        if (request.InsecureShell && !request.EnableShell)
+        if (request.UseTailcatCredentialForShell && !request.EnableShell)
             throw new ArgumentException("Tunnel-credential shell mode requires shell sharing to be enabled.", nameof(request));
-        if (request.EnableShell && !request.InsecureShell && string.IsNullOrWhiteSpace(request.AuthorizedSshKeys))
+        if (request.EnableShell && !request.UseTailcatCredentialForShell && string.IsNullOrWhiteSpace(request.AuthorizedSshKeys))
             throw new ArgumentException("Shell sharing requires at least one authorized SSH key unless tunnel-credential shell mode is explicitly enabled.", nameof(request));
         if (request.EnableFiles && string.IsNullOrWhiteSpace(request.SharedFolder))
             throw new ArgumentException("File sharing requires a folder path.", nameof(request));
