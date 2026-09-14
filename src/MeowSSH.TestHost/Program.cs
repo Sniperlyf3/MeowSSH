@@ -18,6 +18,8 @@ builder.Services.AddRazorComponents()
 builder.Services.AddScoped<FakeHostDirectory>();
 builder.Services.AddScoped<IHostDirectory>(sp => sp.GetRequiredService<FakeHostDirectory>());
 builder.Services.AddScoped<IHostEditor>(sp => sp.GetRequiredService<FakeHostDirectory>());
+builder.Services.AddScoped<ISshEngine, FakeSshEngine>();
+builder.Services.AddScoped<ICredentialResolver, FakeCredentialResolver>();
 // Registered concretely as well as behind the interface: the playground picks
 // its scenario from the query string and needs to put the vault into a state
 // the interface deliberately has no way to ask for.
