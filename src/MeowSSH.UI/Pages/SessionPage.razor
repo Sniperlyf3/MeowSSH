@@ -27,7 +27,7 @@
     {
         <div class="sheet sheet--danger" role="alert" data-testid="session-disconnected">
             <p class="sheet__title">Session disconnected</p>
-            <p class="sheet__body">@DisconnectMessage</p>
+            <p class="sheet__body">@EffectiveDisconnectMessage</p>
             <button type="button" class="btn btn--primary btn--block"
                     disabled="@IsReconnecting"
                     data-testid="session-reconnect"
@@ -48,6 +48,11 @@
     [Parameter] public EventCallback<Exception> OnWriteFailed { get; set; }
     [Parameter] public EventCallback OnClosed { get; set; }
     [Parameter] public EventCallback OnOpenFiles { get; set; }
+
+    private string EffectiveDisconnectMessage =>
+        DisconnectMessage is "_sessionStatus" or "session.Status"
+            ? "The SSH session is no longer connected."
+            : DisconnectMessage;
 
     private Task OnBack() => OnClosed.InvokeAsync();
     private Task ReconnectAsync() => OnReconnect.InvokeAsync();
