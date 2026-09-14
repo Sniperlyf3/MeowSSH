@@ -7,4 +7,10 @@ public enum SessionView
     Forwards
 }
 
-public sealed record SessionTabInfo(Guid Id, string Label, SessionView View, bool IsConnected);
+public sealed record SessionTabInfo(
+    Guid Id,
+    string Label,
+    SessionView View,
+    bool IsConnected,
+    bool SupportsFiles = true,
+    bool SupportsForwards = true);
