@@ -152,6 +152,8 @@ public static class VaultFile
         writer.WriteInt32(host.SerialDataBits);
         writer.WriteInt32((int)host.SerialStopBits);
         writer.WriteInt32((int)host.SerialParity);
+        writer.WriteNullableString(host.ProxyUrl);
+        writer.WriteBoolean(host.ForwardAgent);
     }
 
     private static HostRecord ReadHost(ref VaultReader reader, int schemaVersion)
@@ -191,6 +193,14 @@ public static class VaultFile
                 throw new VaultFormatException("A host contains unsupported serial line settings.");
         }
 
+        string? proxyUrl = null;
+        var forwardAgent = false;
+        if (schemaVersion >= 3)
+        {
+            proxyUrl = reader.ReadNullableString();
+            forwardAgent = reader.ReadBoolean();
+        }
+
         return new HostRecord
         {
             Id = id,
@@ -201,6 +211,8 @@ public static class VaultFile
             Transport = transport,
             Protocol = protocol,
             AutoReconnect = autoReconnect,
+            ProxyUrl = proxyUrl,
+            ForwardAgent = forwardAgent,
             SerialBaudRate = serialBaudRate,
             SerialDataBits = serialDataBits,
             SerialStopBits = serialStopBits,
