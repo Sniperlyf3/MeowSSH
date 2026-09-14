@@ -73,7 +73,7 @@ public sealed class AndroidLocalFileTransferService : ILocalFileTransferService
         values.Put(MediaStore.IMediaColumns.DisplayName, fileName);
         values.Put(MediaStore.IMediaColumns.MimeType, MimeType(fileName));
         values.Put(MediaStore.IMediaColumns.RelativePath,
-            $"{Android.OS.Environment.DirectoryDownloads}/MeowSSH");
+            $"{global::Android.OS.Environment.DirectoryDownloads}/MeowSSH");
         values.Put(MediaStore.IMediaColumns.IsPending, 1);
 
         var uri = resolver.Insert(MediaStore.Downloads.ExternalContentUri, values)
