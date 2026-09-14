@@ -127,7 +127,9 @@
             .Where(c => _selectedSshKeyIds.Contains(c.Id))
             .Select(c => c.PublicKey!)
             .Where(key => !string.IsNullOrWhiteSpace(key));
-        var manual = string.IsNullOrWhiteSpace(_authorizedSsh) ? [] : new[] { _authorizedSsh.Trim() };
+        IEnumerable<string> manual = string.IsNullOrWhiteSpace(_authorizedSsh)
+            ? Array.Empty<string>()
+            : [_authorizedSsh.Trim()];
         return string.Join(Environment.NewLine, saved.Concat(manual));
     }
 
