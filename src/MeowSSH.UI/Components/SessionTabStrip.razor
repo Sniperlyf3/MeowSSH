@@ -8,16 +8,24 @@
                     @onclick="() => OnSelected.InvokeAsync(tab.Id)">
                 <span class="session-tabs__dot @(tab.IsConnected ? "is-connected" : "is-disconnected")" aria-hidden="true"></span>
                 <span class="session-tabs__label">@tab.Label</span>
-                <span class="session-tabs__kind">@(tab.View == SessionView.Files ? "Files" : "SSH")</span>
+                <span class="session-tabs__kind">@ViewLabel(tab.View)</span>
             </button>
             @if (tab.Id == ActiveId)
             {
                 <button type="button" class="session-tabs__mode"
-                        aria-label="@(tab.View == SessionView.Files ? "Switch to terminal" : "Switch to files")"
+                        aria-label="@(tab.View == SessionView.Terminal ? "Switch to files" : "Switch to terminal")"
                         data-testid="toggle-session-view"
                         disabled="@(!tab.IsConnected)"
                         @onclick="() => OnToggleView.InvokeAsync(tab.Id)">
-                    <Icon Name="@(tab.View == SessionView.Files ? "terminal" : "folder")" />
+                    <Icon Name="@(tab.View == SessionView.Terminal ? "folder" : "terminal")" />
+                </button>
+                <button type="button" class="session-tabs__mode"
+                        aria-label="Open port forwards"
+                        aria-pressed="@(tab.View == SessionView.Forwards ? "true" : "false")"
+                        data-testid="open-forwards"
+                        disabled="@(!tab.IsConnected || tab.View == SessionView.Forwards)"
+                        @onclick="() => OnOpenForwards.InvokeAsync(tab.Id)">
+                    <Icon Name="network" />
                 </button>
             }
             <button type="button" class="session-tabs__close"
@@ -36,5 +44,14 @@
     [Parameter] public EventCallback<Guid> OnSelected { get; set; }
     [Parameter] public EventCallback<Guid> OnClosed { get; set; }
     [Parameter] public EventCallback<Guid> OnToggleView { get; set; }
+    [Parameter] public EventCallback<Guid> OnOpenForwards { get; set; }
     [Parameter] public EventCallback OnNew { get; set; }
+
+    private static string ViewLabel(SessionView view) => view switch
+    {
+        SessionView.Terminal => "SSH",
+        SessionView.Files => "Files",
+        SessionView.Forwards => "Forwards",
+        _ => view.ToString(),
+    };
 }
