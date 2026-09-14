@@ -17,6 +17,11 @@ public class TerminalUxTests(TestHostFixture fixture)
         await page.GetByTestId("terminal-scrollback").SelectOptionAsync("20000");
         await page.GetByTestId("terminal-cursor-blink").UncheckAsync();
 
+        await page.WaitForFunctionAsync("() => localStorage.getItem('meowssh.terminal.theme') === 'dracula'");
+        await page.WaitForFunctionAsync("() => localStorage.getItem('meowssh.terminal.cursorStyle') === 'bar'");
+        await page.WaitForFunctionAsync("() => localStorage.getItem('meowssh.terminal.scrollback') === '20000'");
+        await page.WaitForFunctionAsync("() => localStorage.getItem('meowssh.terminal.cursorBlink') === 'false'");
+
         Assert.Equal("dracula", await page.EvaluateAsync<string>(
             "() => localStorage.getItem('meowssh.terminal.theme')"));
         Assert.Equal("bar", await page.EvaluateAsync<string>(
