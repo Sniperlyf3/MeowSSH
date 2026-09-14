@@ -5,28 +5,32 @@ using MeowSSH.Core.Ssh;
 namespace MeowSSH.UI.Services;
 
 /// <summary>
-/// Resolves saved jump-host chains and establishes each hop with its own vault
-/// credential. Every following hop is routed through an authenticated loopback
-/// SOCKS forward on the previous SSH connection, preserving the real target name
-/// for known_hosts while never offering one host's credential to another host.
+/// Decorates the protocol router with credential-isolated ProxyJump support for
+/// saved SSH hosts. Intermediate hosts are authenticated with their own vault
+/// credentials and the next hop is reached through an authenticated loopback
+/// SOCKS5 forward, so destination credentials are never offered to a bastion.
 /// </summary>
 public sealed class ProxyJumpConnector(
     IHostDirectory hosts,
-    ICredentialResolver credentials,
-    IConnectionEngine engine,
-    ISshPrompts prompts)
+    ICredentialResolver credentialResolver,
+    ConnectionEngine inner,
+    ISshPrompts basePrompts) : IConnectionEngine
 {
     private const int MaxJumpDepth = 8;
 
-    public async Task<(HostRecord DisplayHost, IHostConnection Connection)> ConnectAsync(
+    public async Task<IHostConnection> ConnectAsync(
         HostRecord destination,
+        SshCredentials destinationCredentials,
+        ISshPrompts destinationPrompts,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(destination);
+        ArgumentNullException.ThrowIfNull(destinationCredentials);
+        ArgumentNullException.ThrowIfNull(destinationPrompts);
 
         var chain = await ResolveChainAsync(destination, cancellationToken).ConfigureAwait(false);
         if (chain.Count == 1)
-            return await ConnectSingleAsync(destination, prompts, cancellationToken).ConfigureAwait(false);
+            return await inner.ConnectAsync(destination, destinationCredentials, destinationPrompts, cancellationToken).ConfigureAwait(false);
 
         var openedConnections = new List<IHostConnection>();
         var openedForwards = new List<ISshForward>();
@@ -40,13 +44,8 @@ public sealed class ProxyJumpConnector(
                 var isFinal = index == chain.Count - 1;
 
                 if (source.Protocol != HostProtocol.Ssh)
-                    throw new SshException(
-                        SshFailure.Unknown,
-                        $"Jump host ‘{source.Label}’ is not an SSH connection.");
+                    throw new SshException(SshFailure.Unknown, $"Jump host ‘{source.Label}’ is not an SSH connection.");
 
-                // Only the first machine can use a user-configured upstream proxy.
-                // Every later machine must be reached through the preceding SSH
-                // hop; silently preferring its own ProxyUrl would bypass the chain.
                 if (index > 0 && !string.IsNullOrWhiteSpace(source.ProxyUrl))
                     throw new SshException(
                         SshFailure.Unknown,
@@ -58,17 +57,31 @@ public sealed class ProxyJumpConnector(
                     ProxyUrl = index == 0 ? source.ProxyUrl : proxyUrl,
                 };
 
-                using var hopCredentials = await credentials.ResolveAsync(source, cancellationToken).ConfigureAwait(false);
-                var displayHost = !string.IsNullOrWhiteSpace(hopCredentials.Username)
-                    ? routed with { Username = hopCredentials.Username }
-                    : routed;
-
-                var hopPrompts = new CredentialSshPrompts(prompts, hopCredentials);
-                var connection = await engine.ConnectAsync(
-                    displayHost,
-                    hopCredentials,
-                    hopPrompts,
-                    cancellationToken).ConfigureAwait(false);
+                IHostConnection connection;
+                if (isFinal)
+                {
+                    // AppRoot already resolved the destination credential and wrapped
+                    // the UI prompts with it. Preserve that exact credential/prompt
+                    // pair here rather than resolving it again.
+                    connection = await inner.ConnectAsync(
+                        routed,
+                        destinationCredentials,
+                        destinationPrompts,
+                        cancellationToken).ConfigureAwait(false);
+                }
+                else
+                {
+                    using var hopCredentials = await credentialResolver.ResolveAsync(source, cancellationToken).ConfigureAwait(false);
+                    var hop = !string.IsNullOrWhiteSpace(hopCredentials.Username)
+                        ? routed with { Username = hopCredentials.Username }
+                        : routed;
+                    var hopPrompts = new CredentialSshPrompts(basePrompts, hopCredentials);
+                    connection = await inner.ConnectAsync(
+                        hop,
+                        hopCredentials,
+                        hopPrompts,
+                        cancellationToken).ConfigureAwait(false);
+                }
 
                 openedConnections.Add(connection);
 
@@ -81,7 +94,7 @@ public sealed class ProxyJumpConnector(
                         openedForwards);
                     openedConnections = [];
                     openedForwards = [];
-                    return (displayHost, wrapped);
+                    return wrapped;
                 }
 
                 if (connection is not ISshConnection ssh)
@@ -115,17 +128,21 @@ public sealed class ProxyJumpConnector(
             throw new SshException(SshFailure.Unknown, "Only SSH connections can use a jump host.");
 
         var statuses = await hosts.GetHostsAsync(cancellationToken).ConfigureAwait(false);
-        var byId = statuses.ToDictionary(status => status.Host.Id, status => status.Host);
+        var byId = statuses
+            .Where(status => !status.Host.IsDeleted)
+            .ToDictionary(status => status.Host.Id, status => status.Host);
         var reversed = new List<HostRecord> { destination };
         var seen = new HashSet<Guid> { destination.Id };
         var current = destination;
+        var intermediateCount = 0;
 
         while (current.JumpHostId is { } jumpId)
         {
+            intermediateCount++;
+            if (intermediateCount > MaxJumpDepth)
+                throw new SshException(SshFailure.Unknown, $"Jump-host chains are limited to {MaxJumpDepth} intermediate hosts.");
             if (!seen.Add(jumpId))
                 throw new SshException(SshFailure.Unknown, "The configured jump-host chain contains a cycle.");
-            if (reversed.Count > MaxJumpDepth)
-                throw new SshException(SshFailure.Unknown, $"Jump-host chains are limited to {MaxJumpDepth} intermediate hosts.");
             if (!byId.TryGetValue(jumpId, out var jump))
                 throw new SshException(SshFailure.NotFound, "A configured jump host no longer exists.");
             if (jump.Protocol != HostProtocol.Ssh)
@@ -137,20 +154,6 @@ public sealed class ProxyJumpConnector(
 
         reversed.Reverse();
         return reversed;
-    }
-
-    private async Task<(HostRecord DisplayHost, IHostConnection Connection)> ConnectSingleAsync(
-        HostRecord host,
-        ISshPrompts fallbackPrompts,
-        CancellationToken cancellationToken)
-    {
-        using var resolved = await credentials.ResolveAsync(host, cancellationToken).ConfigureAwait(false);
-        var displayHost = !string.IsNullOrWhiteSpace(resolved.Username)
-            ? host with { Username = resolved.Username }
-            : host;
-        var credentialPrompts = new CredentialSshPrompts(fallbackPrompts, resolved);
-        var connection = await engine.ConnectAsync(displayHost, resolved, credentialPrompts, cancellationToken).ConfigureAwait(false);
-        return (displayHost, connection);
     }
 
     private static string BuildSocksProxyUrl(ISshForward forward)
