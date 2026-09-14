@@ -34,6 +34,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<ISshPrompts>(sp => sp.GetRequiredService<InteractiveSshPrompts>());
         builder.Services.AddSingleton<IActiveSessionLifetime, AndroidActiveSessionLifetime>();
         builder.Services.AddSingleton<ILocalFileTransferService, AndroidLocalFileTransferService>();
+        builder.Services.AddSingleton<ISerialDeviceService, AndroidUsbSerialDeviceService>();
 
         var engineOptions = new MeowshellSshEngineOptions(
             WorkingDirectory: Path.Combine(FileSystem.AppDataDirectory, "agent"),
@@ -45,6 +46,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<IProtocolConnectionEngine>(sp =>
             new SshProtocolConnectionEngine(sp.GetRequiredService<ISshEngine>()));
         builder.Services.AddSingleton<IProtocolConnectionEngine, TelnetConnectionEngine>();
+        builder.Services.AddSingleton<IProtocolConnectionEngine, SerialConnectionEngine>();
         builder.Services.AddSingleton<IProtocolConnectionEngine>(sp =>
             new LocalTerminalConnectionEngine(sp.GetRequiredService<MeowshellSshEngineOptions>()));
         builder.Services.AddSingleton<IConnectionEngine, ConnectionEngine>();
