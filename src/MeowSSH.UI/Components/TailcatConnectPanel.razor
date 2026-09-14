@@ -21,8 +21,8 @@
 
     <article class="tailcat-card">
         <h2>Port forwarding</h2>
-        <label class="field"><span class="field__label">Tailcat server</span><input class="field__input mono" data-testid="tailcat-forward-address" placeholder="tc…" @bind="_address" /></label>
-        <label class="field"><span class="field__label">Mappings</span><textarea class="field__input mono" rows="3" data-testid="tailcat-forward-mappings" placeholder="8080:80&#10;8443:192.168.1.10:443" @bind="_mappings"></textarea><span class="field__hint">One per line: port, local:remote, or local:remote-host:remote-port.</span></label>
+        <label class="field"><span class="field__label">Tailcat server</span><input class="field__input mono" data-testid="tailcat-forward-address" placeholder="tc…" @bind="_address" @bind:event="oninput" /></label>
+        <label class="field"><span class="field__label">Mappings</span><textarea class="field__input mono" rows="3" data-testid="tailcat-forward-mappings" placeholder="8080:80&#10;8443:192.168.1.10:443" @bind="_mappings" @bind:event="oninput"></textarea><span class="field__hint">One per line: port, local:remote, or local:remote-host:remote-port.</span></label>
         <label class="field"><span class="field__label">Bind address</span><input class="field__input mono" data-testid="tailcat-forward-bind" @bind="_bind" /></label>
         <button class="btn btn--primary btn--block" disabled="@(_busy || string.IsNullOrWhiteSpace(_address) || MappingList.Count == 0)" data-testid="start-tailcat-forward" @onclick="StartForwardAsync">Start forward</button>
         @foreach (var forward in Hub.Snapshot.Forwards)
