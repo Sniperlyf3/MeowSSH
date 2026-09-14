@@ -2,6 +2,7 @@ using Android.Content;
 using Android.Hardware.Usb;
 using Anotherlab.UsbSerialForAndroid.Driver;
 using Anotherlab.UsbSerialForAndroid.Extensions;
+using Anotherlab.UsbSerialForAndroid.Util;
 using MeowSSH.Core.Model;
 using MeowSSH.Core.Ssh;
 
@@ -17,7 +18,7 @@ public sealed class AndroidUsbSerialDeviceService : ISerialDeviceService
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var drivers = await UsbSerialProber.DefaultProber.FindAllDriversAsync(Manager).ConfigureAwait(false);
+        var drivers = await UsbSerialProber.GetDefaultProber().FindAllDriversAsync(Manager).ConfigureAwait(false);
         var result = new List<SerialDeviceInfo>();
         foreach (var driver in drivers)
         {
@@ -45,7 +46,7 @@ public sealed class AndroidUsbSerialDeviceService : ISerialDeviceService
     {
         var (deviceName, portIndex) = ParseDeviceId(deviceId);
         var manager = Manager;
-        var drivers = await UsbSerialProber.DefaultProber.FindAllDriversAsync(manager).ConfigureAwait(false);
+        var drivers = await UsbSerialProber.GetDefaultProber().FindAllDriversAsync(manager).ConfigureAwait(false);
         var driver = drivers.FirstOrDefault(d =>
             string.Equals(d.Device.DeviceName, deviceName, StringComparison.Ordinal));
         if (driver is null || portIndex < 0 || portIndex >= driver.Ports.Count)
