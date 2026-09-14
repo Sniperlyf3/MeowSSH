@@ -37,6 +37,25 @@ public class TailcatHubTests(TestHostFixture fixture)
     }
 
     [Fact]
+    public async Task InsecureExitNodeRequiresExplicitRiskAcknowledgement()
+    {
+        var page = await OpenTailcatAsync();
+
+        await page.GetByTestId("tailcat-insecure-exit-node").CheckAsync();
+
+        await Assertions.Expect(page.GetByTestId("tailcat-insecure-warning")).ToBeVisibleAsync();
+        await Assertions.Expect(page.GetByTestId("tailcat-insecure-warning")).ToContainTextAsync("removes Tailcat client authentication");
+        await Assertions.Expect(page.GetByTestId("tailcat-allowed-clients")).ToBeDisabledAsync();
+        await Assertions.Expect(page.GetByTestId("start-tailcat-server")).ToBeDisabledAsync();
+
+        await page.GetByTestId("tailcat-insecure-confirm").CheckAsync();
+        await Assertions.Expect(page.GetByTestId("start-tailcat-server")).ToBeEnabledAsync();
+
+        await page.GetByTestId("start-tailcat-server").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("tailcat-server-running")).ToContainTextAsync("INSECURE: any Tailcat client");
+    }
+
+    [Fact]
     public async Task SocksGatewayAndPortForwardCanRunTogether()
     {
         var page = await OpenTailcatAsync();
