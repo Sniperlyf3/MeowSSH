@@ -61,7 +61,7 @@ public class KeysTests(TestHostFixture fixture)
         await page.GetByTestId("generate-ssh-key").ClickAsync();
 
         await Assertions.Expect(page.GetByTestId("credential-secret"))
-            .ToContainTextAsync("BEGIN PRIVATE KEY");
+            .ToHaveValueAsync(new System.Text.RegularExpressions.Regex("BEGIN PRIVATE KEY"));
         await Assertions.Expect(page.GetByTestId("generated-public-key"))
             .ToHaveValueAsync(new System.Text.RegularExpressions.Regex("^ssh-rsa "));
         await Assertions.Expect(page.GetByTestId("save-credential")).ToBeEnabledAsync();
