@@ -4,6 +4,7 @@ using MeowSSH.Core.Services;
 using MeowSSH.Core.Ssh;
 using MeowSSH.Core.Storage;
 using MeowSSH.UI.Services;
+using ZXing.Net.Maui.Controls;
 
 namespace MeowSSH.App;
 
@@ -12,7 +13,7 @@ public static class MauiProgram
     public static MauiApp CreateMauiApp()
     {
         var builder = MauiApp.CreateBuilder();
-        builder.UseMauiApp<App>();
+        builder.UseMauiApp<App>().UseBarcodeReader();
         builder.Services.AddMauiBlazorWebView();
 
         builder.Services.AddSingleton<IDeviceKeyStore>(_ => new AndroidDeviceKeyStore());
@@ -35,6 +36,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<IActiveSessionLifetime, AndroidActiveSessionLifetime>();
         builder.Services.AddSingleton<ILocalFileTransferService, AndroidLocalFileTransferService>();
         builder.Services.AddSingleton<IExternalUriLauncher, AndroidExternalUriLauncher>();
+        builder.Services.AddSingleton<IQrScanner, AndroidQrScanner>();
         builder.Services.AddSingleton<ISerialDeviceService, AndroidUsbSerialDeviceService>();
 
         var nativeDirectory = global::Android.App.Application.Context.ApplicationInfo!.NativeLibraryDir!;
