@@ -1,3 +1,4 @@
+@using QRCoder
 @inject ITailcatHubService Hub
 @inject IHostDirectory Hosts
 @inject IHostEditor Editor
@@ -53,8 +54,24 @@
                           data-testid="tailcat-resolved-address">@_resolvedAddress</textarea>
                 <span class="field__hint">This expanded address embeds the relay information needed by the client, so it does not need a DERP-map lookup.</span>
             </label>
-            <button class="btn btn--ghost btn--block" data-testid="tailcat-copy-resolved-address"
-                    @onclick="() => CopyAsync(_resolvedAddress)"><Icon Name="copy" /> Copy address</button>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(AddressToSave))
+        {
+            <div class="form__row">
+                <button class="btn btn--ghost field--grow" data-testid="tailcat-copy-resolved-address"
+                        @onclick="() => CopyAsync(AddressToSave)"><Icon Name="copy" /> Copy address</button>
+                <button class="btn btn--ghost field--grow" data-testid="tailcat-show-address-qr"
+                        @onclick="ToggleQr">@(_qrSvg is null ? "Show QR" : "Hide QR")</button>
+            </div>
+        }
+
+        @if (_qrSvg is not null)
+        {
+            <div class="tailcat-qr" data-testid="tailcat-address-qr">
+                @((MarkupString)_qrSvg)
+                <p class="field__hint"><strong>Keep this QR private.</strong> It contains the Tailcat address itself and can therefore contain credential material.</p>
+            </div>
         }
     </article>
 
@@ -111,6 +128,8 @@
     private string _peerName = "";
     private string? _resolvedAddress;
     private TailcatAddressDetails? _details;
+    private string? _qrSvg;
+    private string? _qrAddress;
     private bool _busy;
     private string? _error;
     private string? _notice;
@@ -136,12 +155,14 @@
         _peerName = peer.Label;
         _resolvedAddress = null;
         _details = null;
+        ClearQr();
     }
 
     private async Task ResolveAsync() => await RunAsync(async () =>
     {
         _resolvedAddress = await Hub.ResolveAddressAsync(_address, Empty(_derpMapUrl));
         _details = null;
+        ClearQr();
         _notice = "Expanded address ready. Keep it secret like the original address.";
     });
 
@@ -149,6 +170,7 @@
     {
         _details = await Hub.InspectAddressAsync(_address, Empty(_derpMapUrl));
         _resolvedAddress = _details.ResolvedAddress;
+        ClearQr();
     });
 
     private async Task SavePeerAsync() => await RunAsync(async () =>
@@ -167,6 +189,37 @@
         await ReloadPeersAsync();
         _notice = $"Saved {_peerName.Trim()}.";
     });
+
+    private void ToggleQr()
+    {
+        _error = null;
+        if (_qrSvg is not null)
+        {
+            ClearQr();
+            return;
+        }
+
+        var value = AddressToSave.Trim();
+        if (value.Length == 0) return;
+        try
+        {
+            using var data = QRCodeGenerator.GenerateQrCode(value, QRCodeGenerator.ECCLevel.L);
+            using var renderer = new SvgQRCode(data);
+            _qrSvg = renderer.GetGraphic(6);
+            _qrAddress = value;
+        }
+        catch (Exception ex)
+        {
+            _error = $"This address is too large to fit safely in a QR code: {ex.Message}";
+            ClearQr();
+        }
+    }
+
+    private void ClearQr()
+    {
+        _qrSvg = null;
+        _qrAddress = null;
+    }
 
     private async Task CopyAsync(string text)
     {
