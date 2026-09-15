@@ -1,3 +1,4 @@
+using MeowSSH.Core.Licensing;
 using MeowSSH.Core.Security;
 using MeowSSH.Core.Services;
 using MeowSSH.Core.Ssh;
@@ -24,6 +25,8 @@ builder.Services.AddScoped<ITailcatHubService, FakeTailcatHubService>();
 builder.Services.AddScoped<ITailcatIdentityStore, FakeTailcatIdentityStore>();
 builder.Services.AddScoped<IQrScanner, FakeQrScanner>();
 builder.Services.AddScoped<ITailcatVpnController, FakeTailcatVpnController>();
+builder.Services.AddScoped<IEntitlementService, FakeEntitlementService>();
+builder.Services.AddScoped<IStorePurchaseService, FakeStorePurchaseService>();
 builder.Services.AddScoped(_ => new FakeVaultSession(
     VaultState.Locked,
     recoveryCode: MeowSSH.TestHost.TestHostDefaults.RecoveryCode));

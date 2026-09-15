@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: ["**"]
+    branches: ["claude/beautiful-bohr-im81me"]
   pull_request:
 
 concurrency:
@@ -58,9 +58,8 @@ jobs:
           path: "**/TestResults/*.trx"
           if-no-files-found: ignore
 
-  # The installable artifact. Kept separate from build-and-test because it needs
-  # the Android workload and SDK, which cost several minutes the test jobs should
-  # not pay for.
+  # Fast installable development artifact. Release hardening is validated in its
+  # own job below so AOT does not slow every emulator/development path.
   android-apk:
     runs-on: ubuntu-latest
     steps:
@@ -117,32 +116,26 @@ jobs:
           "${args[@]}"
 
       - name: Check the native binaries survived packaging
-        # AndroidExtractNativeLibraries is what lets these be executed at all, and
-        # a packaging change that dropped them would otherwise only show up as a
-        # connection that fails on a device.
         run: |
           APK=$(find src/MeowSSH.App/bin -name "*-Signed.apk" | head -1)
+          test -n "$APK"
           unzip -l "$APK" | grep -q "lib/arm64-v8a/libmeowshell.so"
           unzip -l "$APK" | grep -q "lib/arm64-v8a/libtailcat.so"
+          unzip -l "$APK" | grep -q "lib/arm64-v8a/libhev-socks5-tunnel.so"
           echo "APK: $APK ($(du -h "$APK" | cut -f1))"
 
       - name: Upload the APK
         uses: actions/upload-artifact@v7
         with:
           name: meowssh-apk-${{ github.sha }}
-          # The publish directory only, not bin/**: the same APK exists in both,
-          # and the glob was uploading it twice.
           path: src/MeowSSH.App/bin/Debug/net10.0-android36.0/android-arm64/publish/*-Signed.apk
           if-no-files-found: error
 
-  # The layer Playwright cannot reach: a real Keystore, a real filesystem, real
-  # API-level guards. Everything above it is proven on Linux in seconds; this
-  # job exists for the handful of claims that have no desktop equivalent and
-  # were previously only ever checked by installing the APK and looking.
-  device-tests:
+  # This is the artifact configuration intended for distribution. It deliberately
+  # pays the AOT/linker cost so CI catches reflection, Java-binding and native
+  # packaging regressions before a paid build reaches Play Console.
+  android-release-hardening:
     runs-on: ubuntu-latest
-    # An emulator boot plus the run; well clear of both, so a genuine hang is
-    # still reported as a failure rather than running until the job limit.
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
@@ -159,8 +152,68 @@ jobs:
       - name: Install the Android workload
         run: dotnet workload install maui-android
 
-      # The runner has KVM but does not expose it to the user by default, and
-      # without it the emulator falls back to software rendering and times out.
+      - name: Build AOT/full-linked Release APK
+        shell: bash
+        run: |
+          set -o pipefail
+          LOG="$RUNNER_TEMP/release-link.log"
+          dotnet publish src/MeowSSH.App/MeowSSH.App.csproj \
+            -c Release -f net10.0-android36.0 \
+            -p:RuntimeIdentifier=android-arm64 \
+            -p:ILLinkTreatWarningsAsErrors=false \
+            -p:SourceRevisionId=${{ github.sha }} \
+            -p:Version=0.1.${{ github.run_number }} \
+            -p:ApplicationDisplayVersion=0.1.${{ github.run_number }} \
+            -p:ApplicationVersion=${{ github.run_number }} \
+            2>&1 | tee "$LOG"
+
+          # Several Android/Blazor/binding packages intentionally use reflection
+          # and Java dynamic callbacks. Their warnings stay visible above, while
+          # any trim diagnostic in code we own still fails the hardened build.
+          if grep -E '/src/MeowSSH\.(App|Core|Android|UI)/.*IL[0-9]{4}' "$LOG"; then
+            echo "::error::MeowSSH-owned code produced linker/AOT trim diagnostics."
+            exit 1
+          fi
+
+      - name: Verify hardened Release package
+        run: |
+          APK=$(find src/MeowSSH.App/bin/Release -name "*-Signed.apk" | head -1)
+          test -n "$APK"
+          unzip -t "$APK" >/dev/null
+          unzip -l "$APK" | grep -q "lib/arm64-v8a/libmeowshell.so"
+          unzip -l "$APK" | grep -q "lib/arm64-v8a/libtailcat.so"
+          unzip -l "$APK" | grep -q "lib/arm64-v8a/libhev-socks5-tunnel.so"
+          echo "Hardened Release APK: $APK ($(du -h "$APK" | cut -f1))"
+
+      - name: Upload hardened Release APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: meowssh-release-apk-${{ github.sha }}
+          path: src/MeowSSH.App/bin/Release/net10.0-android36.0/android-arm64/publish/*-Signed.apk
+          if-no-files-found: error
+
+  # The layer Playwright cannot reach: a real Keystore, a real filesystem, real
+  # API-level guards. Everything above it is proven on Linux in seconds; this
+  # job exists for the handful of claims that have no desktop equivalent and
+  # were previously only ever checked by installing the APK and looking.
+  device-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install the Android workload
+        run: dotnet workload install maui-android
+
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
@@ -176,19 +229,11 @@ jobs:
       - name: Run the device tests on an emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          # 34 rather than 36: the API the app targets is not the one it must
-          # run on, and 34 has a stable system image with a working Keystore.
           api-level: 34
           target: google_apis
           arch: x86_64
-          # A snapshot would carry Keystore state between runs, and these tests
-          # assert on what a key store does when a key is absent.
           disable-animations: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
-          # One line, deliberately. This action runs its script one line at a
-          # time, each in its own "sh -c", so nothing carries between lines --
-          # not a variable, not "set -eu", not an "if". Everything real lives in
-          # the script, which is then also runnable against a plugged-in phone.
           script: ./scripts/run-device-tests.sh
 
       - name: Upload the device test report

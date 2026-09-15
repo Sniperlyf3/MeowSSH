@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace MeowSSH.Core.Ssh;
 
@@ -12,7 +13,7 @@ namespace MeowSSH.Core.Ssh;
 /// Tailcat/DERP; stdin/stdout carry the framed protocol directly between the
 /// app and a local PTY helper process.
 /// </summary>
-internal sealed class LocalMeowshellAgentConnection : IAsyncDisposable
+internal sealed partial class LocalMeowshellAgentConnection : IAsyncDisposable
 {
     private const byte ControlFrame = 0;
     private const byte DataFrame = 1;
@@ -187,7 +188,7 @@ internal sealed class LocalMeowshellAgentConnection : IAsyncDisposable
 
     private void HandleControl(uint channelId, byte[] payload)
     {
-        var message = JsonSerializer.Deserialize<WireMessage>(payload)
+        var message = JsonSerializer.Deserialize(payload, WireJsonContext.Default.WireMessage)
             ?? throw new IOException("The local terminal helper sent an empty control message.");
 
         switch (message.Msg)
@@ -247,7 +248,11 @@ internal sealed class LocalMeowshellAgentConnection : IAsyncDisposable
     }
 
     private Task WriteControlAsync(uint channelId, WireMessage message, CancellationToken cancellationToken) =>
-        WriteFrameAsync(ControlFrame, channelId, JsonSerializer.SerializeToUtf8Bytes(message), cancellationToken);
+        WriteFrameAsync(
+            ControlFrame,
+            channelId,
+            JsonSerializer.SerializeToUtf8Bytes(message, WireJsonContext.Default.WireMessage),
+            cancellationToken);
 
     private async Task WriteFrameAsync(byte type, uint channelId, ReadOnlyMemory<byte> payload, CancellationToken cancellationToken)
     {
@@ -338,26 +343,32 @@ internal sealed class LocalMeowshellAgentConnection : IAsyncDisposable
 
     private sealed class WireMessage
     {
-        [System.Text.Json.Serialization.JsonPropertyName("msg")]
+        [JsonPropertyName("msg")]
         public string? Msg { get; set; }
-        [System.Text.Json.Serialization.JsonPropertyName("kind")]
+        [JsonPropertyName("kind")]
         public string? Kind { get; set; }
-        [System.Text.Json.Serialization.JsonPropertyName("pty")]
+        [JsonPropertyName("pty")]
         public bool? Pty { get; set; }
-        [System.Text.Json.Serialization.JsonPropertyName("cols")]
+        [JsonPropertyName("cols")]
         public int Cols { get; set; }
-        [System.Text.Json.Serialization.JsonPropertyName("rows")]
+        [JsonPropertyName("rows")]
         public int Rows { get; set; }
-        [System.Text.Json.Serialization.JsonPropertyName("term")]
+        [JsonPropertyName("term")]
         public string? Term { get; set; }
-        [System.Text.Json.Serialization.JsonPropertyName("request_id")]
+        [JsonPropertyName("request_id")]
         public string? RequestId { get; set; }
-        [System.Text.Json.Serialization.JsonPropertyName("exit_code")]
+        [JsonPropertyName("exit_code")]
         public int ExitCode { get; set; }
-        [System.Text.Json.Serialization.JsonPropertyName("message")]
+        [JsonPropertyName("message")]
         public string? Message { get; set; }
-        [System.Text.Json.Serialization.JsonPropertyName("disable_agent")]
+        [JsonPropertyName("disable_agent")]
         public bool DisableAgent { get; set; }
+    }
+
+    [JsonSourceGenerationOptions(JsonSerializerDefaults.Web)]
+    [JsonSerializable(typeof(WireMessage))]
+    private sealed partial class WireJsonContext : JsonSerializerContext
+    {
     }
 }
 

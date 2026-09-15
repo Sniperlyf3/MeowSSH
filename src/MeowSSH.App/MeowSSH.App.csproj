@@ -17,7 +17,17 @@
 
     <AndroidExtractNativeLibraries>true</AndroidExtractNativeLibraries>
     <SupportedOSPlatformVersion>28.0</SupportedOSPlatformVersion>
+
+    <!-- Public deployment configuration injected by MSBuild/CI. Empty values
+         deliberately leave licensing fail-closed for local/dev builds. -->
+    <LicensingApiBaseUrl Condition="'$(LicensingApiBaseUrl)' == ''"></LicensingApiBaseUrl>
+    <LicensingPublicKeySubjectPublicKeyInfoBase64 Condition="'$(LicensingPublicKeySubjectPublicKeyInfoBase64)' == ''"></LicensingPublicKeySubjectPublicKeyInfoBase64>
   </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyMetadata Include="MeowSSH.Licensing.ApiBaseUrl" Value="$(LicensingApiBaseUrl)" />
+    <AssemblyMetadata Include="MeowSSH.Licensing.PublicKeySubjectPublicKeyInfoBase64" Value="$(LicensingPublicKeySubjectPublicKeyInfoBase64)" />
+  </ItemGroup>
 
   <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
     <AndroidPackageFormat>apk</AndroidPackageFormat>
@@ -27,9 +37,26 @@
 
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
     <AndroidPackageFormat>apk</AndroidPackageFormat>
-    <RunAOTCompilation>false</RunAOTCompilation>
-    <AndroidLinkMode>SdkOnly</AndroidLinkMode>
+    <!-- Release builds are materially harder to inspect than the previous
+         interpreter/JIT-oriented package, while Debug remains fast for local
+         development and emulator testing. -->
+    <RunAOTCompilation>true</RunAOTCompilation>
+    <AndroidLinkMode>Full</AndroidLinkMode>
   </PropertyGroup>
+
+  <!-- Full linking remains enabled for MeowSSH itself. These assemblies use
+       reflection, Java export callbacks, or other runtime discovery that the
+       trimmer cannot prove safe statically, so preserve them as explicit
+       boundaries instead of disabling aggressive trimming globally. -->
+  <ItemGroup Condition="'$(Configuration)' == 'Release'">
+    <TrimmerRootAssembly Include="Meowshell" />
+    <TrimmerRootAssembly Include="Microsoft.AspNetCore.Components" />
+    <TrimmerRootAssembly Include="Microsoft.AspNetCore.Components.WebView" />
+    <TrimmerRootAssembly Include="Microsoft.JSInterop" />
+    <TrimmerRootAssembly Include="UsbSerialForAndroid" />
+    <TrimmerRootAssembly Include="Mono.Android" />
+    <TrimmerRootAssembly Include="Java.Interop" />
+  </ItemGroup>
 
   <ItemGroup>
     <MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#0b0e13" />
@@ -43,6 +70,18 @@
     <PackageReference Include="Microsoft.AspNetCore.Components.WebView.Maui" Version="10.0.101" />
     <PackageReference Include="UsbSerialForAndroid" Version="2.0.1" />
     <PackageReference Include="ZXing.Net.Maui.Controls" Version="0.10.4" />
+    <PackageReference Include="Xamarin.Android.Google.BillingClient" Version="9.1.0.2" />
+    <PackageReference Include="Xamarin.Google.Android.Play.Integrity" Version="1.6.0.4" />
+
+    <!-- Billing 9.1 pulls the current AndroidX Activity/Core generation.
+         MAUI also references KTX packages with narrow ranges, so align those
+         wrappers explicitly instead of allowing a mixed-generation graph. -->
+    <PackageReference Include="Xamarin.AndroidX.Collection.Ktx" Version="1.6.0.1" />
+    <PackageReference Include="Xamarin.AndroidX.Fragment.Ktx" Version="1.9.0" />
+    <PackageReference Include="Xamarin.AndroidX.Lifecycle.LiveData" Version="2.11.0.1" />
+    <PackageReference Include="Xamarin.AndroidX.Lifecycle.LiveData.Core.Ktx" Version="2.11.0.1" />
+    <PackageReference Include="Xamarin.AndroidX.Lifecycle.Process" Version="2.11.0.1" />
+    <PackageReference Include="Xamarin.AndroidX.Tracing.Tracing.Ktx" Version="2.0.0" />
   </ItemGroup>
 
   <!-- Native TCP+UDP TUN-to-SOCKS bridge used by Android VpnService. The AAR is
