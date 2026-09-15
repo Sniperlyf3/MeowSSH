@@ -90,9 +90,9 @@ public sealed class GooglePlayPurchaseService : Java.Lang.Object, IStorePurchase
         return purchase is null ? null : MapPurchase(purchase, productId);
     }
 
-    public void OnPurchasesUpdated(BillingResult billingResult, IList<Purchase>? purchases)
+    public void OnPurchasesUpdated(BillingResult p0, IList<Purchase>? p1)
     {
-        _pendingPurchase?.TrySetResult((billingResult, purchases));
+        _pendingPurchase?.TrySetResult((p0, p1));
     }
 
     protected override void Dispose(bool disposing)
