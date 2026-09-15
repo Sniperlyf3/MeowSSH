@@ -1,3 +1,4 @@
+using System.Text;
 using MeowSSH.Core.Model;
 using MeowSSH.Core.Security;
 using MeowSSH.Core.Ssh;
@@ -9,28 +10,16 @@ namespace MeowSSH.Core.Services;
 /// The host list, the editor and the credential resolver, all reading the same
 /// open vault.
 /// </summary>
-/// <remarks>
-/// <para>
-/// One class implementing three interfaces rather than three classes over one
-/// store: they share the live connection states, which are not in the vault at
-/// all. Connection state is deliberately not persisted — a host recorded as
-/// "connected" in a file is a lie as soon as the app is killed, and showing a
-/// stale green dot is worse than showing nothing.
-/// </para>
-/// <para>
-/// Every read goes through <see cref="VaultStore.Document"/>, so locking the
-/// vault makes the list throw rather than serve what it last saw. That is the
-/// intent: a locked vault should have nothing to show.
-/// </para>
-/// </remarks>
 public sealed class VaultHostDirectory : IHostDirectory, IHostEditor, ICredentialResolver, IDisposable
 {
     private readonly VaultStore _store;
+    private readonly ISshHardwareKeySigner? _hardwareKeySigner;
     private readonly Dictionary<Guid, (ConnectionState State, string? Detail)> _liveState = [];
 
-    public VaultHostDirectory(VaultStore store)
+    public VaultHostDirectory(VaultStore store, ISshHardwareKeySigner? hardwareKeySigner = null)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
+        _hardwareKeySigner = hardwareKeySigner;
         _store.Changed += OnStoreChanged;
     }
 
@@ -50,7 +39,6 @@ public sealed class VaultHostDirectory : IHostDirectory, IHostEditor, ICredentia
         return ValueTask.FromResult(hosts);
     }
 
-    /// <summary>Records what is happening to a connection right now. Not persisted.</summary>
     public void SetState(Guid hostId, ConnectionState state, string? detail = null)
     {
         if (state == ConnectionState.Disconnected && detail is null) _liveState.Remove(hostId);
@@ -67,7 +55,6 @@ public sealed class VaultHostDirectory : IHostDirectory, IHostEditor, ICredentia
     public ValueTask DeleteHostAsync(Guid hostId, CancellationToken cancellationToken = default) =>
         _store.UpdateAsync((document, now) => document.WithoutHost(hostId, now), cancellationToken);
 
-    /// <summary>Stamps the host as reached just now, so the list orders by recency.</summary>
     public ValueTask RecordConnectionAsync(Guid hostId, CancellationToken cancellationToken = default) =>
         _store.UpdateAsync((document, now) =>
         {
@@ -96,8 +83,6 @@ public sealed class VaultHostDirectory : IHostDirectory, IHostEditor, ICredentia
     public ValueTask DeleteCredentialAsync(Guid credentialId, CancellationToken cancellationToken = default) =>
         _store.UpdateAsync((document, now) =>
         {
-            // Any host still pointing at this credential is cleared in the same
-            // save, so the file never holds a reference to a secret that is gone.
             var updated = document.WithoutCredential(credentialId, now);
             foreach (var host in document.Hosts.Where(h => h.CredentialId == credentialId && !h.IsDeleted))
                 updated = updated.WithHost(host with { CredentialId = null }, now);
@@ -112,9 +97,6 @@ public sealed class VaultHostDirectory : IHostDirectory, IHostEditor, ICredentia
         if (credential is null)
             return ValueTask.FromResult(SshCredentials.None);
 
-        // A fresh copy per attempt: SshCredentials is disposed by the caller once
-        // the handshake is done, and handing out the vault's own arrays would mean
-        // zeroing the record the vault is still holding.
         return ValueTask.FromResult(credential.Kind switch
         {
             CredentialKind.Password => new SshCredentials
@@ -130,9 +112,41 @@ public sealed class VaultHostDirectory : IHostDirectory, IHostEditor, ICredentia
                     ? null
                     : SecretBuffer.CopyFrom(credential.Passphrase),
             },
+            CredentialKind.HardwareKey => ResolveHardwareKey(credential),
             CredentialKind.PublicKey => SshCredentials.None,
             _ => SshCredentials.None,
         });
+    }
+
+    private SshCredentials ResolveHardwareKey(CredentialRecord credential)
+    {
+        if (_hardwareKeySigner is null)
+            throw new InvalidOperationException("This device cannot use the selected non-exportable SSH key.");
+        if (credential.Secret.Length == 0)
+            throw new InvalidOperationException("The selected non-exportable SSH key has no platform key identifier.");
+        if (string.IsNullOrWhiteSpace(credential.PublicKey))
+            throw new InvalidOperationException("The selected non-exportable SSH key has no public key.");
+
+        var keyId = Encoding.UTF8.GetString(credential.Secret);
+        return new SshCredentials
+        {
+            Username = credential.Username,
+            KeyStoreKeyIds = [keyId],
+            KeyStorePublicKeys = [DecodeOpenSshPublicKey(credential.PublicKey)],
+            HardwareKeySigner = _hardwareKeySigner,
+        };
+    }
+
+    private static byte[] DecodeOpenSshPublicKey(string publicKey)
+    {
+        var parts = publicKey.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length < 2)
+            throw new InvalidOperationException("The selected non-exportable SSH key has an invalid public key.");
+        try { return Convert.FromBase64String(parts[1]); }
+        catch (FormatException ex)
+        {
+            throw new InvalidOperationException("The selected non-exportable SSH key has an invalid public key.", ex);
+        }
     }
 
     public ValueTask<SecretBuffer?> ResolvePasswordAsync(HostRecord host, CancellationToken cancellationToken = default)
@@ -145,7 +159,6 @@ public sealed class VaultHostDirectory : IHostDirectory, IHostEditor, ICredentia
             : null);
     }
 
-    /// <summary>The passphrase for this host's private key, if it has one.</summary>
     public ValueTask<SecretBuffer?> ResolveKeyPassphraseAsync(HostRecord host, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(host);
