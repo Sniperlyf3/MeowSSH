@@ -22,6 +22,10 @@
     {
         <TailcatConnectPanel />
     }
+    else if (_section == "vpn")
+    {
+        <TailcatVpnPanel />
+    }
     else if (_section == "transfers")
     {
         <TailcatTransfersPanel />
@@ -51,7 +55,7 @@
 @code {
     private static readonly (string Id, string Label)[] Sections =
     [
-        ("phone", "This phone"), ("connect", "Connect"), ("transfers", "Transfers"),
+        ("phone", "This phone"), ("connect", "Connect"), ("vpn", "VPN"), ("transfers", "Transfers"),
         ("address", "Address"), ("keys", "Keys"), ("diagnostics", "Diagnostics"),
     ];
     private string _section = "phone";
