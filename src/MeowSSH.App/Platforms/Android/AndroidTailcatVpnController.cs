@@ -26,7 +26,7 @@ public sealed class AndroidTailcatVpnController : ITailcatVpnController, IDispos
         if (string.IsNullOrWhiteSpace(request.Address)) throw new ArgumentException("A Tailcat address is required.", nameof(request));
         if (request.Routes.Count == 0 || request.Routes.Any(string.IsNullOrWhiteSpace)) throw new ArgumentException("At least one VPN route is required.", nameof(request));
 
-        var context = Android.App.Application.Context;
+        var context = global::Android.App.Application.Context;
         var prepare = VpnService.Prepare(context);
         if (prepare is not null)
         {
@@ -42,7 +42,7 @@ public sealed class AndroidTailcatVpnController : ITailcatVpnController, IDispos
         intent.PutExtra(TailcatVpnService.ExtraDerpMapUrl, request.DerpMapUrl?.Trim());
 
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        void Handler(object? sender, TailcatVpnServiceState e)
+        void Handler(object? sender, TailcatVpnServiceStateChangedEventArgs e)
         {
             if (e.Running) tcs.TrySetResult(true);
             else if (!string.IsNullOrWhiteSpace(e.Error)) tcs.TrySetException(new InvalidOperationException(e.Error));
@@ -61,7 +61,7 @@ public sealed class AndroidTailcatVpnController : ITailcatVpnController, IDispos
     public async Task StopAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var context = Android.App.Application.Context;
+        var context = global::Android.App.Application.Context;
         var intent = new Intent(context, typeof(TailcatVpnService));
         intent.SetAction(TailcatVpnService.ActionStop);
         context.StartService(intent);
@@ -69,7 +69,7 @@ public sealed class AndroidTailcatVpnController : ITailcatVpnController, IDispos
         while (Snapshot.IsRunning && DateTime.UtcNow < deadline) await Task.Delay(100, cancellationToken).ConfigureAwait(false);
     }
 
-    private void OnServiceStateChanged(object? sender, TailcatVpnServiceState state)
+    private void OnServiceStateChanged(object? sender, TailcatVpnServiceStateChangedEventArgs state)
     {
         lock (_gate) _snapshot = new TailcatVpnSnapshot(state.Running, state.Address, state.Routes, state.Error);
         Changed?.Invoke(this, EventArgs.Empty);
