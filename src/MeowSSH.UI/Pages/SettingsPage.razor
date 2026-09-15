@@ -1,9 +1,61 @@
 @implements IAsyncDisposable
 @inject IJSRuntime Js
+@inject IEntitlementService Entitlements
+@inject IStorePurchaseService Store
 
 <AppShell Title="Settings" ActiveTab="settings" OnTabSelected="OnTabSelected">
     <ChildContent>
         <section class="settings" data-testid="settings-page">
+            <div class="settings__section" data-testid="plan-settings">
+                <h2 class="section-label">MeowSSH plan</h2>
+
+                <div class="setting-card">
+                    <span class="setting-card__copy">
+                        <span class="setting-card__title" data-testid="plan-tier">@PlanName</span>
+                        <span class="setting-card__body">@PlanDescription</span>
+                    </span>
+                    <span class="setting-card__value mono">@PlanStatus</span>
+                </div>
+
+                @if (_products.Count > 0 && Entitlements.Current.Tier == EntitlementTier.Free)
+                {
+                    @foreach (var product in _products)
+                    {
+                        <button type="button" class="setting-card"
+                                data-testid="purchase-@product.ProductId"
+                                disabled="@_premiumBusy"
+                                @onclick="() => PurchaseAsync(product.ProductId)">
+                            <span class="setting-card__copy">
+                                <span class="setting-card__title">@ProductName(product)</span>
+                                <span class="setting-card__body">Purchased through Google Play. Paid access is enabled only after server verification.</span>
+                            </span>
+                            @if (!string.IsNullOrWhiteSpace(product.FormattedPrice))
+                            {
+                                <span class="setting-card__value mono">@product.FormattedPrice</span>
+                            }
+                        </button>
+                    }
+                }
+
+                <div class="settings__actions">
+                    <button type="button" class="btn btn--ghost"
+                            data-testid="refresh-entitlement"
+                            disabled="@_premiumBusy" @onclick="RefreshPlanAsync">
+                        Refresh plan
+                    </button>
+                    <button type="button" class="btn btn--ghost"
+                            data-testid="restore-purchases"
+                            disabled="@_premiumBusy" @onclick="RestorePurchasesAsync">
+                        Restore purchases
+                    </button>
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(_premiumMessage))
+                {
+                    <p class="setting-card__body" role="status" data-testid="plan-message">@_premiumMessage</p>
+                }
+            </div>
+
             <div class="settings__section">
                 <h2 class="section-label">Terminal appearance</h2>
 
@@ -103,8 +155,31 @@
     private string _cursorStyle = DefaultCursorStyle;
     private bool _cursorBlink = true;
     private int _scrollback = DefaultScrollback;
+    private IReadOnlyList<StoreProduct> _products = [];
+    private bool _premiumBusy;
+    private string? _premiumMessage;
 
     [Parameter] public EventCallback<string> OnTabSelected { get; set; }
+
+    private string PlanName => Entitlements.Current.Tier switch
+    {
+        EntitlementTier.Team => "MeowSSH Team",
+        EntitlementTier.ProCloud => "MeowSSH Pro Cloud",
+        EntitlementTier.Pro => "MeowSSH Pro",
+        _ => "MeowSSH Free",
+    };
+
+    private string PlanDescription => Entitlements.Current.Tier switch
+    {
+        EntitlementTier.Team => "Team sharing, audit controls, and all Pro Cloud features are enabled.",
+        EntitlementTier.ProCloud => "Cloud services and all local Pro tools are enabled.",
+        EntitlementTier.Pro => "Local premium tools are enabled on this device.",
+        _ => "Core SSH, SFTP, keys, forwarding, and basic Tailcat remain free.",
+    };
+
+    private string PlanStatus => Entitlements.Current.ValidUntilUtc is { } until
+        ? $"verified until {until.LocalDateTime:g}"
+        : Entitlements.Current.Tier == EntitlementTier.Free ? "free" : "verified";
 
     private sealed class TerminalPreferences
     {
@@ -114,6 +189,8 @@
         public bool CursorBlink { get; set; } = true;
         public int Scrollback { get; set; } = DefaultScrollback;
     }
+
+    protected override void OnInitialized() => Entitlements.Changed += OnEntitlementChanged;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -129,8 +206,105 @@
             Apply(new TerminalPreferences());
         }
 
+        await LoadProductsAsync();
         StateHasChanged();
     }
+
+    private async Task LoadProductsAsync()
+    {
+        try
+        {
+            _products = await Store.GetProductsAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            _premiumMessage = ex.Message;
+            _products = [];
+        }
+    }
+
+    private async Task PurchaseAsync(string productId)
+    {
+        if (_premiumBusy) return;
+        _premiumBusy = true;
+        _premiumMessage = null;
+        try
+        {
+            var purchase = await Store.PurchaseAsync(productId);
+            if (purchase is null)
+            {
+                _premiumMessage = "The Google Play purchase was not completed.";
+                return;
+            }
+            if (purchase.IsPending)
+            {
+                _premiumMessage = "The purchase is pending in Google Play. Paid access will enable after payment and server verification complete.";
+                return;
+            }
+
+            var verified = await Entitlements.RefreshAsync();
+            _premiumMessage = verified.Tier == EntitlementTier.Free
+                ? "Google Play returned the purchase, but the licensing service has not verified paid access yet."
+                : $"{PlanName} is now verified.";
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or HttpRequestException or System.Security.SecurityException)
+        {
+            _premiumMessage = ex.Message;
+        }
+        finally
+        {
+            _premiumBusy = false;
+        }
+    }
+
+    private async Task RefreshPlanAsync()
+    {
+        if (_premiumBusy) return;
+        _premiumBusy = true;
+        _premiumMessage = null;
+        try
+        {
+            await Entitlements.RefreshAsync();
+            _premiumMessage = Entitlements.Current.Tier == EntitlementTier.Free
+                ? "No verified paid entitlement is active."
+                : $"{PlanName} is verified.";
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or HttpRequestException or System.Security.SecurityException)
+        {
+            _premiumMessage = ex.Message;
+        }
+        finally
+        {
+            _premiumBusy = false;
+        }
+    }
+
+    private async Task RestorePurchasesAsync()
+    {
+        if (_premiumBusy) return;
+        _premiumBusy = true;
+        _premiumMessage = null;
+        try
+        {
+            await Entitlements.RestorePurchasesAsync();
+            _premiumMessage = Entitlements.Current.Tier == EntitlementTier.Free
+                ? "No verified Google Play purchase was found for this account."
+                : $"Restored {PlanName}.";
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or HttpRequestException or System.Security.SecurityException)
+        {
+            _premiumMessage = ex.Message;
+        }
+        finally
+        {
+            _premiumBusy = false;
+        }
+    }
+
+    private static string ProductName(StoreProduct product) =>
+        string.IsNullOrWhiteSpace(product.DisplayName) ? product.ProductId : product.DisplayName;
+
+    private void OnEntitlementChanged(object? sender, EventArgs e) => _ = InvokeAsync(StateHasChanged);
 
     private void Apply(TerminalPreferences preferences)
     {
@@ -183,6 +357,7 @@
 
     public async ValueTask DisposeAsync()
     {
+        Entitlements.Changed -= OnEntitlementChanged;
         if (_module is null) return;
         try { await _module.DisposeAsync(); }
         catch (JSDisconnectedException) { }
