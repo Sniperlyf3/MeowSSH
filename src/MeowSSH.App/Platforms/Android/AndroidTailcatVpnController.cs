@@ -1,8 +1,8 @@
 using Android.Content;
 using Android.Net;
 using AndroidX.Core.Content;
+using MeowSSH.Core.Services;
 using MeowSSH.UI.Services;
-using Microsoft.Maui.ApplicationModel;
 
 namespace MeowSSH.App;
 
@@ -11,8 +11,9 @@ public sealed class AndroidTailcatVpnController : ITailcatVpnController, IDispos
     private readonly object _gate = new();
     private TailcatVpnSnapshot _snapshot = new(false, null, []);
 
-    public AndroidTailcatVpnController()
+    public AndroidTailcatVpnController(ITailcatHubService hub)
     {
+        TailcatVpnService.SetHub(hub);
         TailcatVpnService.StateChanged += OnServiceStateChanged;
     }
 
@@ -64,12 +65,8 @@ public sealed class AndroidTailcatVpnController : ITailcatVpnController, IDispos
         var intent = new Intent(context, typeof(TailcatVpnService));
         intent.SetAction(TailcatVpnService.ActionStop);
         context.StartService(intent);
-
         var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
-        while (Snapshot.IsRunning && DateTime.UtcNow < deadline)
-        {
-            await Task.Delay(100, cancellationToken).ConfigureAwait(false);
-        }
+        while (Snapshot.IsRunning && DateTime.UtcNow < deadline) await Task.Delay(100, cancellationToken).ConfigureAwait(false);
     }
 
     private void OnServiceStateChanged(object? sender, TailcatVpnServiceState state)
