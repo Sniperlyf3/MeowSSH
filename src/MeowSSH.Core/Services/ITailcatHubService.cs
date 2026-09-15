@@ -20,10 +20,12 @@ public interface ITailcatHubService : IAsyncDisposable
     Task DeleteKeyAsync(string name, CancellationToken cancellationToken = default);
     Task<string> GetClientPublicKeyAsync(string? name = null, CancellationToken cancellationToken = default);
 
-    Task<TailcatDiagnosticResult> DiagnoseAsync(string address, bool waitForDirect, CancellationToken cancellationToken = default);
-    Task<IReadOnlyList<TailcatRemoteFile>> ListRemoteFilesAsync(string address, string path, CancellationToken cancellationToken = default);
-    Task UploadAsync(string localPath, string address, string remotePath, bool recursive = false, CancellationToken cancellationToken = default);
-    Task DownloadAsync(string address, string remotePath, string localPath, bool recursive = false, CancellationToken cancellationToken = default);
+    Task<string> ResolveAddressAsync(string address, string? derpMapUrl = null, CancellationToken cancellationToken = default);
+    Task<TailcatAddressDetails> InspectAddressAsync(string address, string? derpMapUrl = null, CancellationToken cancellationToken = default);
+    Task<TailcatDiagnosticResult> DiagnoseAsync(string address, bool waitForDirect, string? derpMapUrl = null, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<TailcatRemoteFile>> ListRemoteFilesAsync(string address, string path, string? derpMapUrl = null, CancellationToken cancellationToken = default);
+    Task UploadAsync(string localPath, string address, string remotePath, bool recursive = false, string? derpMapUrl = null, CancellationToken cancellationToken = default);
+    Task DownloadAsync(string address, string remotePath, string localPath, bool recursive = false, string? derpMapUrl = null, CancellationToken cancellationToken = default);
 }
 
 public sealed record TailcatHubSnapshot(
@@ -64,17 +66,20 @@ public sealed record TailcatServeRequest(
     bool AllowAnyClient = false,
     bool UseTailcatCredentialForShell = false,
     bool FullAddress = false,
-    bool UsePresharedKey = true);
+    bool UsePresharedKey = true,
+    string? DerpMapUrl = null);
 
 public sealed record TailcatSocksRequest(
     string ListenAddress = "127.0.0.1:0",
-    string? ClientKey = null);
+    string? ClientKey = null,
+    string? DerpMapUrl = null);
 
 public sealed record TailcatForwardRequest(
     string Address,
     IReadOnlyList<string> Mappings,
     string BindAddress = "127.0.0.1",
-    string? ClientKey = null);
+    string? ClientKey = null,
+    string? DerpMapUrl = null);
 
 public sealed record TailcatGenerateKeyRequest(
     string Name,
@@ -83,9 +88,33 @@ public sealed record TailcatGenerateKeyRequest(
     bool FixedRegion = false,
     bool EmbedDerpMap = false,
     bool UsePresharedKey = true,
-    bool Overwrite = false);
+    bool Overwrite = false,
+    string? DerpMapUrl = null);
 
 public sealed record TailcatGeneratedKey(string Name, bool Client, string Value);
+
+public sealed record TailcatAddressDetails(
+    string ResolvedAddress,
+    string ServerPublicKey,
+    string? ServerDiscoPublicKey,
+    bool HasPresharedKey,
+    long RegionId,
+    IReadOnlyList<TailcatDerpRegionDetails> EmbeddedRegions);
+
+public sealed record TailcatDerpRegionDetails(
+    long RegionId,
+    string? Code,
+    string? Name,
+    IReadOnlyList<TailcatDerpNodeDetails> Nodes);
+
+public sealed record TailcatDerpNodeDetails(
+    string? Name,
+    string? HostName,
+    string? CertName,
+    string? IPv4,
+    string? IPv6,
+    int StunPort,
+    int DerpPort);
 
 public sealed record TailcatDiagnosticResult(
     string ResolvedAddress,
