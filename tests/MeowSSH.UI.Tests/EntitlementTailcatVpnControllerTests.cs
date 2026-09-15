@@ -14,7 +14,7 @@ public sealed class EntitlementTailcatVpnControllerTests
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             gate.StartAsync(new TailcatVpnRequest("127.0.0.1:1080", ["0.0.0.0/0"])));
 
-        Assert.Contains("Pro", error.Message, StringComparison.Ordinal);
+        Assert.True(error.Message.Contains("Pro", StringComparison.Ordinal));
         Assert.Equal(0, inner.StartCount);
     }
 
