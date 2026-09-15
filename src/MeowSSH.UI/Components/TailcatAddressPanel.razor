@@ -129,7 +129,6 @@
     private string? _resolvedAddress;
     private TailcatAddressDetails? _details;
     private string? _qrSvg;
-    private string? _qrAddress;
     private bool _busy;
     private string? _error;
     private string? _notice;
@@ -206,20 +205,15 @@
             using var data = QRCodeGenerator.GenerateQrCode(value, QRCodeGenerator.ECCLevel.L);
             using var renderer = new SvgQRCode(data);
             _qrSvg = renderer.GetGraphic(6);
-            _qrAddress = value;
         }
         catch (Exception ex)
         {
-            _error = $"This address is too large to fit safely in a QR code: {ex.Message}";
             ClearQr();
+            _error = $"This address is too large to fit safely in a QR code: {ex.Message}";
         }
     }
 
-    private void ClearQr()
-    {
-        _qrSvg = null;
-        _qrAddress = null;
-    }
+    private void ClearQr() => _qrSvg = null;
 
     private async Task CopyAsync(string text)
     {
