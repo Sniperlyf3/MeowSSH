@@ -37,6 +37,35 @@
 .tailcat-danger-warning > strong { color: var(--danger); }
 .tailcat-danger-warning p { margin: 0; }
 
+.tailcat-advanced {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+}
+.tailcat-advanced > summary {
+  cursor: pointer;
+  padding: var(--space-3);
+  font-weight: 600;
+}
+.tailcat-advanced > .tailcat-stack { padding: 0 var(--space-3) var(--space-3); }
+
+.tailcat-qr {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: #fff;
+  color: #111;
+}
+.tailcat-qr svg {
+  width: min(100%, 22rem);
+  height: auto;
+  display: block;
+}
+.tailcat-qr .field__hint { color: #444; text-align: center; }
+
 .tailcat-card__heading {
   display: flex;
   gap: var(--space-3);
