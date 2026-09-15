@@ -3,7 +3,8 @@
 
 <AppShell Title="Hosts" ActiveTab="hosts" OnTabSelected="OnTabSelected">
     <Actions>
-        <button type="button" class="btn btn--icon" aria-label="Search hosts" data-testid="search">
+        <button type="button" class="btn btn--icon" aria-label="Search hosts" data-testid="search"
+                @onclick="ToggleSearch">
             <Icon Name="search" />
         </button>
         <button type="button" class="btn btn--icon" aria-label="Add host" data-testid="add-host"
@@ -13,6 +14,25 @@
     </Actions>
 
     <ChildContent>
+        @if (_searchVisible)
+        {
+            <div class="form__row" data-testid="host-search-controls">
+                <label class="field field--grow">
+                    <span class="field__label">Search hosts</span>
+                    <input class="field__input" type="search" data-testid="host-search"
+                           placeholder="Name, address, group, tag…" autocomplete="off"
+                           @bind="_query" @bind:event="oninput" />
+                </label>
+                <label class="field field--grow">
+                    <span class="field__label">Sort by</span>
+                    <select class="field__input" data-testid="host-sort" @bind="_sort">
+                        <option value="name">Name</option>
+                        <option value="recent">Recently used</option>
+                    </select>
+                </label>
+            </div>
+        }
+
         @if (OpenSessionCount > 0)
         {
             <button type="button" class="btn btn--ghost btn--block session-resume"
@@ -41,9 +61,17 @@
                 </button>
             </div>
         }
+        else if (FilteredHosts.Count == 0)
+        {
+            <div class="empty" data-testid="host-search-empty">
+                <span class="empty__glyph"><Icon Name="search" /></span>
+                <p class="empty__title">No matching hosts</p>
+                <p class="empty__body">Try a different name, address, group or tag.</p>
+            </div>
+        }
         else
         {
-            @foreach (var group in Grouped(_hosts))
+            @foreach (var group in Grouped(FilteredHosts))
             {
                 <h2 class="section-label">
                     @group.Key
@@ -62,6 +90,9 @@
 
 @code {
     private IReadOnlyList<HostStatus>? _hosts;
+    private bool _searchVisible;
+    private string _query = "";
+    private string _sort = "name";
 
     [Parameter] public EventCallback<HostRecord> OnHostSelected { get; set; }
     [Parameter] public EventCallback OnAddHost { get; set; }
@@ -69,6 +100,10 @@
     [Parameter] public EventCallback<string> OnTabSelected { get; set; }
     [Parameter] public int OpenSessionCount { get; set; }
     [Parameter] public EventCallback OnOpenSessions { get; set; }
+
+    private IReadOnlyList<HostStatus> FilteredHosts => _hosts is null
+        ? []
+        : [.. _hosts.Where(MatchesQuery)];
 
     protected override async Task OnInitializedAsync()
     {
@@ -83,12 +118,59 @@
 
     private Task Connect(HostRecord host) => OnHostSelected.InvokeAsync(host);
 
-    private static IEnumerable<IGrouping<string, HostStatus>> Grouped(IReadOnlyList<HostStatus> hosts) =>
-        hosts
+    private void ToggleSearch()
+    {
+        _searchVisible = !_searchVisible;
+        if (!_searchVisible)
+        {
+            _query = "";
+            _sort = "name";
+        }
+    }
+
+    private bool MatchesQuery(HostStatus status)
+    {
+        if (string.IsNullOrWhiteSpace(_query)) return true;
+        var query = _query.Trim();
+        var host = status.Host;
+        return host.Label.Contains(query, StringComparison.OrdinalIgnoreCase)
+            || host.Address.Contains(query, StringComparison.OrdinalIgnoreCase)
+            || (host.Username?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false)
+            || (host.Group?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false)
+            || host.Tags.Any(tag => tag.Contains(query, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private IEnumerable<IGrouping<string, HostStatus>> Grouped(IReadOnlyList<HostStatus> hosts)
+    {
+        var ordered = hosts
             .OrderBy(h => h.State == ConnectionState.Connected ? 0 : 1)
-            .ThenBy(h => h.Host.Label, StringComparer.OrdinalIgnoreCase)
-            .GroupBy(h => h.State == ConnectionState.Connected ? "Active sessions" : "All hosts")
-            .OrderBy(g => g.Key == "Active sessions" ? 0 : 1);
+            .ThenBy(h => h.State == ConnectionState.Connected ? 0 : h.Host.IsFavorite ? 0 : 1);
+
+        ordered = _sort == "recent"
+            ? ordered.ThenByDescending(h => h.Host.LastConnectedAt ?? DateTimeOffset.MinValue)
+                .ThenBy(h => h.Host.Label, StringComparer.OrdinalIgnoreCase)
+            : ordered.ThenBy(h => h.Host.Label, StringComparer.OrdinalIgnoreCase);
+
+        return ordered
+            .GroupBy(h => GroupLabel(h))
+            .OrderBy(g => GroupRank(g.Key))
+            .ThenBy(g => g.Key, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static string GroupLabel(HostStatus status)
+    {
+        if (status.State == ConnectionState.Connected) return "Active sessions";
+        if (status.Host.IsFavorite) return "Favorites";
+        return string.IsNullOrWhiteSpace(status.Host.Group) ? "All hosts" : status.Host.Group.Trim();
+    }
+
+    private static int GroupRank(string label) => label switch
+    {
+        "Active sessions" => 0,
+        "Favorites" => 1,
+        "All hosts" => 3,
+        _ => 2,
+    };
 
     public void Dispose() => Directory.Changed -= OnDirectoryChanged;
 }

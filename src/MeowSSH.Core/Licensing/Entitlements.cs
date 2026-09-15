@@ -20,6 +20,7 @@ public enum PremiumFeature
     CommandMonitoring,
     SessionLogs,
     PremiumCustomization,
+    EncryptedLocalBackup,
     CloudBackup,
     CloudSync,
     PushMonitoring,

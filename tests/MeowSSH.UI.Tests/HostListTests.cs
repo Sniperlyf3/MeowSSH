@@ -25,6 +25,31 @@ public class HostListTests(TestHostFixture fixture)
     }
 
     [Fact]
+    public async Task SearchFiltersHostsWithoutLeavingThePage()
+    {
+        var page = await fixture.NewPageAsync();
+
+        await page.GetByTestId("search").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("host-search-controls")).ToBeVisibleAsync();
+
+        await page.GetByTestId("host-search").FillAsync("prod-web-01");
+        await Assertions.Expect(page.GetByTestId("host-row")).ToHaveCountAsync(1);
+        await Assertions.Expect(page.GetByTestId("host-row")).ToContainTextAsync("prod-web-01");
+    }
+
+    [Fact]
+    public async Task SearchShowsAnExplicitEmptyState()
+    {
+        var page = await fixture.NewPageAsync();
+
+        await page.GetByTestId("search").ClickAsync();
+        await page.GetByTestId("host-search").FillAsync("definitely-not-a-real-host");
+
+        await Assertions.Expect(page.GetByTestId("host-search-empty")).ToBeVisibleAsync();
+        await Assertions.Expect(page.GetByTestId("host-row")).ToHaveCountAsync(0);
+    }
+
+    [Fact]
     public async Task AFailedHostShowsWhyItFailed()
     {
         var page = await fixture.NewPageAsync();

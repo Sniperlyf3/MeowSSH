@@ -68,6 +68,12 @@ public sealed record HostRecord
     /// <summary>Forward the local ssh-agent into this SSH session.</summary>
     public bool ForwardAgent { get; init; }
 
+    /// <summary>Optional user-defined group used to organize the host list.</summary>
+    public string? Group { get; init; }
+
+    /// <summary>Pin this host near the top of the host list.</summary>
+    public bool IsFavorite { get; init; }
+
     /// <summary>USB serial line settings. Ignored unless <see cref="Protocol"/> is Serial.</summary>
     public int SerialBaudRate { get; init; } = 115200;
     public int SerialDataBits { get; init; } = 8;

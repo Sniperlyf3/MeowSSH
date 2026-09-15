@@ -1,0 +1,342 @@
+@inject IAdvancedSftpService Advanced
+@inject ILocalFileTransferService LocalFiles
+@implements IDisposable
+
+<div class="files" data-testid="advanced-sftp-page">
+    <header class="topbar">
+        <button type="button" class="btn btn--icon" aria-label="Back to Files"
+                data-testid="advanced-sftp-back" @onclick="OnClosed">
+            <Icon Name="back" />
+        </button>
+        <span class="session__title">
+            <span class="session__host">Advanced SFTP <span class="action-pro-badge">PRO</span></span>
+            <span class="session__address">@Host.Label</span>
+        </span>
+        <button type="button" class="btn btn--icon" aria-label="Download this folder as ZIP"
+                data-testid="advanced-download-current" disabled="@_busy"
+                @onclick="InspectCurrentForDownloadAsync">
+            <Icon Name="download" />
+        </button>
+    </header>
+
+    <nav class="crumbs" aria-label="Path" data-testid="advanced-crumbs">
+        @foreach (var (label, path) in RemotePath.Breadcrumbs(_path))
+        {
+            <button type="button" class="crumbs__crumb @(path == _path ? "is-current" : "")"
+                    data-testid="advanced-crumb" disabled="@_busy"
+                    @onclick="() => NavigateAsync(path)">@label</button>
+        }
+    </nav>
+
+    <div class="files__body">
+        <div class="notice">
+            <Icon Name="shield" />
+            <div>
+                <p class="notice__title">Recursive operations</p>
+                <p class="notice__body">Symbolic links are never followed. Downloads are capped at 5,000 entries, 32 levels and 2 GiB of file data.</p>
+            </div>
+        </div>
+
+        @if (_error is not null)
+        {
+            <div class="notice notice--danger" role="alert" data-testid="advanced-sftp-error">
+                <Icon Name="alert" />
+                <div><p class="notice__title">Advanced SFTP failed</p><p class="notice__body">@_error</p></div>
+            </div>
+        }
+        else if (_entries is null)
+        {
+            <p class="files__status" role="status">Loading…</p>
+        }
+        else
+        {
+            <h2 class="section-label">Folders</h2>
+            @if (Directories.Count == 0)
+            {
+                <div class="empty" data-testid="advanced-sftp-empty">
+                    <span class="empty__glyph"><Icon Name="folder" /></span>
+                    <p class="empty__title">No folders here</p>
+                    <p class="empty__body">Use the download button above to archive this folder, including files directly inside it.</p>
+                </div>
+            }
+            else
+            {
+                <ul class="filelist" data-testid="advanced-sftp-list">
+                    @foreach (var directory in Directories)
+                    {
+                        <li class="fileitem-row">
+                            <button type="button" class="fileitem" data-testid="advanced-folder"
+                                    data-file-name="@directory.Name" disabled="@_busy"
+                                    @onclick="() => NavigateAsync(directory.Path)">
+                                <span class="fileitem__icon is-dir"><Icon Name="folder" /></span>
+                                <span class="fileitem__detail">
+                                    <span class="fileitem__name">@directory.Name</span>
+                                    <span class="fileitem__meta"><span class="mono">@directory.PermissionString</span><span>@Relative(directory.ModifiedAt)</span></span>
+                                </span>
+                                <span class="fileitem__chevron"><Icon Name="chevron" /></span>
+                            </button>
+                            <button type="button" class="fileitem__menu btn btn--icon"
+                                    aria-label="Advanced actions for @directory.Name"
+                                    data-testid="advanced-folder-actions" data-file-name="@directory.Name"
+                                    disabled="@_busy" @onclick="() => OpenActionsAsync(directory)">
+                                <Icon Name="more" />
+                            </button>
+                        </li>
+                    }
+                </ul>
+            }
+        }
+    </div>
+</div>
+
+@if (_busy)
+{
+    <div class="sheet" role="status" data-testid="advanced-sftp-progress">
+        <p class="sheet__title">@_busyLabel</p>
+        @if (_progress?.Fraction is { } fraction)
+        {
+            <progress class="transfer-progress" max="1" value="@fraction"></progress>
+            <p class="sheet__body">@($"{fraction:P0}") · @_progress.CurrentPath</p>
+        }
+        else if (_progress is not null)
+        {
+            <p class="sheet__body">@_progress.CurrentPath</p>
+        }
+    </div>
+}
+
+@if (_candidate is not null && _summary is not null)
+{
+    <div class="sheet" role="dialog" aria-label="Advanced SFTP action" data-testid="advanced-sftp-confirm">
+        <p class="sheet__title">@(_operation == Operation.Delete ? $"Delete {_candidate.Name} recursively?" : $"Download {_candidate.Name} as ZIP?")</p>
+        <p class="sheet__body">
+            @_summary.FileCount files · @_summary.DirectoryCount folders · @_summary.SymlinkCount links · @SizeLabel(_summary.TotalFileBytes)
+        </p>
+        @if (_summary.SymlinkCount > 0)
+        {
+            <p class="sheet__body">Symlinks are not followed. A recursive delete removes the links themselves; a ZIP download skips them.</p>
+        }
+        <div class="form__actions">
+            @if (_operation == Operation.Delete)
+            {
+                <button type="button" class="btn btn--danger btn--block" data-testid="confirm-recursive-delete" @onclick="DeleteConfirmedAsync">Delete recursively</button>
+            }
+            else
+            {
+                <button type="button" class="btn btn--primary btn--block" data-testid="confirm-folder-download" @onclick="DownloadConfirmedAsync">Download ZIP</button>
+            }
+            <button type="button" class="btn btn--ghost btn--block" data-testid="cancel-advanced-sftp" @onclick="CancelCandidate">Cancel</button>
+        </div>
+    </div>
+}
+
+@if (_actionsTarget is not null)
+{
+    <div class="sheet" role="dialog" aria-label="Folder actions" data-testid="advanced-folder-actions-sheet">
+        <p class="sheet__title">@_actionsTarget.Name</p>
+        <p class="sheet__body mono">@_actionsTarget.Path</p>
+        <div class="form__actions">
+            <button type="button" class="btn btn--primary btn--block" data-testid="download-folder-zip" @onclick="() => InspectAsync(_actionsTarget, Operation.Download)">
+                <Icon Name="download" /> Download folder as ZIP
+            </button>
+            <button type="button" class="btn btn--danger btn--block" data-testid="delete-folder-recursive" @onclick="() => InspectAsync(_actionsTarget, Operation.Delete)">
+                <Icon Name="trash" /> Delete recursively
+            </button>
+            <button type="button" class="btn btn--ghost btn--block" @onclick="() => _actionsTarget = null">Cancel</button>
+        </div>
+    </div>
+}
+
+@if (_notice is not null)
+{
+    <div class="sheet" role="status" data-testid="advanced-sftp-notice">
+        <p class="sheet__title">@_notice</p>
+        <button type="button" class="btn btn--primary btn--block" @onclick="() => _notice = null">OK</button>
+    </div>
+}
+
+@code {
+    private IReadOnlyList<RemoteFile>? _entries;
+    private string _path = "/";
+    private string? _error;
+    private string? _notice;
+    private bool _busy;
+    private string _busyLabel = string.Empty;
+    private AdvancedSftpProgress? _progress;
+    private RemoteFile? _actionsTarget;
+    private RemoteFile? _candidate;
+    private AdvancedSftpSummary? _summary;
+    private Operation _operation;
+
+    [Parameter, EditorRequired] public HostRecord Host { get; set; } = default!;
+    [Parameter, EditorRequired] public ISftpSession Sftp { get; set; } = default!;
+    [Parameter] public EventCallback OnClosed { get; set; }
+
+    private enum Operation { Download, Delete }
+
+    private IReadOnlyList<RemoteFile> Directories => _entries is null
+        ? []
+        : [.. _entries.Where(static entry => entry.IsDirectory && !entry.IsSymlink)
+            .OrderBy(static entry => entry.Name, StringComparer.OrdinalIgnoreCase)];
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { _path = await Sftp.ResolveAsync("."); }
+        catch (SshException) { _path = "/"; }
+        await LoadAsync();
+    }
+
+    private async Task NavigateAsync(string path)
+    {
+        if (_busy) return;
+        _path = path;
+        CancelCandidate();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _entries = null;
+        _error = null;
+        try { _entries = await Sftp.ListAsync(_path); }
+        catch (SshException exception) { _error = exception.Message; }
+    }
+
+    private Task OpenActionsAsync(RemoteFile directory)
+    {
+        _actionsTarget = directory;
+        return Task.CompletedTask;
+    }
+
+    private async Task InspectCurrentForDownloadAsync()
+    {
+        var current = await CurrentDirectoryAsync();
+        if (current is not null) await InspectAsync(current, Operation.Download);
+    }
+
+    private async Task<RemoteFile?> CurrentDirectoryAsync()
+    {
+        if (_path == "/")
+            return new RemoteFile("root", "/", 0, 0x41ED, DateTimeOffset.UtcNow, true);
+        try { return await Sftp.StatAsync(_path); }
+        catch (SshException exception)
+        {
+            _error = exception.Message;
+            return null;
+        }
+    }
+
+    private async Task InspectAsync(RemoteFile directory, Operation operation)
+    {
+        _actionsTarget = null;
+        _error = null;
+        _busy = true;
+        _busyLabel = "Inspecting folder…";
+        try
+        {
+            _summary = await Advanced.InspectDirectoryAsync(Sftp, directory);
+            _candidate = directory;
+            _operation = operation;
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or ArgumentException or SshException)
+        {
+            _error = exception.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task DeleteConfirmedAsync()
+    {
+        if (_candidate is null) return;
+        var target = _candidate;
+        CancelCandidate();
+        _busy = true;
+        _busyLabel = $"Deleting {target.Name}…";
+        _progress = null;
+        try
+        {
+            await Advanced.DeleteDirectoryRecursiveAsync(Sftp, target, ProgressReporter());
+            _notice = $"Deleted {target.Name}.";
+            await LoadAsync();
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or ArgumentException or SshException or IOException)
+        {
+            _error = exception.Message;
+            await LoadAsync();
+        }
+        finally
+        {
+            _busy = false;
+            _progress = null;
+        }
+    }
+
+    private async Task DownloadConfirmedAsync()
+    {
+        if (_candidate is null) return;
+        var target = _candidate;
+        CancelCandidate();
+        var fileName = $"{SafeFileName(target.Name)}.zip";
+        var temporary = LocalFiles.CreateTemporaryPath(fileName);
+        _busy = true;
+        _busyLabel = $"Archiving {target.Name}…";
+        _progress = null;
+        try
+        {
+            await Advanced.DownloadDirectoryZipAsync(Sftp, target, temporary, ProgressReporter());
+            var destination = await LocalFiles.PublishDownloadAsync(temporary, fileName);
+            _notice = $"Saved ZIP to {destination}";
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or ArgumentException or SshException or IOException or UnauthorizedAccessException)
+        {
+            _error = exception.Message;
+        }
+        finally
+        {
+            LocalFiles.DeleteTemporaryFile(temporary);
+            _busy = false;
+            _progress = null;
+        }
+    }
+
+    private IProgress<AdvancedSftpProgress> ProgressReporter() => new Progress<AdvancedSftpProgress>(progress =>
+    {
+        _progress = progress;
+        _ = InvokeAsync(StateHasChanged);
+    });
+
+    private void CancelCandidate()
+    {
+        _candidate = null;
+        _summary = null;
+    }
+
+    private static string SafeFileName(string value)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        var name = new string(value.Select(character => invalid.Contains(character) ? '_' : character).ToArray()).Trim();
+        return string.IsNullOrWhiteSpace(name) ? "folder" : name;
+    }
+
+    private static string SizeLabel(long bytes) => bytes switch
+    {
+        < 1024 => $"{bytes} B",
+        < 1024 * 1024 => $"{bytes / 1024d:F1} KiB",
+        < 1024L * 1024 * 1024 => $"{bytes / (1024d * 1024):F1} MiB",
+        _ => $"{bytes / (1024d * 1024 * 1024):F1} GiB",
+    };
+
+    private static string Relative(DateTimeOffset value)
+    {
+        var age = DateTimeOffset.UtcNow - value;
+        if (age.TotalMinutes < 1) return "just now";
+        if (age.TotalHours < 1) return $"{Math.Max(1, (int)age.TotalMinutes)}m ago";
+        if (age.TotalDays < 1) return $"{Math.Max(1, (int)age.TotalHours)}h ago";
+        return $"{Math.Max(1, (int)age.TotalDays)}d ago";
+    }
+
+    public void Dispose() { }
+}

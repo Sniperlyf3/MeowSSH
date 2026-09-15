@@ -1,0 +1,445 @@
+@implements IDisposable
+@inject ICommandMonitoringService Monitoring
+@inject IHostDirectory Directory
+
+<AppShell Title="Monitoring" ActiveTab="monitoring" OnTabSelected="OnTabSelected">
+    <Actions>
+        <button type="button" class="btn btn--icon" aria-label="New monitor"
+                data-testid="add-monitor" @onclick="NewMonitor">
+            <Icon Name="plus" />
+        </button>
+    </Actions>
+
+    <ChildContent>
+        <section class="monitoring-page" data-testid="monitoring-page">
+            @if (_editing)
+            {
+                <div class="action-editor" data-testid="monitor-editor">
+                    <div class="action-editor__header">
+                        <div>
+                            <h2>@(_editingId is null ? "New monitor" : "Edit monitor")</h2>
+                            <p>Run a command periodically and alert when it fails, recovers, or changes output.</p>
+                        </div>
+                    </div>
+
+                    <label class="field">
+                        <span class="field__label">Name</span>
+                        <input class="field__input" data-testid="monitor-name" maxlength="80"
+                               placeholder="Production health" @bind="_name" />
+                    </label>
+
+                    <label class="field">
+                        <span class="field__label">Host</span>
+                        <select class="field__input" data-testid="monitor-host" @bind="_hostIdText">
+                            <option value="">Choose a host</option>
+                            @foreach (var host in _hosts)
+                            {
+                                <option value="@host.Id">@host.Label · @host.DisplayAddress</option>
+                            }
+                        </select>
+                    </label>
+
+                    <label class="field">
+                        <span class="field__label">Command</span>
+                        <textarea class="field__input action-editor__command" data-testid="monitor-command"
+                                  rows="4" maxlength="16384" spellcheck="false"
+                                  placeholder="systemctl is-active nginx" @bind="_command"></textarea>
+                    </label>
+
+                    <div class="monitoring-editor__numbers">
+                        <label class="field">
+                            <span class="field__label">Every (seconds)</span>
+                            <input class="field__input" data-testid="monitor-interval" type="number"
+                                   min="60" max="86400" @bind="_intervalSeconds" />
+                        </label>
+                        <label class="field">
+                            <span class="field__label">Timeout (seconds)</span>
+                            <input class="field__input" data-testid="monitor-timeout" type="number"
+                                   min="1" max="600" @bind="_timeoutSeconds" />
+                        </label>
+                    </div>
+
+                    <label class="setting-card setting-card--toggle" for="monitor-enabled">
+                        <span class="setting-card__copy">
+                            <span class="setting-card__title">Enabled</span>
+                            <span class="setting-card__body">Checks run while the local MeowSSH process is active. Cloud/background monitoring is a separate Pro Cloud capability.</span>
+                        </span>
+                        <input id="monitor-enabled" type="checkbox" class="settings__toggle"
+                               data-testid="monitor-enabled" @bind="_enabled" />
+                    </label>
+
+                    <label class="setting-card setting-card--toggle" for="monitor-notify-change">
+                        <span class="setting-card__copy">
+                            <span class="setting-card__title">Alert when output changes</span>
+                            <span class="setting-card__body">The first successful run establishes the baseline and does not alert.</span>
+                        </span>
+                        <input id="monitor-notify-change" type="checkbox" class="settings__toggle"
+                               data-testid="monitor-notify-change" @bind="_notifyOnChange" />
+                    </label>
+
+                    <label class="setting-card setting-card--toggle" for="monitor-notify-failure">
+                        <span class="setting-card__copy">
+                            <span class="setting-card__title">Alert on failure</span>
+                            <span class="setting-card__body">A continuing failure alerts once instead of notifying on every interval.</span>
+                        </span>
+                        <input id="monitor-notify-failure" type="checkbox" class="settings__toggle"
+                               data-testid="monitor-notify-failure" @bind="_notifyOnFailure" />
+                    </label>
+
+                    <label class="setting-card setting-card--toggle" for="monitor-notify-recovery">
+                        <span class="setting-card__copy">
+                            <span class="setting-card__title">Alert on recovery</span>
+                            <span class="setting-card__body">Notify when a previously failing check becomes healthy again.</span>
+                        </span>
+                        <input id="monitor-notify-recovery" type="checkbox" class="settings__toggle"
+                               data-testid="monitor-notify-recovery" @bind="_notifyOnRecovery" />
+                    </label>
+
+                    @if (!string.IsNullOrWhiteSpace(_message))
+                    {
+                        <p class="action-message" role="alert" data-testid="monitor-message">@_message</p>
+                    }
+
+                    <div class="action-editor__buttons">
+                        <button type="button" class="btn btn--ghost" data-testid="cancel-monitor" @onclick="CancelEdit">Cancel</button>
+                        <button type="button" class="btn btn--primary" data-testid="save-monitor" disabled="@_busy" @onclick="SaveAsync">Save monitor</button>
+                    </div>
+                </div>
+            }
+            else if (_monitors is null)
+            {
+                <p class="visually-hidden" role="status">Loading monitors</p>
+            }
+            else if (_monitors.Count == 0)
+            {
+                <div class="empty" data-testid="monitoring-empty">
+                    <span class="empty__glyph"><Icon Name="alert" /></span>
+                    <p class="empty__title">No command monitors</p>
+                    <p class="empty__body">Watch a command and let MeowSSH surface failures, recoveries, or meaningful output changes.</p>
+                    <button type="button" class="btn btn--primary" data-testid="add-first-monitor" @onclick="NewMonitor">
+                        <Icon Name="plus" /> Create a monitor
+                    </button>
+                </div>
+            }
+            else
+            {
+                <div class="action-list" data-testid="monitor-list">
+                    @foreach (var monitor in _monitors)
+                    {
+                        var status = StatusFor(monitor.Id);
+                        <article class="action-card" data-testid="monitor-card-@monitor.Id">
+                            <div class="action-card__header">
+                                <div class="action-card__copy">
+                                    <div class="action-card__title-row">
+                                        <h2>@monitor.Name</h2>
+                                        <span class="action-pro-badge">PRO</span>
+                                    </div>
+                                    <code class="action-card__command">@monitor.Command</code>
+                                    <p class="action-muted">@HostLabel(monitor.HostId) · every @IntervalLabel(monitor.IntervalSeconds)</p>
+                                    <p class="action-muted" data-testid="monitor-status-@monitor.Id">@StatusLabel(status)</p>
+                                </div>
+                            </div>
+
+                            <div class="action-card__buttons">
+                                <button type="button" class="btn btn--primary"
+                                        data-testid="run-monitor-@monitor.Id" disabled="@_busy"
+                                        @onclick="() => RunAsync(monitor.Id)">Run now</button>
+                                <button type="button" class="btn btn--ghost"
+                                        data-testid="history-monitor-@monitor.Id" disabled="@_busy"
+                                        @onclick="() => OpenHistoryAsync(monitor)">History</button>
+                                <button type="button" class="btn btn--ghost"
+                                        data-testid="toggle-monitor-@monitor.Id" disabled="@_busy"
+                                        @onclick="() => ToggleAsync(monitor)">@(monitor.Enabled ? "Disable" : "Enable")</button>
+                                <button type="button" class="btn btn--ghost"
+                                        data-testid="edit-monitor-@monitor.Id" disabled="@_busy"
+                                        @onclick="() => Edit(monitor)">Edit</button>
+                                <button type="button" class="btn btn--ghost"
+                                        data-testid="delete-monitor-@monitor.Id" disabled="@_busy"
+                                        @onclick="() => DeleteAsync(monitor.Id)">Delete</button>
+                            </div>
+                        </article>
+                    }
+                </div>
+            }
+
+            @if (_historyMonitor is not null)
+            {
+                <section class="action-results" data-testid="monitor-history">
+                    <div class="action-results__header">
+                        <div>
+                            <h2>@_historyMonitor.Name</h2>
+                            <p class="action-muted">Recent checks</p>
+                        </div>
+                        <button type="button" class="btn btn--ghost" data-testid="close-monitor-history" @onclick="CloseHistory">Close</button>
+                    </div>
+
+                    @if (_history.Count == 0)
+                    {
+                        <p class="action-muted" data-testid="monitor-history-empty">No checks have run yet.</p>
+                    }
+                    else
+                    {
+                        @foreach (var run in _history)
+                        {
+                            <article class="action-result @(run.State == CommandMonitorRunState.Healthy ? "is-success" : "is-failure")"
+                                     data-testid="monitor-run-@run.Id">
+                                <div class="action-result__headline">
+                                    <strong>@run.CheckedAtUtc.LocalDateTime.ToString("g")</strong>
+                                    <span>@RunStateLabel(run)</span>
+                                </div>
+                                @if (run.AlertKind is { } alert)
+                                {
+                                    <p class="action-muted">Alert: @AlertLabel(alert)</p>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(run.Message))
+                                {
+                                    <p class="action-muted">@run.Message</p>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(run.StandardOutput))
+                                {
+                                    <div class="action-output"><span>stdout</span><pre>@run.StandardOutput</pre></div>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(run.StandardError))
+                                {
+                                    <div class="action-output"><span>stderr</span><pre>@run.StandardError</pre></div>
+                                }
+                            </article>
+                        }
+                    }
+                </section>
+            }
+
+            @if (!_editing && !string.IsNullOrWhiteSpace(_message))
+            {
+                <p class="action-message" role="status" data-testid="monitor-message">@_message</p>
+            }
+        </section>
+    </ChildContent>
+</AppShell>
+
+@code {
+    private IReadOnlyList<CommandMonitor>? _monitors;
+    private IReadOnlyList<HostRecord> _hosts = [];
+    private readonly Dictionary<Guid, CommandMonitorStatus?> _statuses = [];
+    private IReadOnlyList<CommandMonitorRun> _history = [];
+    private CommandMonitor? _historyMonitor;
+    private bool _editing;
+    private Guid? _editingId;
+    private string _name = string.Empty;
+    private string _hostIdText = string.Empty;
+    private string _command = string.Empty;
+    private int _intervalSeconds = 300;
+    private int _timeoutSeconds = 30;
+    private bool _enabled = true;
+    private bool _notifyOnChange = true;
+    private bool _notifyOnFailure = true;
+    private bool _notifyOnRecovery = true;
+    private bool _busy;
+    private string? _message;
+
+    [Parameter] public EventCallback<string> OnTabSelected { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        Monitoring.Changed += OnMonitoringChanged;
+        Directory.Changed += OnDirectoryChanged;
+        await Monitoring.InitializeAsync();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _monitors = await Monitoring.GetAllAsync();
+        _hosts = (await Directory.GetHostsAsync())
+            .Select(static item => item.Host)
+            .Where(static host => host.Protocol == HostProtocol.Ssh && !host.IsDeleted)
+            .OrderBy(static host => host.Label, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        _statuses.Clear();
+        foreach (var monitor in _monitors)
+            _statuses[monitor.Id] = await Monitoring.GetStatusAsync(monitor.Id);
+    }
+
+    private void NewMonitor()
+    {
+        _editing = true;
+        _editingId = null;
+        _name = string.Empty;
+        _hostIdText = string.Empty;
+        _command = string.Empty;
+        _intervalSeconds = 300;
+        _timeoutSeconds = 30;
+        _enabled = true;
+        _notifyOnChange = true;
+        _notifyOnFailure = true;
+        _notifyOnRecovery = true;
+        _message = null;
+    }
+
+    private void Edit(CommandMonitor monitor)
+    {
+        _editing = true;
+        _editingId = monitor.Id;
+        _name = monitor.Name;
+        _hostIdText = monitor.HostId.ToString();
+        _command = monitor.Command;
+        _intervalSeconds = monitor.IntervalSeconds;
+        _timeoutSeconds = monitor.TimeoutSeconds;
+        _enabled = monitor.Enabled;
+        _notifyOnChange = monitor.NotifyOnChange;
+        _notifyOnFailure = monitor.NotifyOnFailure;
+        _notifyOnRecovery = monitor.NotifyOnRecovery;
+        _message = null;
+    }
+
+    private void CancelEdit()
+    {
+        _editing = false;
+        _editingId = null;
+        _message = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_busy) return;
+        _busy = true;
+        _message = null;
+        try
+        {
+            if (!Guid.TryParse(_hostIdText, out var hostId))
+                throw new ArgumentException("Choose a host for this monitor.");
+            await Monitoring.SaveAsync(new CommandMonitor(
+                _editingId ?? Guid.NewGuid(),
+                _name,
+                hostId,
+                _command,
+                _intervalSeconds,
+                _timeoutSeconds,
+                _enabled,
+                _notifyOnChange,
+                _notifyOnFailure,
+                _notifyOnRecovery));
+            _editing = false;
+            _editingId = null;
+            await LoadAsync();
+        }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
+        {
+            _message = exception.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task RunAsync(Guid id)
+    {
+        if (_busy) return;
+        _busy = true;
+        _message = null;
+        try
+        {
+            var run = await Monitoring.RunNowAsync(id);
+            _message = run.State == CommandMonitorRunState.Healthy
+                ? "Check completed successfully."
+                : run.Message ?? "Check failed.";
+            await LoadAsync();
+            if (_historyMonitor?.Id == id)
+                _history = await Monitoring.GetHistoryAsync(id);
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or KeyNotFoundException)
+        {
+            _message = exception.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task ToggleAsync(CommandMonitor monitor)
+    {
+        if (_busy) return;
+        _busy = true;
+        _message = null;
+        try
+        {
+            await Monitoring.SetEnabledAsync(monitor.Id, !monitor.Enabled);
+            await LoadAsync();
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or KeyNotFoundException)
+        {
+            _message = exception.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task DeleteAsync(Guid id)
+    {
+        await Monitoring.DeleteAsync(id);
+        if (_historyMonitor?.Id == id) CloseHistory();
+        _message = "Monitor deleted.";
+        await LoadAsync();
+    }
+
+    private async Task OpenHistoryAsync(CommandMonitor monitor)
+    {
+        _historyMonitor = monitor;
+        _history = await Monitoring.GetHistoryAsync(monitor.Id);
+    }
+
+    private void CloseHistory()
+    {
+        _historyMonitor = null;
+        _history = [];
+    }
+
+    private CommandMonitorStatus? StatusFor(Guid id) => _statuses.GetValueOrDefault(id);
+    private string HostLabel(Guid id) => _hosts.FirstOrDefault(host => host.Id == id)?.Label ?? "Deleted host";
+
+    private static string StatusLabel(CommandMonitorStatus? status)
+    {
+        if (status?.LastCheckedAtUtc is null) return "Never checked";
+        var state = status.WasFailing ? "Failing" : "Healthy";
+        return $"{state} · checked {status.LastCheckedAtUtc.Value.LocalDateTime:g}";
+    }
+
+    private static string IntervalLabel(int seconds) => seconds switch
+    {
+        < 120 => $"{seconds} sec",
+        < 3600 => $"{seconds / 60} min",
+        < 7200 => "1 hour",
+        _ when seconds % 3600 == 0 => $"{seconds / 3600} hours",
+        _ => $"{seconds / 60} min",
+    };
+
+    private static string RunStateLabel(CommandMonitorRun run) => run.State switch
+    {
+        CommandMonitorRunState.Healthy => $"healthy · exit {run.ExitCode ?? 0}",
+        CommandMonitorRunState.Failed => $"failed · exit {run.ExitCode?.ToString() ?? "?"}",
+        _ => "connection failed",
+    };
+
+    private static string AlertLabel(CommandMonitorAlertKind kind) => kind switch
+    {
+        CommandMonitorAlertKind.OutputChanged => "output changed",
+        CommandMonitorAlertKind.Failed => "failure",
+        _ => "recovery",
+    };
+
+    private void OnMonitoringChanged(object? sender, EventArgs e) =>
+        _ = InvokeAsync(async () => { await LoadAsync(); StateHasChanged(); });
+
+    private void OnDirectoryChanged(object? sender, EventArgs e) =>
+        _ = InvokeAsync(async () => { await LoadAsync(); StateHasChanged(); });
+
+    public void Dispose()
+    {
+        Monitoring.Changed -= OnMonitoringChanged;
+        Directory.Changed -= OnDirectoryChanged;
+    }
+}
