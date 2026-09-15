@@ -20,7 +20,12 @@ public sealed record LicensingApiOptions(
 }
 
 public sealed record LicensingVerificationPurchase(string ProductId, string PurchaseToken);
-public sealed record LicensingVerificationRequest(string PackageName, IReadOnlyList<LicensingVerificationPurchase> Purchases);
+public sealed record LicensingVerificationRequest(
+    string PackageName,
+    IReadOnlyList<LicensingVerificationPurchase> Purchases,
+    string RequestId,
+    string IntegrityNonce,
+    string IntegrityToken);
 public sealed record SignedEntitlementGrant(string PayloadBase64, string SignatureBase64);
 public sealed record EntitlementGrantClaims(
     string GrantId,
@@ -33,17 +38,20 @@ public sealed class LicensingApiGrantProvider : IEntitlementGrantProvider
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly IStorePurchaseService _store;
+    private readonly IPlayIntegrityService _integrity;
     private readonly HttpClient _httpClient;
     private readonly LicensingApiOptions _options;
     private readonly TimeProvider _timeProvider;
 
     public LicensingApiGrantProvider(
         IStorePurchaseService store,
+        IPlayIntegrityService integrity,
         HttpClient httpClient,
         LicensingApiOptions options,
         TimeProvider? timeProvider = null)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
+        _integrity = integrity ?? throw new ArgumentNullException(nameof(integrity));
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _timeProvider = timeProvider ?? TimeProvider.System;
@@ -66,9 +74,14 @@ public sealed class LicensingApiGrantProvider : IEntitlementGrantProvider
             .ToArray();
         if (purchases.Length == 0) return EntitlementSnapshot.Free(now);
 
+        var requestId = Base64UrlEncode(RandomNumberGenerator.GetBytes(24));
+        var integrityNonce = CreateIntegrityNonce(_options.PackageName, purchases, requestId);
+        var integrityToken = await _integrity.RequestTokenAsync(integrityNonce, cancellationToken).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(integrityToken)) return EntitlementSnapshot.Free(now);
+
         using var response = await _httpClient.PostAsJsonAsync(
             new Uri(_options.BaseUri!, "v1/entitlements/google-play/verify"),
-            new LicensingVerificationRequest(_options.PackageName, purchases),
+            new LicensingVerificationRequest(_options.PackageName, purchases, requestId, integrityNonce, integrityToken),
             JsonOptions,
             cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
@@ -78,6 +91,29 @@ public sealed class LicensingApiGrantProvider : IEntitlementGrantProvider
             ?? throw new SecurityException("The licensing server returned an empty entitlement grant.");
 
         return VerifyGrant(grant, now);
+    }
+
+    public static string CreateIntegrityNonce(
+        string packageName,
+        IEnumerable<LicensingVerificationPurchase> purchases,
+        string requestId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(packageName);
+        ArgumentNullException.ThrowIfNull(purchases);
+        ArgumentException.ThrowIfNullOrWhiteSpace(requestId);
+
+        var builder = new StringBuilder();
+        AppendLengthPrefixed(builder, packageName);
+        AppendLengthPrefixed(builder, requestId);
+        foreach (var purchase in purchases
+                     .OrderBy(static value => value.ProductId, StringComparer.Ordinal)
+                     .ThenBy(static value => value.PurchaseToken, StringComparer.Ordinal))
+        {
+            AppendLengthPrefixed(builder, purchase.ProductId);
+            AppendLengthPrefixed(builder, purchase.PurchaseToken);
+        }
+
+        return Base64UrlEncode(SHA256.HashData(Encoding.UTF8.GetBytes(builder.ToString())));
     }
 
     private EntitlementSnapshot VerifyGrant(SignedEntitlementGrant grant, DateTimeOffset now)
@@ -120,4 +156,13 @@ public sealed class LicensingApiGrantProvider : IEntitlementGrantProvider
             claims.ValidUntilUtc,
             claims.GrantId);
     }
+
+    private static void AppendLengthPrefixed(StringBuilder builder, string value) =>
+        builder.Append(value.Length).Append(':').Append(value).Append(';');
+
+    private static string Base64UrlEncode(ReadOnlySpan<byte> value) =>
+        Convert.ToBase64String(value)
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
 }
