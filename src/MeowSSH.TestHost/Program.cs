@@ -28,6 +28,7 @@ builder.Services.AddScoped<IVaultSession>(sp => sp.GetRequiredService<FakeVaultS
 
 builder.Services.AddScoped<IActiveSessionLifetime, NoOpActiveSessionLifetime>();
 builder.Services.AddScoped<ILocalFileTransferService, LocalFileTransferService>();
+builder.Services.AddScoped<IExternalUriLauncher, NoOpExternalUriLauncher>();
 
 builder.Services.AddScoped<InteractiveSshPrompts>();
 builder.Services.AddScoped<ISshPrompts>(sp => sp.GetRequiredService<InteractiveSshPrompts>());
