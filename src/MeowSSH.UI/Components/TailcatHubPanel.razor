@@ -26,6 +26,10 @@
     {
         <TailcatTransfersPanel />
     }
+    else if (_section == "address")
+    {
+        <TailcatAddressPanel />
+    }
     else if (_section == "keys")
     {
         <TailcatKeysPanel />
@@ -48,7 +52,7 @@
     private static readonly (string Id, string Label)[] Sections =
     [
         ("phone", "This phone"), ("connect", "Connect"), ("transfers", "Transfers"),
-        ("keys", "Keys"), ("diagnostics", "Diagnostics"),
+        ("address", "Address"), ("keys", "Keys"), ("diagnostics", "Diagnostics"),
     ];
     private string _section = "phone";
     private TailcatHubSnapshot _snapshot = new(null, null, [], []);
