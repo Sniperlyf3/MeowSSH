@@ -1,76 +1,72 @@
 @inject IEncryptedVaultBackupService Backups
 @inject ILocalFileTransferService LocalFiles
 
-<AppShell Title="Encrypted backup" ActiveTab="backup" OnTabSelected="OnTabSelected">
-    <ChildContent>
-        <section class="settings" data-testid="encrypted-backup-page">
-            <div class="settings__section">
-                <h2 class="section-label">Encrypted local backup <span class="action-pro-badge">PRO</span></h2>
-                <div class="setting-card">
-                    <span class="setting-card__copy">
-                        <span class="setting-card__title">Portable encrypted vault</span>
-                        <span class="setting-card__body">Exports the encrypted vault exactly as stored. Hosts, passwords and private keys are never written as plaintext. Your recovery code is required to restore it on another device.</span>
-                    </span>
-                </div>
-                <button type="button" class="btn btn--primary btn--block" data-testid="backup-export"
-                        disabled="@_busy" @onclick="ExportAsync">Export encrypted backup</button>
-                <button type="button" class="btn btn--ghost btn--block" data-testid="backup-import"
-                        disabled="@_busy" @onclick="PickBackupAsync">Choose backup to restore</button>
+<section class="settings" data-testid="encrypted-backup-page">
+    <div class="settings__section">
+        <h2 class="section-label">Encrypted local backup <span class="action-pro-badge">PRO</span></h2>
+        <div class="setting-card">
+            <span class="setting-card__copy">
+                <span class="setting-card__title">Portable encrypted vault</span>
+                <span class="setting-card__body">Exports the encrypted vault exactly as stored. Hosts, passwords and private keys are never written as plaintext. Your recovery code is required to restore it on another device.</span>
+            </span>
+        </div>
+        <button type="button" class="btn btn--primary btn--block" data-testid="backup-export"
+                disabled="@_busy" @onclick="ExportAsync">Export encrypted backup</button>
+        <button type="button" class="btn btn--ghost btn--block" data-testid="backup-import"
+                disabled="@_busy" @onclick="PickBackupAsync">Choose backup to restore</button>
+    </div>
+
+    @if (_selected is not null)
+    {
+        <div class="settings__section" data-testid="backup-restore-form">
+            <h2 class="section-label">Restore backup</h2>
+            <div class="setting-card">
+                <span class="setting-card__copy">
+                    <span class="setting-card__title">@_selected.Name</span>
+                    <span class="setting-card__body mono">schema @_selected.Info.SchemaVersion · revision @_selected.Info.Revision · @FormatBytes(_selected.Info.SizeBytes)</span>
+                    <span class="setting-card__body">Written by device @_selected.Info.DeviceId. Restoring replaces the current vault only after the recovery code has successfully decrypted and authenticated this backup.</span>
+                </span>
             </div>
+            <label class="field">
+                <span class="field__label">Recovery code</span>
+                <input class="field__input mono" type="password" autocomplete="off" spellcheck="false"
+                       data-testid="backup-recovery-code" @bind="_recoveryCode" @bind:event="oninput" />
+            </label>
+            <label class="forward-option">
+                <input type="checkbox" data-testid="backup-confirm-replace" @bind="_confirmReplace" />
+                <span>
+                    <strong>Replace this device's current vault</strong>
+                    <small>The selected backup is validated before the current encrypted vault is touched. If replacement fails, MeowSSH restores the previous encrypted vault.</small>
+                </span>
+            </label>
+            <button type="button" class="btn btn--danger btn--block" data-testid="backup-restore"
+                    disabled="@(_busy || !_confirmReplace || string.IsNullOrWhiteSpace(_recoveryCode))"
+                    @onclick="RestoreAsync">Restore encrypted vault</button>
+            <button type="button" class="btn btn--ghost btn--block" disabled="@_busy" @onclick="CancelRestore">Cancel</button>
+        </div>
+    }
 
-            @if (_selected is not null)
-            {
-                <div class="settings__section" data-testid="backup-restore-form">
-                    <h2 class="section-label">Restore backup</h2>
-                    <div class="setting-card">
-                        <span class="setting-card__copy">
-                            <span class="setting-card__title">@_selected.Name</span>
-                            <span class="setting-card__body mono">schema @_selected.Info.SchemaVersion · revision @_selected.Info.Revision · @FormatBytes(_selected.Info.SizeBytes)</span>
-                            <span class="setting-card__body">Written by device @_selected.Info.DeviceId. Restoring replaces the current vault only after the recovery code has successfully decrypted and authenticated this backup.</span>
-                        </span>
-                    </div>
-                    <label class="field">
-                        <span class="field__label">Recovery code</span>
-                        <input class="field__input mono" type="password" autocomplete="off" spellcheck="false"
-                               data-testid="backup-recovery-code" @bind="_recoveryCode" @bind:event="oninput" />
-                    </label>
-                    <label class="forward-option">
-                        <input type="checkbox" data-testid="backup-confirm-replace" @bind="_confirmReplace" />
-                        <span>
-                            <strong>Replace this device's current vault</strong>
-                            <small>The selected backup is validated before the current encrypted vault is touched. If replacement fails, MeowSSH restores the previous encrypted vault.</small>
-                        </span>
-                    </label>
-                    <button type="button" class="btn btn--danger btn--block" data-testid="backup-restore"
-                            disabled="@(_busy || !_confirmReplace || string.IsNullOrWhiteSpace(_recoveryCode))"
-                            @onclick="RestoreAsync">Restore encrypted vault</button>
-                    <button type="button" class="btn btn--ghost btn--block" disabled="@_busy" @onclick="CancelRestore">Cancel</button>
+    @if (_restoredNeedsRebind)
+    {
+        <div class="settings__section" data-testid="backup-rebind-section">
+            <h2 class="section-label">Device unlock</h2>
+            <div class="notice">
+                <Icon Name="shield" />
+                <div>
+                    <p class="notice__title">Backup restored</p>
+                    <p class="notice__body">The restored vault is open with its recovery code. Enable biometric/device unlock only after the restore is committed; this intentionally happens outside the rollback transaction.</p>
                 </div>
-            }
+            </div>
+            <button type="button" class="btn btn--primary btn--block" data-testid="backup-rebind"
+                    disabled="@_busy" @onclick="RebindAsync">Enable biometric unlock on this device</button>
+        </div>
+    }
 
-            @if (_restoredNeedsRebind)
-            {
-                <div class="settings__section" data-testid="backup-rebind-section">
-                    <h2 class="section-label">Device unlock</h2>
-                    <div class="notice">
-                        <Icon Name="shield" />
-                        <div>
-                            <p class="notice__title">Backup restored</p>
-                            <p class="notice__body">The restored vault is open with its recovery code. Enable biometric/device unlock only after the restore is committed; this intentionally happens outside the rollback transaction.</p>
-                        </div>
-                    </div>
-                    <button type="button" class="btn btn--primary btn--block" data-testid="backup-rebind"
-                            disabled="@_busy" @onclick="RebindAsync">Enable biometric unlock on this device</button>
-                </div>
-            }
-
-            @if (!string.IsNullOrWhiteSpace(_message))
-            {
-                <p class="setting-card__body" role="status" data-testid="backup-message">@_message</p>
-            }
-        </section>
-    </ChildContent>
-</AppShell>
+    @if (!string.IsNullOrWhiteSpace(_message))
+    {
+        <p class="setting-card__body" role="status" data-testid="backup-message">@_message</p>
+    }
+</section>
 
 @code {
     private bool _busy;
@@ -79,8 +75,6 @@
     private string _recoveryCode = "";
     private bool _confirmReplace;
     private bool _restoredNeedsRebind;
-
-    [Parameter] public EventCallback<string> OnTabSelected { get; set; }
 
     private sealed record SelectedBackup(string Name, byte[] Bytes, EncryptedVaultBackupInfo Info);
 
