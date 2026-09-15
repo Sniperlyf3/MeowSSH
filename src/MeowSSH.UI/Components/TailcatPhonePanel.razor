@@ -12,7 +12,7 @@
         <article class="tailcat-card" data-testid="tailcat-server-running">
             <h2>This phone is shared</h2>
             <label class="field"><span class="field__label">Tailcat address</span><textarea class="field__input mono" rows="4" readonly data-testid="tailcat-server-address">@server.Address</textarea></label>
-            <p>@(server.ExitNodeEnabled ? "Exit node · " : "")@(server.AllowsAnyClient ? "INSECURE: any Tailcat client · " : "")@(server.ShellEnabled ? (server.UseTailcatCredentialForShell ? "Shell (Tailcat credential only) · " : "Shell · ") : "")@(server.FilesEnabled ? $"Files ({server.FileMode})" : "")</p>
+            <p>@(server.ExitNodeEnabled ? "Exit node · " : "")@(server.AllowsAnyClient ? "INSECURE: any Tailcat client · " : "")@(server.ShellEnabled ? (server.UseTailcatCredentialForShell ? "Shell (Tailcat credential only) · " : "Shell · ") : "")@(server.FilesEnabled ? $"Files ({server.FileMode}) · " : "")@(server.ServeTargets.Count > 0 ? $"Services: {string.Join(", ", server.ServeTargets)}" : "")</p>
             <p class="field__hint">Expires @server.ExpiresAt.ToLocalTime().ToString("g"). Treat the address as a secret credential.</p>
             <button class="btn btn--danger btn--block" disabled="@_busy" data-testid="stop-tailcat-server" @onclick="StopAsync">Stop sharing</button>
         </article>
@@ -27,12 +27,7 @@
                     <legend class="field__label">Saved Tailcat identities allowed to connect</legend>
                     @foreach (var key in _savedTailcatClientKeys)
                     {
-                        <label class="forward-option">
-                            <input type="checkbox" data-testid="tailcat-saved-client-key"
-                                   checked="@_selectedTailcatClientNames.Contains(key.Name)"
-                                   @onchange="e => SetSavedTailcatClient(key.Name, e.Value is true)" />
-                            <span><strong>@key.Name</strong><small class="mono tailcat-break">@key.PublicKey</small></span>
-                        </label>
+                        <label class="forward-option"><input type="checkbox" data-testid="tailcat-saved-client-key" checked="@_selectedTailcatClientNames.Contains(key.Name)" @onchange="e => SetSavedTailcatClient(key.Name, e.Value is true)" /><span><strong>@key.Name</strong><small class="mono tailcat-break">@key.PublicKey</small></span></label>
                     }
                     <span class="field__hint">Only the public <span class="mono">nodekey:</span> value is sent to the server allowlist.</span>
                 </fieldset>
@@ -45,11 +40,7 @@
                 <label class="forward-option"><input type="checkbox" data-testid="tailcat-insecure-exit-node" @bind="_allowAnyClient" /><span><strong>Insecure: allow any Tailcat client</strong><small>Disable the Tailcat client-key allowlist for this exit node.</small></span></label>
                 @if (_allowAnyClient)
                 {
-                    <div class="tailcat-danger-warning" role="alert" data-testid="tailcat-insecure-warning">
-                        <strong>Warning: this removes Tailcat client authentication.</strong>
-                        <p>Anyone who obtains this Tailcat address can connect and route traffic through this phone. If file sharing is enabled, that service is also no longer protected by the Tailcat client-key allowlist.</p>
-                        <label class="forward-option"><input type="checkbox" data-testid="tailcat-insecure-confirm" @bind="_insecureConfirmed" /><span><strong>I understand the risk</strong><small>Required before starting an insecure exit node.</small></span></label>
-                    </div>
+                    <div class="tailcat-danger-warning" role="alert" data-testid="tailcat-insecure-warning"><strong>Warning: this removes Tailcat client authentication.</strong><p>Anyone who obtains this Tailcat address can connect and route traffic through this phone. Other enabled services are also no longer protected by the Tailcat client-key allowlist.</p><label class="forward-option"><input type="checkbox" data-testid="tailcat-insecure-confirm" @bind="_insecureConfirmed" /><span><strong>I understand the risk</strong><small>Required before starting an insecure exit node.</small></span></label></div>
                 }
             }
             <label class="forward-option"><input type="checkbox" data-testid="tailcat-shell" @bind="_shell" /><span><strong>Remote shell</strong><small>Expose a shell over the encrypted Tailcat tunnel.</small></span></label>
@@ -58,32 +49,15 @@
                 <label class="forward-option"><input type="checkbox" data-testid="tailcat-insecure-shell" @bind="_useTailcatCredentialForShell" /><span><strong>Insecure shell: no SSH keys</strong><small>Use possession of the Tailcat tunnel credential instead of SSH authorized keys.</small></span></label>
                 @if (_useTailcatCredentialForShell)
                 {
-                    <div class="tailcat-danger-warning" role="alert" data-testid="tailcat-insecure-shell-warning">
-                        <strong>Warning: the Tailcat address is the shell credential.</strong>
-                        <p>The WireGuard tunnel remains encrypted. Anyone who obtains this Tailcat address can get a shell unless a Tailcat client-key allowlist also restricts access. Keep the address secret and never publish it in DNS or another public location.</p>
-                        <label class="forward-option"><input type="checkbox" data-testid="tailcat-insecure-shell-confirm" @bind="_insecureShellConfirmed" /><span><strong>I understand the risk</strong><small>Required before starting a shell without SSH authorized keys.</small></span></label>
-                    </div>
+                    <div class="tailcat-danger-warning" role="alert" data-testid="tailcat-insecure-shell-warning"><strong>Warning: the Tailcat address is the shell credential.</strong><p>The WireGuard tunnel remains encrypted. Anyone who obtains this Tailcat address can get a shell unless a Tailcat client-key allowlist also restricts access.</p><label class="forward-option"><input type="checkbox" data-testid="tailcat-insecure-shell-confirm" @bind="_insecureShellConfirmed" /><span><strong>I understand the risk</strong><small>Required before starting a shell without SSH authorized keys.</small></span></label></div>
                 }
                 else
                 {
                     @if (_sshPublicKeys.Count > 0)
                     {
-                        <fieldset class="field" data-testid="tailcat-saved-ssh-keys">
-                            <legend class="field__label">Saved SSH public keys</legend>
-                            @foreach (var credential in _sshPublicKeys)
-                            {
-                                <label class="forward-option">
-                                    <input type="checkbox"
-                                           data-testid="tailcat-saved-ssh-key"
-                                           checked="@_selectedSshKeyIds.Contains(credential.Id)"
-                                           @onchange="e => SetSavedSshKey(credential.Id, e.Value is true)" />
-                                    <span><strong>@credential.Label</strong><small class="mono">@credential.DisplayHint</small></span>
-                                </label>
-                            }
-                            <span class="field__hint">Selected keys are added to the shell's authorized_keys list. Private key material never leaves the vault.</span>
-                        </fieldset>
+                        <fieldset class="field" data-testid="tailcat-saved-ssh-keys"><legend class="field__label">Saved SSH public keys</legend>@foreach (var credential in _sshPublicKeys){<label class="forward-option"><input type="checkbox" data-testid="tailcat-saved-ssh-key" checked="@_selectedSshKeyIds.Contains(credential.Id)" @onchange="e => SetSavedSshKey(credential.Id, e.Value is true)" /><span><strong>@credential.Label</strong><small class="mono">@credential.DisplayHint</small></span></label>}<span class="field__hint">Selected keys are added to authorized_keys. Private key material never leaves the vault.</span></fieldset>
                     }
-                    <label class="field"><span class="field__label">Additional authorized SSH keys</span><textarea class="field__input mono" rows="3" data-testid="tailcat-authorized-ssh" placeholder="ssh-ed25519 AAAA..." @bind="_authorizedSsh" @bind:event="oninput"></textarea><span class="field__hint">Optional when at least one saved public key is selected.</span></label>
+                    <label class="field"><span class="field__label">Additional authorized SSH keys</span><textarea class="field__input mono" rows="3" data-testid="tailcat-authorized-ssh" placeholder="ssh-ed25519 AAAA..." @bind="_authorizedSsh" @bind:event="oninput"></textarea></label>
                 }
             }
             <label class="forward-option"><input type="checkbox" data-testid="tailcat-files" @bind="_files" /><span><strong>Share a folder</strong><small>Expose one directory over Tailcat SFTP.</small></span></label>
@@ -92,37 +66,25 @@
                 <label class="field"><span class="field__label">Folder path</span><input class="field__input mono" data-testid="tailcat-share-path" @bind="_folder" @bind:event="oninput" /></label>
                 <label class="field"><span class="field__label">Access</span><select class="field__input" data-testid="tailcat-file-mode" @bind="_fileMode"><option value="ro">Read only</option><option value="rw">Read / write</option><option value="wo">Upload only</option><option value="wo+">Upload + directories</option></select></label>
             }
+            <label class="field"><span class="field__label">Additional services</span><textarea class="field__input mono" rows="2" data-testid="tailcat-serve-targets" placeholder="80,443,8000-8010" @bind="_serveTargets" @bind:event="oninput"></textarea><span class="field__hint">Comma- or line-separated Tailcat serve targets. Ports, ranges, and <span class="mono">all</span> are passed directly to Tailcat.</span></label>
+            @if (ServeTargetList.Any(target => string.Equals(target, "all", StringComparison.OrdinalIgnoreCase)))
+            {
+                <p class="tailcat-danger-warning" role="alert" data-testid="tailcat-serve-all-warning"><strong>Serving all ports exposes every reachable local service through this Tailcat address.</strong></p>
+            }
 
             <details class="tailcat-advanced" data-testid="tailcat-server-address-options">
                 <summary>Address and DERP options</summary>
                 <div class="tailcat-stack">
                     @if (_savedTailcatIdentities.Count > 0)
                     {
-                        <label class="field">
-                            <span class="field__label">Server identity</span>
-                            <select class="field__input" data-testid="tailcat-server-identity" @bind="_serverIdentityName">
-                                <option value="">Ephemeral — new address each start</option>
-                                @foreach (var name in _savedTailcatIdentities)
-                                {
-                                    <option value="@name">@name</option>
-                                }
-                            </select>
-                            <span class="field__hint">A saved identity gives this phone a stable/reusable Tailcat address across restarts.</span>
-                        </label>
-                        @if (!string.IsNullOrWhiteSpace(_serverIdentityName))
-                        {
-                            <div class="tailcat-danger-warning" role="note" data-testid="tailcat-persistent-identity-warning">
-                                <strong>Persistent address selected.</strong>
-                                <p>Anyone who has received this identity's address may try it again on future starts. Use the Tailcat client allowlist and/or SSH authentication when the address is not strictly private.</p>
-                            </div>
-                        }
+                        <label class="field"><span class="field__label">Server identity</span><select class="field__input" data-testid="tailcat-server-identity" @bind="_serverIdentityName"><option value="">Ephemeral — new address each start</option>@foreach (var name in _savedTailcatIdentities){<option value="@name">@name</option>}</select><span class="field__hint">A saved identity gives this phone a stable/reusable Tailcat address across restarts.</span></label>
+                        @if (!string.IsNullOrWhiteSpace(_serverIdentityName)) { <div class="tailcat-danger-warning" role="note" data-testid="tailcat-persistent-identity-warning"><strong>Persistent address selected.</strong><p>Anyone who has received this identity's address may try it again on future starts.</p></div> }
                     }
-                    <label class="forward-option"><input type="checkbox" data-testid="tailcat-full-address" @bind="_fullAddress" /><span><strong>Embed DERP details in address</strong><small>Publish a self-contained/full Tailcat address so clients do not need to fetch a DERP map.</small></span></label>
-                    <label class="forward-option"><input type="checkbox" data-testid="tailcat-use-psk" @bind="_usePresharedKey" /><span><strong>Embed WireGuard pre-shared key</strong><small>Recommended. Adds a PSK to the Tailcat address in addition to WireGuard public-key authentication.</small></span></label>
-                    <label class="field"><span class="field__label">Custom DERP map URL</span><input class="field__input mono" data-testid="tailcat-server-derpmap" placeholder="https://…/derpmap/default" @bind="_derpMapUrl" @bind:event="oninput" /><span class="field__hint">Optional. Leave blank for Tailcat's default DERP map.</span></label>
+                    <label class="forward-option"><input type="checkbox" data-testid="tailcat-full-address" @bind="_fullAddress" /><span><strong>Embed DERP details in address</strong><small>Publish a self-contained/full Tailcat address.</small></span></label>
+                    <label class="forward-option"><input type="checkbox" data-testid="tailcat-use-psk" @bind="_usePresharedKey" /><span><strong>Embed WireGuard pre-shared key</strong><small>Recommended. Adds a PSK in addition to WireGuard public-key authentication.</small></span></label>
+                    <label class="field"><span class="field__label">Custom DERP map URL</span><input class="field__input mono" data-testid="tailcat-server-derpmap" placeholder="https://…/derpmap/default" @bind="_derpMapUrl" @bind:event="oninput" /></label>
                 </div>
             </details>
-
             @if (_exitNode) { <p class="note"><Icon Name="alert" /> Only authorize client keys you trust.</p> }
             <button class="btn btn--primary btn--block" disabled="@(_busy || !CanStart)" data-testid="start-tailcat-server" @onclick="StartAsync">Start sharing</button>
         </article>
@@ -131,7 +93,6 @@
 
 @code {
     private sealed record SavedTailcatClientKey(string Name, string PublicKey);
-
     private string _allowedClients = "";
     private IReadOnlyList<SavedTailcatClientKey> _savedTailcatClientKeys = [];
     private readonly HashSet<string> _selectedTailcatClientNames = new(StringComparer.Ordinal);
@@ -148,6 +109,7 @@
     private bool _files;
     private string _folder = "";
     private string _fileMode = "ro";
+    private string _serveTargets = "";
     private IReadOnlyList<string> _savedTailcatIdentities = [];
     private string _serverIdentityName = "";
     private bool _fullAddress;
@@ -157,105 +119,54 @@
     private string? _error;
     private string? _notice;
 
-    private bool CanStart => (_allowAnyClient || HasAllowedTailcatClients) && (_exitNode || _shell || _files)
+    private IReadOnlyList<string> ServeTargetList => [.. _serveTargets.Split([',', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Distinct(StringComparer.Ordinal)];
+    private bool CanStart => (_allowAnyClient || HasAllowedTailcatClients) && (_exitNode || _shell || _files || ServeTargetList.Count > 0)
         && (!_allowAnyClient || (_exitNode && _insecureConfirmed))
         && (!_useTailcatCredentialForShell || (_shell && _insecureShellConfirmed))
         && (!_shell || _useTailcatCredentialForShell || HasAuthorizedSshKeys) && (!_files || !string.IsNullOrWhiteSpace(_folder))
         && _hours is >= 1 and <= 24;
-
     private bool HasAllowedTailcatClients => !string.IsNullOrWhiteSpace(_allowedClients) || _selectedTailcatClientNames.Count > 0;
     private bool HasAuthorizedSshKeys => !string.IsNullOrWhiteSpace(_authorizedSsh) || _selectedSshKeyIds.Count > 0;
 
     protected override async Task OnInitializedAsync()
     {
-        _sshPublicKeys = [.. (await Editor.GetCredentialsAsync())
-            .Where(c => !string.IsNullOrWhiteSpace(c.PublicKey))
-            .OrderBy(c => c.Label, StringComparer.OrdinalIgnoreCase)];
+        _sshPublicKeys = [.. (await Editor.GetCredentialsAsync()).Where(c => !string.IsNullOrWhiteSpace(c.PublicKey)).OrderBy(c => c.Label, StringComparer.OrdinalIgnoreCase)];
         _savedTailcatIdentities = [.. (await Hub.ListKeysAsync()).OrderBy(name => name, StringComparer.OrdinalIgnoreCase)];
-
         var clientKeys = new List<SavedTailcatClientKey>();
         foreach (var name in _savedTailcatIdentities)
         {
-            try
-            {
-                var publicKey = await Hub.GetClientPublicKeyAsync(name);
-                if (publicKey.StartsWith("nodekey:", StringComparison.Ordinal))
-                    clientKeys.Add(new SavedTailcatClientKey(name, publicKey.Trim()));
-            }
-            catch
-            {
-                // A saved server identity may not be usable as a client identity.
-            }
+            try { var publicKey = await Hub.GetClientPublicKeyAsync(name); if (publicKey.StartsWith("nodekey:", StringComparison.Ordinal)) clientKeys.Add(new SavedTailcatClientKey(name, publicKey.Trim())); }
+            catch { }
         }
         _savedTailcatClientKeys = clientKeys;
     }
-
-    private void SetSavedTailcatClient(string name, bool selected)
-    {
-        if (selected) _selectedTailcatClientNames.Add(name);
-        else _selectedTailcatClientNames.Remove(name);
-    }
-
+    private void SetSavedTailcatClient(string name, bool selected) { if (selected) _selectedTailcatClientNames.Add(name); else _selectedTailcatClientNames.Remove(name); }
     private string AllowedTailcatClientKeys()
     {
-        var saved = _savedTailcatClientKeys
-            .Where(key => _selectedTailcatClientNames.Contains(key.Name))
-            .Select(key => key.PublicKey);
+        var saved = _savedTailcatClientKeys.Where(key => _selectedTailcatClientNames.Contains(key.Name)).Select(key => key.PublicKey);
         var manual = _allowedClients.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         return string.Join(',', saved.Concat(manual).Distinct(StringComparer.Ordinal));
     }
-
-    private void SetSavedSshKey(Guid id, bool selected)
-    {
-        if (selected) _selectedSshKeyIds.Add(id);
-        else _selectedSshKeyIds.Remove(id);
-    }
-
+    private void SetSavedSshKey(Guid id, bool selected) { if (selected) _selectedSshKeyIds.Add(id); else _selectedSshKeyIds.Remove(id); }
     private string AuthorizedSshKeys()
     {
-        var saved = _sshPublicKeys
-            .Where(c => _selectedSshKeyIds.Contains(c.Id))
-            .Select(c => c.PublicKey!)
-            .Where(key => !string.IsNullOrWhiteSpace(key));
-        IEnumerable<string> manual = string.IsNullOrWhiteSpace(_authorizedSsh)
-            ? Array.Empty<string>()
-            : [_authorizedSsh.Trim()];
+        var saved = _sshPublicKeys.Where(c => _selectedSshKeyIds.Contains(c.Id)).Select(c => c.PublicKey!).Where(key => !string.IsNullOrWhiteSpace(key));
+        IEnumerable<string> manual = string.IsNullOrWhiteSpace(_authorizedSsh) ? Array.Empty<string>() : [_authorizedSsh.Trim()];
         return string.Join(Environment.NewLine, saved.Concat(manual));
     }
-
-    private bool HasLongLivedTailcat()
-    {
-        var s = Hub.Snapshot;
-        return s.Server is not null || s.Socks is not null || s.Forwards.Count > 0;
-    }
-
+    private bool HasLongLivedTailcat() { var s = Hub.Snapshot; return s.Server is not null || s.Socks is not null || s.Forwards.Count > 0; }
     private async Task StartAsync()
     {
-        _busy = true; _error = _notice = null;
-        var wasActive = HasLongLivedTailcat();
+        _busy = true; _error = _notice = null; var wasActive = HasLongLivedTailcat();
         try
         {
             if (!wasActive) await SessionLifetime.StartAsync();
             try
             {
-                var privateKeyJson = string.IsNullOrWhiteSpace(_serverIdentityName)
-                    ? null
-                    : await IdentityStore.ExportAsync(_serverIdentityName);
-                await Hub.StartServerAsync(new TailcatServeRequest(
-                    TimeSpan.FromHours(_hours),
-                    AllowedTailcatClientKeys(),
-                    _shell,
-                    AuthorizedSshKeys(),
-                    _files,
-                    _folder,
-                    _fileMode,
-                    _exitNode,
-                    AllowAnyClient: _allowAnyClient,
-                    UseTailcatCredentialForShell: _useTailcatCredentialForShell,
-                    FullAddress: _fullAddress,
-                    UsePresharedKey: _usePresharedKey,
-                    DerpMapUrl: Empty(_derpMapUrl),
-                    PrivateKeyJson: privateKeyJson));
+                var privateKeyJson = string.IsNullOrWhiteSpace(_serverIdentityName) ? null : await IdentityStore.ExportAsync(_serverIdentityName);
+                await Hub.StartServerAsync(new TailcatServeRequest(TimeSpan.FromHours(_hours), AllowedTailcatClientKeys(), _shell, AuthorizedSshKeys(), _files, _folder, _fileMode, _exitNode,
+                    AllowAnyClient: _allowAnyClient, UseTailcatCredentialForShell: _useTailcatCredentialForShell, FullAddress: _fullAddress, UsePresharedKey: _usePresharedKey,
+                    DerpMapUrl: Empty(_derpMapUrl), PrivateKeyJson: privateKeyJson, ServeTargets: ServeTargetList));
             }
             catch { if (!wasActive) await SessionLifetime.StopAsync(); throw; }
             _notice = "Tailcat sharing started.";
@@ -263,7 +174,6 @@
         catch (Exception ex) { _error = ex.Message; }
         finally { _busy = false; }
     }
-
     private async Task StopAsync()
     {
         _busy = true; _error = _notice = null;
@@ -271,6 +181,5 @@
         catch (Exception ex) { _error = ex.Message; }
         finally { _busy = false; }
     }
-
     private static string? Empty(string value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }
