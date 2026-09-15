@@ -409,9 +409,9 @@ public sealed class MeowshellTailcatHubService : ITailcatHubService
         if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException("A local path is required.", nameof(path));
     }
 
-    private static IReadOnlyList<string> NormalizeServeTargets(IReadOnlyList<string>? targets) =>
+    private static string[] NormalizeServeTargets(IReadOnlyList<string>? targets) =>
         targets is null
-            ? Array.Empty<string>()
+            ? []
             : [.. targets.Select(target => target?.Trim() ?? string.Empty).Where(target => target.Length > 0).Distinct(StringComparer.Ordinal)];
 
     private static void ValidateServerRequest(TailcatServeRequest request)
@@ -420,7 +420,7 @@ public sealed class MeowshellTailcatHubService : ITailcatHubService
             throw new ArgumentOutOfRangeException(nameof(request), "Tailcat sharing lifetime must be between 1 second and 24 hours.");
         if (request.ServeTargets?.Any(string.IsNullOrWhiteSpace) is true)
             throw new ArgumentException("Serve targets cannot contain blank entries.", nameof(request));
-        if (!request.EnableShell && !request.EnableFiles && !request.EnableExitNode && NormalizeServeTargets(request.ServeTargets).Count == 0)
+        if (!request.EnableShell && !request.EnableFiles && !request.EnableExitNode && NormalizeServeTargets(request.ServeTargets).Length == 0)
             throw new ArgumentException("Enable at least one Tailcat service.", nameof(request));
         if (request.AllowAnyClient && !request.EnableExitNode)
             throw new ArgumentException("Insecure Tailcat client mode is only available when exit-node mode is enabled.", nameof(request));
