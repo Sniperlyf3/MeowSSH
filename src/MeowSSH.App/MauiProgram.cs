@@ -28,7 +28,12 @@ public static class MauiProgram
 
         builder.Services.AddSingleton<IStorePurchaseService, GooglePlayPurchaseService>();
         builder.Services.AddSingleton<IEntitlementCache, SecureStorageEntitlementCache>();
-        builder.Services.AddSingleton<IEntitlementGrantProvider, UnconfiguredEntitlementGrantProvider>();
+        builder.Services.AddSingleton(new LicensingApiOptions(
+            Uri.TryCreate(LicensingBuildConfig.ApiBaseUrl, UriKind.Absolute, out var licensingUri) ? licensingUri : null,
+            LicensingBuildConfig.PublicKeySubjectPublicKeyInfoBase64,
+            "dev.sniperlyf3.meowssh"));
+        builder.Services.AddSingleton(_ => new HttpClient());
+        builder.Services.AddSingleton<IEntitlementGrantProvider, LicensingApiGrantProvider>();
         builder.Services.AddSingleton<EntitlementService>();
         builder.Services.AddSingleton<IEntitlementService>(sp => sp.GetRequiredService<EntitlementService>());
 
