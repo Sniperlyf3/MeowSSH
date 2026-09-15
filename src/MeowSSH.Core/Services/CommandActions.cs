@@ -277,7 +277,7 @@ public sealed class CommandActionService(
         CommandAction action,
         Guid hostId,
         int index,
-        IReadOnlyDictionary<Guid, HostRecord> hosts,
+        Dictionary<Guid, HostRecord> hosts,
         SemaphoreSlim concurrency,
         CancellationToken cancellationToken)
     {
