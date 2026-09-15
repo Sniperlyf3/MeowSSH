@@ -2,6 +2,7 @@
 @inject ITailcatHubService Hub
 @inject IHostDirectory Hosts
 @inject IActiveSessionLifetime SessionLifetime
+@inject IExternalUriLauncher UriLauncher
 
 <div class="tailcat-stack">
     @if (_error is not null) { <p class="lock__error" role="alert">@_error</p> }
@@ -32,6 +33,7 @@
         <label class="field"><span class="field__label">Bind address</span><input class="field__input mono" data-testid="tailcat-forward-bind" @bind="_bind" @bind:event="oninput" /></label>
         <label class="field"><span class="field__label">Custom DERP map URL</span><input class="field__input mono" data-testid="tailcat-forward-derpmap" placeholder="https://…/derpmap/default" @bind="_derpMapUrl" @bind:event="oninput" /></label>
         <button class="btn btn--primary btn--block" disabled="@(_busy || string.IsNullOrWhiteSpace(_address) || MappingList.Count == 0)" data-testid="start-tailcat-forward" @onclick="StartForwardAsync">Start forward</button>
+        <button class="btn btn--ghost btn--block" disabled="@(_busy || string.IsNullOrWhiteSpace(_address))" data-testid="tailcat-browse" @onclick="BrowseAsync">Open web service (port 80)</button>
         @foreach (var forward in Hub.Snapshot.Forwards)
         {
             <div class="tailcat-running-row" data-testid="tailcat-forward-row">
@@ -73,6 +75,30 @@
 
     private async Task StartSocksAsync() => await RunStartAsync(() => Hub.StartSocksAsync(new TailcatSocksRequest(_socksListen, Empty(_clientKey), Empty(_derpMapUrl))));
     private async Task StartForwardAsync() => await RunStartAsync(() => Hub.StartForwardAsync(new TailcatForwardRequest(_address, MappingList, _bind, Empty(_clientKey), Empty(_derpMapUrl))));
+
+    private async Task BrowseAsync()
+    {
+        _busy = true;
+        _error = null;
+        var wasActive = Active();
+        TailcatForwardSnapshot? forward = null;
+        try
+        {
+            if (!wasActive) await SessionLifetime.StartAsync();
+            forward = await Hub.StartForwardAsync(new TailcatForwardRequest(_address, ["0:80"], "127.0.0.1", Empty(_clientKey), Empty(_derpMapUrl)));
+            var bound = forward.BoundAddresses.FirstOrDefault()
+                ?? throw new InvalidOperationException("Tailcat did not report the browser forward's local address.");
+            if (!await UriLauncher.OpenAsync(new Uri($"http://{bound}/", UriKind.Absolute)))
+                throw new InvalidOperationException("Android could not open a browser for the Tailcat forward.");
+        }
+        catch (Exception ex)
+        {
+            if (forward is not null) await Hub.StopForwardAsync(forward.Id);
+            if (!wasActive && !Active()) await SessionLifetime.StopAsync();
+            _error = ex.Message;
+        }
+        finally { _busy = false; }
+    }
 
     private async Task RunStartAsync(Func<Task> start)
     {
