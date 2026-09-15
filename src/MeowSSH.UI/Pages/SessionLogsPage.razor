@@ -1,3 +1,4 @@
+@using MeowSSH.UI.Services
 @implements IDisposable
 @inject ISessionLogService Logs
 @inject ILocalFileTransferService LocalFiles
@@ -6,7 +7,7 @@
 <AppShell Title="Session logs" ActiveTab="settings" OnTabSelected="SelectTabAsync">
     <Actions>
         <button type="button" class="btn btn--icon" aria-label="Back to settings"
-                data-testid="session-logs-back" @onclick="OnClosed">
+                data-testid="session-logs-back" @onclick="async () => await OnClosed.InvokeAsync()">
             <Icon Name="back" />
         </button>
     </Actions>
