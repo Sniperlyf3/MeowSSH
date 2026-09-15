@@ -1,0 +1,272 @@
+@implements IDisposable
+@inject ISessionLogService Logs
+@inject ILocalFileTransferService LocalFiles
+@inject IJSRuntime Js
+
+<AppShell Title="Session logs" ActiveTab="settings" OnTabSelected="SelectTabAsync">
+    <Actions>
+        <button type="button" class="btn btn--icon" aria-label="Back to settings"
+                data-testid="session-logs-back" @onclick="OnClosed">
+            <Icon Name="back" />
+        </button>
+    </Actions>
+
+    <ChildContent>
+        <section class="session-logs" data-testid="session-logs-page">
+            <div class="session-logs__search">
+                <label class="field">
+                    <span class="field__label">Search logs</span>
+                    <input class="field__input" data-testid="session-log-search"
+                           placeholder="Host, output, or end reason"
+                           @bind="_query" @bind:event="oninput" />
+                </label>
+                <button type="button" class="btn btn--ghost" data-testid="session-log-search-run"
+                        @onclick="SearchAsync">Search</button>
+            </div>
+
+            <div class="session-logs__summary">
+                <span>@LogCountLabel</span>
+                @if (_logs is { Count: > 0 })
+                {
+                    <button type="button" class="btn btn--ghost" data-testid="session-logs-clear"
+                            @onclick="ClearAsync">Clear completed logs</button>
+                }
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(_message))
+            {
+                <p class="action-message" role="status" data-testid="session-log-message">@_message</p>
+            }
+
+            @if (_selected is not null)
+            {
+                <article class="session-log-detail" data-testid="session-log-detail">
+                    <div class="session-log-detail__header">
+                        <div>
+                            <h2>@_selected.HostLabel</h2>
+                            <p class="action-muted">@FormatTimestamp(_selected.StartedAtUtc) · @ProtocolLabel(_selected.Protocol)</p>
+                        </div>
+                        <button type="button" class="btn btn--ghost" data-testid="session-log-close-detail"
+                                @onclick="CloseDetail">Close</button>
+                    </div>
+
+                    <div class="session-log-detail__meta">
+                        <span>@StatusLabel(_selected)</span>
+                        <span>@SizeLabel(_selected.BytesCaptured)</span>
+                        @if (_selected.Truncated)
+                        {
+                            <span class="action-pro-badge">TRUNCATED</span>
+                        }
+                    </div>
+
+                    <pre class="session-log-detail__content" data-testid="session-log-content">@(_content ?? "")</pre>
+
+                    <div class="session-log-detail__actions">
+                        <button type="button" class="btn btn--ghost" data-testid="session-log-copy"
+                                @onclick="CopyAsync">Copy</button>
+                        <button type="button" class="btn btn--primary" data-testid="session-log-export"
+                                @onclick="ExportAsync">Export .log</button>
+                        <button type="button" class="btn btn--ghost" data-testid="session-log-delete-selected"
+                                @onclick="() => DeleteAsync(_selected.Id)">Delete</button>
+                    </div>
+                </article>
+            }
+
+            @if (_logs is null)
+            {
+                <p class="visually-hidden" role="status">Loading session logs</p>
+            }
+            else if (_logs.Count == 0)
+            {
+                <div class="empty" data-testid="session-logs-empty">
+                    <span class="empty__glyph"><Icon Name="terminal" /></span>
+                    <p class="empty__title">No recorded sessions</p>
+                    <p class="empty__body">
+                        Enable automatic recording in Settings. MeowSSH records terminal output only;
+                        typed input is deliberately excluded.
+                    </p>
+                </div>
+            }
+            else
+            {
+                <div class="session-log-list" data-testid="session-log-list">
+                    @foreach (var log in _logs)
+                    {
+                        <article class="session-log-card" data-testid="session-log-@log.Id">
+                            <button type="button" class="session-log-card__main"
+                                    data-testid="view-session-log-@log.Id" @onclick="() => OpenAsync(log)">
+                                <span class="session-log-card__title">@log.HostLabel</span>
+                                <span class="session-log-card__meta">@FormatTimestamp(log.StartedAtUtc) · @StatusLabel(log)</span>
+                                <span class="session-log-card__meta">@ProtocolLabel(log.Protocol) · @SizeLabel(log.BytesCaptured)</span>
+                            </button>
+                            <button type="button" class="btn btn--ghost" aria-label="Delete session log"
+                                    data-testid="delete-session-log-@log.Id" @onclick="() => DeleteAsync(log.Id)">
+                                Delete
+                            </button>
+                        </article>
+                    }
+                </div>
+            }
+        </section>
+    </ChildContent>
+</AppShell>
+
+@code {
+    private IReadOnlyList<SessionLogSummary>? _logs;
+    private SessionLogSummary? _selected;
+    private string? _content;
+    private string _query = string.Empty;
+    private string? _message;
+
+    [Parameter] public EventCallback OnClosed { get; set; }
+    [Parameter] public EventCallback<string> OnTabSelected { get; set; }
+
+    private string LogCountLabel => _logs?.Count switch
+    {
+        null => "Loading…",
+        0 => "No logs",
+        1 => "1 log",
+        var count => $"{count} logs",
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        Logs.Changed += OnLogsChanged;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _logs = string.IsNullOrWhiteSpace(_query)
+            ? await Logs.GetAllAsync()
+            : await Logs.SearchAsync(_query);
+    }
+
+    private async Task SearchAsync()
+    {
+        _message = null;
+        await LoadAsync();
+    }
+
+    private async Task OpenAsync(SessionLogSummary log)
+    {
+        _message = null;
+        _selected = log;
+        try
+        {
+            _content = await Logs.ReadAsync(log.Id);
+        }
+        catch (KeyNotFoundException)
+        {
+            _selected = null;
+            _content = null;
+            _message = "That log no longer exists.";
+            await LoadAsync();
+        }
+    }
+
+    private void CloseDetail()
+    {
+        _selected = null;
+        _content = null;
+    }
+
+    private async Task CopyAsync()
+    {
+        if (_content is null) return;
+        try
+        {
+            await Js.InvokeVoidAsync("navigator.clipboard.writeText", _content);
+            _message = "Copied session log to the clipboard.";
+        }
+        catch (JSException)
+        {
+            _message = "The clipboard is not available on this device.";
+        }
+    }
+
+    private async Task ExportAsync()
+    {
+        if (_selected is null || _content is null) return;
+
+        var fileName = $"meowssh-{SafeFileName(_selected.HostLabel)}-{_selected.StartedAtUtc:yyyyMMdd-HHmmss}.log";
+        var temporary = LocalFiles.CreateTemporaryPath(fileName);
+        try
+        {
+            await File.WriteAllTextAsync(temporary, _content);
+            var destination = await LocalFiles.PublishDownloadAsync(temporary, fileName);
+            _message = $"Exported session log to {destination}.";
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            _message = $"Could not export the session log: {exception.Message}";
+        }
+        finally
+        {
+            LocalFiles.DeleteTemporaryFile(temporary);
+        }
+    }
+
+    private async Task DeleteAsync(Guid id)
+    {
+        await Logs.DeleteAsync(id);
+        if (_selected?.Id == id) CloseDetail();
+        _message = "Session log deleted.";
+        await LoadAsync();
+    }
+
+    private async Task ClearAsync()
+    {
+        await Logs.ClearAsync();
+        if (_selected is { EndedAtUtc: not null }) CloseDetail();
+        _message = "Completed session logs cleared.";
+        await LoadAsync();
+    }
+
+    private async Task SelectTabAsync(string tab)
+    {
+        await OnTabSelected.InvokeAsync(tab);
+    }
+
+    private void OnLogsChanged(object? sender, EventArgs e) =>
+        _ = InvokeAsync(async () =>
+        {
+            await LoadAsync();
+            StateHasChanged();
+        });
+
+    private static string StatusLabel(SessionLogSummary log)
+    {
+        if (log.EndedAtUtc is null) return "recording / interrupted";
+        if (log.ExitCode is { } exitCode) return exitCode == 0 ? "exit 0" : $"exit {exitCode}";
+        return string.IsNullOrWhiteSpace(log.EndReason) ? "ended" : log.EndReason;
+    }
+
+    private static string ProtocolLabel(HostProtocol protocol) => protocol switch
+    {
+        HostProtocol.Ssh => "SSH",
+        HostProtocol.Mosh => "Mosh",
+        HostProtocol.Telnet => "Telnet",
+        HostProtocol.Serial => "Serial",
+        HostProtocol.Local => "Local",
+        _ => protocol.ToString(),
+    };
+
+    private static string FormatTimestamp(DateTimeOffset timestamp) => timestamp.LocalDateTime.ToString("g");
+
+    private static string SizeLabel(long bytes) => bytes switch
+    {
+        < 1024 => $"{bytes} B",
+        < 1024 * 1024 => $"{bytes / 1024d:F1} KiB",
+        _ => $"{bytes / (1024d * 1024d):F1} MiB",
+    };
+
+    private static string SafeFileName(string value)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        var cleaned = new string(value.Select(character => invalid.Contains(character) ? '_' : character).ToArray());
+        return string.IsNullOrWhiteSpace(cleaned) ? "session" : cleaned.Trim();
+    }
+
+    public void Dispose() => Logs.Changed -= OnLogsChanged;
+}
