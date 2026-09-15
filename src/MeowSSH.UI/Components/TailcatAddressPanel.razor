@@ -1,7 +1,9 @@
 @using QRCoder
+@using MeowSSH.UI.Services
 @inject ITailcatHubService Hub
 @inject IHostDirectory Hosts
 @inject IHostEditor Editor
+@inject IQrScanner QrScanner
 @inject IJSRuntime Js
 
 <div class="tailcat-stack">
@@ -16,62 +18,42 @@
                 <span class="field__label">Saved Tailcat peer</span>
                 <select class="field__input" data-testid="tailcat-address-saved-peer" @onchange="SelectPeer">
                     <option value="">Choose a saved host…</option>
-                    @foreach (var peer in _savedPeers)
-                    {
-                        <option value="@peer.Id">@peer.Label</option>
-                    }
+                    @foreach (var peer in _savedPeers) { <option value="@peer.Id">@peer.Label</option> }
                 </select>
             </label>
         }
         <label class="field">
             <span class="field__label">Tailcat address or DNS name</span>
-            <textarea class="field__input mono" rows="4" data-testid="tailcat-address-input"
-                      placeholder="tc… or host.example.com"
-                      @bind="_address" @bind:event="oninput"></textarea>
+            <textarea class="field__input mono" rows="4" data-testid="tailcat-address-input" placeholder="tc… or host.example.com" @bind="_address" @bind:event="oninput"></textarea>
             <span class="field__hint">Treat Tailcat addresses as secrets: possession can grant access depending on the server configuration.</span>
         </label>
+        <button class="btn btn--ghost btn--block" disabled="@_busy" data-testid="tailcat-scan-address-qr" @onclick="ScanQrAsync">Scan Tailcat QR</button>
         <label class="field">
             <span class="field__label">Custom DERP map URL</span>
-            <input class="field__input mono" data-testid="tailcat-address-derpmap"
-                   placeholder="https://…/derpmap/default"
-                   @bind="_derpMapUrl" @bind:event="oninput" />
+            <input class="field__input mono" data-testid="tailcat-address-derpmap" placeholder="https://…/derpmap/default" @bind="_derpMapUrl" @bind:event="oninput" />
             <span class="field__hint">Optional. Leave blank for Tailcat's default map. Useful with private/custom DERP infrastructure.</span>
         </label>
         <div class="form__row">
-            <button class="btn btn--primary field--grow" disabled="@(_busy || string.IsNullOrWhiteSpace(_address))"
-                    data-testid="tailcat-resolve-address" @onclick="ResolveAsync">
-                @(_busy ? "Working…" : "Embed DERP details")
-            </button>
-            <button class="btn btn--ghost field--grow" disabled="@(_busy || string.IsNullOrWhiteSpace(_address))"
-                    data-testid="tailcat-inspect-address" @onclick="InspectAsync">Inspect</button>
+            <button class="btn btn--primary field--grow" disabled="@(_busy || string.IsNullOrWhiteSpace(_address))" data-testid="tailcat-resolve-address" @onclick="ResolveAsync">@(_busy ? "Working…" : "Embed DERP details")</button>
+            <button class="btn btn--ghost field--grow" disabled="@(_busy || string.IsNullOrWhiteSpace(_address))" data-testid="tailcat-inspect-address" @onclick="InspectAsync">Inspect</button>
         </div>
 
         @if (_resolvedAddress is not null)
         {
-            <label class="field">
-                <span class="field__label">Self-contained address</span>
-                <textarea class="field__input field__input--code mono" rows="5" readonly
-                          data-testid="tailcat-resolved-address">@_resolvedAddress</textarea>
-                <span class="field__hint">This expanded address embeds the relay information needed by the client, so it does not need a DERP-map lookup.</span>
-            </label>
+            <label class="field"><span class="field__label">Self-contained address</span><textarea class="field__input field__input--code mono" rows="5" readonly data-testid="tailcat-resolved-address">@_resolvedAddress</textarea><span class="field__hint">This expanded address embeds the relay information needed by the client, so it does not need a DERP-map lookup.</span></label>
         }
 
         @if (!string.IsNullOrWhiteSpace(AddressToSave))
         {
             <div class="form__row">
-                <button class="btn btn--ghost field--grow" data-testid="tailcat-copy-resolved-address"
-                        @onclick="() => CopyAsync(AddressToSave)"><Icon Name="copy" /> Copy address</button>
-                <button class="btn btn--ghost field--grow" data-testid="tailcat-show-address-qr"
-                        @onclick="ToggleQr">@(_qrSvg is null ? "Show QR" : "Hide QR")</button>
+                <button class="btn btn--ghost field--grow" data-testid="tailcat-copy-resolved-address" @onclick="() => CopyAsync(AddressToSave)"><Icon Name="copy" /> Copy address</button>
+                <button class="btn btn--ghost field--grow" data-testid="tailcat-show-address-qr" @onclick="ToggleQr">@(_qrSvg is null ? "Show QR" : "Hide QR")</button>
             </div>
         }
 
         @if (_qrSvg is not null)
         {
-            <div class="tailcat-qr" data-testid="tailcat-address-qr">
-                @((MarkupString)_qrSvg)
-                <p class="field__hint"><strong>Keep this QR private.</strong> It contains the Tailcat address itself and can therefore contain credential material.</p>
-            </div>
+            <div class="tailcat-qr" data-testid="tailcat-address-qr">@((MarkupString)_qrSvg)<p class="field__hint"><strong>Keep this QR private.</strong> It contains the Tailcat address itself and can therefore contain credential material.</p></div>
         }
     </article>
 
@@ -88,20 +70,10 @@
             </dl>
             @foreach (var region in details.EmbeddedRegions)
             {
-                <div class="tailcat-running-row" data-testid="tailcat-address-region">
-                    <span>
-                        <strong>@(region.Name ?? region.Code ?? $"Region {region.RegionId}")</strong>
-                        <small>@region.Nodes.Count relay node@(region.Nodes.Count == 1 ? "" : "s")</small>
-                    </span>
-                </div>
+                <div class="tailcat-running-row" data-testid="tailcat-address-region"><span><strong>@(region.Name ?? region.Code ?? $"Region {region.RegionId}")</strong><small>@region.Nodes.Count relay node@(region.Nodes.Count == 1 ? "" : "s")</small></span></div>
                 @foreach (var node in region.Nodes)
                 {
-                    <div class="tailcat-running-row" data-testid="tailcat-address-node">
-                        <span>
-                            <strong class="mono">@(node.HostName ?? node.IPv4 ?? node.IPv6 ?? node.Name ?? "DERP node")</strong>
-                            <small>DERP @(node.DerpPort == 0 ? 443 : node.DerpPort) · STUN @(node.StunPort == 0 ? 3478 : node.StunPort)@(node.CertName is null ? "" : $" · cert {node.CertName}")</small>
-                        </span>
-                    </div>
+                    <div class="tailcat-running-row" data-testid="tailcat-address-node"><span><strong class="mono">@(node.HostName ?? node.IPv4 ?? node.IPv6 ?? node.Name ?? "DERP node")</strong><small>DERP @(node.DerpPort == 0 ? 443 : node.DerpPort) · STUN @(node.StunPort == 0 ? 3478 : node.StunPort)@(node.CertName is null ? "" : $" · cert {node.CertName}")</small></span></div>
                 }
             }
         </article>
@@ -109,14 +81,8 @@
 
     <article class="tailcat-card">
         <h2>Save peer</h2>
-        <label class="field">
-            <span class="field__label">Name</span>
-            <input class="field__input" data-testid="tailcat-peer-name" placeholder="Home server"
-                   @bind="_peerName" @bind:event="oninput" />
-        </label>
-        <button class="btn btn--ghost btn--block"
-                disabled="@(_busy || string.IsNullOrWhiteSpace(_peerName) || string.IsNullOrWhiteSpace(AddressToSave))"
-                data-testid="tailcat-save-peer" @onclick="SavePeerAsync">Save as Tailcat host</button>
+        <label class="field"><span class="field__label">Name</span><input class="field__input" data-testid="tailcat-peer-name" placeholder="Home server" @bind="_peerName" @bind:event="oninput" /></label>
+        <button class="btn btn--ghost btn--block" disabled="@(_busy || string.IsNullOrWhiteSpace(_peerName) || string.IsNullOrWhiteSpace(AddressToSave))" data-testid="tailcat-save-peer" @onclick="SavePeerAsync">Save as Tailcat host</button>
         <p class="field__hint">Saved peers live in the encrypted MeowSSH vault and become available in Shell, Transfers, Forwarding and Diagnostics.</p>
     </article>
 </div>
@@ -132,103 +98,45 @@
     private bool _busy;
     private string? _error;
     private string? _notice;
-
     private string AddressToSave => _resolvedAddress ?? _address;
 
     protected override async Task OnInitializedAsync() => await ReloadPeersAsync();
-
-    private async Task ReloadPeersAsync()
-    {
-        _savedPeers = [.. (await Hosts.GetHostsAsync())
-            .Select(status => status.Host)
-            .Where(host => !host.IsDeleted && host.Protocol == HostProtocol.Ssh && host.Transport == SshTransport.Tailcat)
-            .OrderBy(host => host.Label, StringComparer.OrdinalIgnoreCase)];
-    }
-
+    private async Task ReloadPeersAsync() => _savedPeers = [.. (await Hosts.GetHostsAsync()).Select(status => status.Host).Where(host => !host.IsDeleted && host.Protocol == HostProtocol.Ssh && host.Transport == SshTransport.Tailcat).OrderBy(host => host.Label, StringComparer.OrdinalIgnoreCase)];
     private void SelectPeer(ChangeEventArgs args)
     {
         if (!Guid.TryParse(args.Value?.ToString(), out var id)) return;
-        var peer = _savedPeers.FirstOrDefault(host => host.Id == id);
-        if (peer is null) return;
-        _address = peer.Address;
-        _peerName = peer.Label;
-        _resolvedAddress = null;
-        _details = null;
-        ClearQr();
+        var peer = _savedPeers.FirstOrDefault(host => host.Id == id); if (peer is null) return;
+        _address = peer.Address; _peerName = peer.Label; _resolvedAddress = null; _details = null; ClearQr();
     }
-
-    private async Task ResolveAsync() => await RunAsync(async () =>
+    private async Task ScanQrAsync() => await RunAsync(async () =>
     {
-        _resolvedAddress = await Hub.ResolveAddressAsync(_address, Empty(_derpMapUrl));
-        _details = null;
+        var scanned = await QrScanner.ScanAsync();
+        if (string.IsNullOrWhiteSpace(scanned)) { _notice = "QR scan cancelled."; return; }
+        // Validate before accepting it. Inspect resolves DNS names too, but QR import intentionally accepts only real Tailcat addresses.
+        if (!scanned.Trim().StartsWith("tc", StringComparison.Ordinal)) throw new InvalidOperationException("The scanned QR code is not a Tailcat address.");
+        var details = await Hub.InspectAddressAsync(scanned.Trim(), Empty(_derpMapUrl));
+        _address = scanned.Trim();
+        _resolvedAddress = details.ResolvedAddress;
+        _details = details;
         ClearQr();
-        _notice = "Expanded address ready. Keep it secret like the original address.";
+        _notice = "Tailcat QR imported and validated.";
     });
-
-    private async Task InspectAsync() => await RunAsync(async () =>
-    {
-        _details = await Hub.InspectAddressAsync(_address, Empty(_derpMapUrl));
-        _resolvedAddress = _details.ResolvedAddress;
-        ClearQr();
-    });
-
+    private async Task ResolveAsync() => await RunAsync(async () => { _resolvedAddress = await Hub.ResolveAddressAsync(_address, Empty(_derpMapUrl)); _details = null; ClearQr(); _notice = "Expanded address ready. Keep it secret like the original address."; });
+    private async Task InspectAsync() => await RunAsync(async () => { _details = await Hub.InspectAddressAsync(_address, Empty(_derpMapUrl)); _resolvedAddress = _details.ResolvedAddress; ClearQr(); });
     private async Task SavePeerAsync() => await RunAsync(async () =>
     {
-        await Editor.SaveHostAsync(new HostRecord
-        {
-            Id = Guid.NewGuid(),
-            Label = _peerName.Trim(),
-            Address = AddressToSave.Trim(),
-            Protocol = HostProtocol.Ssh,
-            Transport = SshTransport.Tailcat,
-            Port = 22,
-            AutoReconnect = true,
-            Tags = ["tailcat"],
-        });
-        await ReloadPeersAsync();
-        _notice = $"Saved {_peerName.Trim()}.";
+        await Editor.SaveHostAsync(new HostRecord { Id = Guid.NewGuid(), Label = _peerName.Trim(), Address = AddressToSave.Trim(), Protocol = HostProtocol.Ssh, Transport = SshTransport.Tailcat, Port = 22, AutoReconnect = true, Tags = ["tailcat"] });
+        await ReloadPeersAsync(); _notice = $"Saved {_peerName.Trim()}.";
     });
-
     private void ToggleQr()
     {
-        _error = null;
-        if (_qrSvg is not null)
-        {
-            ClearQr();
-            return;
-        }
-
-        var value = AddressToSave.Trim();
-        if (value.Length == 0) return;
-        try
-        {
-            using var data = QRCodeGenerator.GenerateQrCode(value, QRCodeGenerator.ECCLevel.L);
-            using var renderer = new SvgQRCode(data);
-            _qrSvg = renderer.GetGraphic(6);
-        }
-        catch (Exception ex)
-        {
-            ClearQr();
-            _error = $"This address is too large to fit safely in a QR code: {ex.Message}";
-        }
+        _error = null; if (_qrSvg is not null) { ClearQr(); return; }
+        var value = AddressToSave.Trim(); if (value.Length == 0) return;
+        try { using var data = QRCodeGenerator.GenerateQrCode(value, QRCodeGenerator.ECCLevel.L); using var renderer = new SvgQRCode(data); _qrSvg = renderer.GetGraphic(6); }
+        catch (Exception ex) { ClearQr(); _error = $"This address is too large to fit safely in a QR code: {ex.Message}"; }
     }
-
     private void ClearQr() => _qrSvg = null;
-
-    private async Task CopyAsync(string text)
-    {
-        await using var clipboard = await Js.InvokeAsync<IJSObjectReference>("import", "./_content/MeowSSH.UI/js/clipboard.js");
-        await clipboard.InvokeAsync<bool>("copyText", text);
-    }
-
-    private async Task RunAsync(Func<Task> action)
-    {
-        _busy = true;
-        _error = _notice = null;
-        try { await action(); }
-        catch (Exception ex) { _error = ex.Message; }
-        finally { _busy = false; }
-    }
-
+    private async Task CopyAsync(string text) { await using var clipboard = await Js.InvokeAsync<IJSObjectReference>("import", "./_content/MeowSSH.UI/js/clipboard.js"); await clipboard.InvokeAsync<bool>("copyText", text); }
+    private async Task RunAsync(Func<Task> action) { _busy = true; _error = _notice = null; try { await action(); } catch (Exception ex) { _error = ex.Message; } finally { _busy = false; } }
     private static string? Empty(string value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }
