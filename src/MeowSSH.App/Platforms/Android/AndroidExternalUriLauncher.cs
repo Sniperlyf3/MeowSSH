@@ -8,6 +8,6 @@ public sealed class AndroidExternalUriLauncher : IExternalUriLauncher
     {
         ArgumentNullException.ThrowIfNull(uri);
         cancellationToken.ThrowIfCancellationRequested();
-        return await Launcher.Default.OpenAsync(uri).ConfigureAwait(false);
+        return await Microsoft.Maui.ApplicationModel.Launcher.Default.OpenAsync(uri).ConfigureAwait(false);
     }
 }
