@@ -3,7 +3,7 @@
 <div class="app">
     <header class="topbar">
         <h1 class="topbar__title">@CurrentTitle</h1>
-        <div class="topbar__actions">@((_showTailcat || _showActions || _showMonitoring) ? null : Actions)</div>
+        <div class="topbar__actions">@((_showTailcat || _showActions || _showMonitoring || _showBackup) ? null : Actions)</div>
     </header>
 
     <main class="app__body" data-testid="app-body">
@@ -18,6 +18,10 @@
         else if (_showMonitoring)
         {
             <CommandMonitoringPage />
+        }
+        else if (_showBackup)
+        {
+            <EncryptedBackupPage />
         }
         else
         {
@@ -51,8 +55,9 @@
     private bool _showTailcat;
     private bool _showActions;
     private bool _showMonitoring;
-    private string CurrentTitle => _showTailcat ? "Tailcat" : _showActions ? "Actions" : _showMonitoring ? "Monitoring" : Title;
-    private string CurrentTab => _showTailcat ? "tailcat" : _showActions ? "actions" : _showMonitoring ? "monitoring" : ActiveTab;
+    private bool _showBackup;
+    private string CurrentTitle => _showTailcat ? "Tailcat" : _showActions ? "Actions" : _showMonitoring ? "Monitoring" : _showBackup ? "Backup" : Title;
+    private string CurrentTab => _showTailcat ? "tailcat" : _showActions ? "actions" : _showMonitoring ? "monitoring" : _showBackup ? "backup" : ActiveTab;
 
     protected override Task OnInitializedAsync() => Monitoring.InitializeAsync();
 
@@ -63,6 +68,7 @@
             _showTailcat = true;
             _showActions = false;
             _showMonitoring = false;
+            _showBackup = false;
             return;
         }
         if (tab == "actions")
@@ -70,11 +76,21 @@
             _showActions = true;
             _showTailcat = false;
             _showMonitoring = false;
+            _showBackup = false;
             return;
         }
         if (tab == "monitoring")
         {
             _showMonitoring = true;
+            _showActions = false;
+            _showTailcat = false;
+            _showBackup = false;
+            return;
+        }
+        if (tab == "backup")
+        {
+            _showBackup = true;
+            _showMonitoring = false;
             _showActions = false;
             _showTailcat = false;
             return;
@@ -83,6 +99,7 @@
         _showTailcat = false;
         _showActions = false;
         _showMonitoring = false;
+        _showBackup = false;
         await OnTabSelected.InvokeAsync(tab);
     }
 
@@ -95,6 +112,7 @@
         new("actions", "Actions", "terminal"),
         new("monitoring", "Monitor", "alert"),
         new("tailcat", "Tailcat", "network"),
+        new("backup", "Backup", "shield"),
         new("keys", "Keys", "key"),
         new("settings", "Settings", "settings"),
     ];
