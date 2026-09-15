@@ -23,6 +23,8 @@ builder.Services.AddScoped<ICredentialResolver, FakeCredentialResolver>();
 builder.Services.AddScoped<ISerialDeviceService, UnsupportedSerialDeviceService>();
 builder.Services.AddScoped<ITailcatHubService, FakeTailcatHubService>();
 builder.Services.AddScoped<ITailcatIdentityStore, FakeTailcatIdentityStore>();
+builder.Services.AddScoped<ITailcatWorkspaceStore, MemoryTailcatWorkspaceStore>();
+builder.Services.AddScoped<ITailcatWorkspaceService, TailcatWorkspaceService>();
 builder.Services.AddScoped<IQrScanner, FakeQrScanner>();
 builder.Services.AddScoped<ITailcatVpnController, FakeTailcatVpnController>();
 builder.Services.AddScoped<IEntitlementService, FakeEntitlementService>();
