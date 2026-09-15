@@ -69,6 +69,9 @@ public static class MauiProgram
         builder.Services.AddSingleton<ITailcatWorkspaceStore>(_ => new FileTailcatWorkspaceStore(
             Path.Combine(FileSystem.AppDataDirectory, "tailcat-workspaces.json")));
         builder.Services.AddSingleton<ITailcatWorkspaceService, TailcatWorkspaceService>();
+        builder.Services.AddSingleton<ICommandActionStore>(_ => new FileCommandActionStore(
+            Path.Combine(FileSystem.AppDataDirectory, "actions.json")));
+        builder.Services.AddSingleton<ICommandActionService, CommandActionService>();
         builder.Services.AddSingleton<AndroidTailcatVpnController>();
         builder.Services.AddSingleton<ITailcatVpnController>(sp => new EntitlementTailcatVpnController(
             sp.GetRequiredService<AndroidTailcatVpnController>(),
