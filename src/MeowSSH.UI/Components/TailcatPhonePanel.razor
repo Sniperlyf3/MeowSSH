@@ -21,7 +21,23 @@
     {
         <article class="tailcat-card">
             <h2>Share this phone</h2>
-            <label class="field"><span class="field__label">Allowed Tailcat client keys</span><textarea class="field__input mono" rows="3" data-testid="tailcat-allowed-clients" placeholder="nodekey:..." disabled="@_allowAnyClient" @bind="_allowedClients" @bind:event="oninput"></textarea><span class="field__hint">@(_allowAnyClient ? "Disabled while insecure mode is selected." : "Required. Comma-separate trusted client public keys.")</span></label>
+            @if (!_allowAnyClient && _savedTailcatClientKeys.Count > 0)
+            {
+                <fieldset class="field" data-testid="tailcat-saved-client-keys">
+                    <legend class="field__label">Saved Tailcat identities allowed to connect</legend>
+                    @foreach (var key in _savedTailcatClientKeys)
+                    {
+                        <label class="forward-option">
+                            <input type="checkbox" data-testid="tailcat-saved-client-key"
+                                   checked="@_selectedTailcatClientNames.Contains(key.Name)"
+                                   @onchange="e => SetSavedTailcatClient(key.Name, e.Value is true)" />
+                            <span><strong>@key.Name</strong><small class="mono tailcat-break">@key.PublicKey</small></span>
+                        </label>
+                    }
+                    <span class="field__hint">Only the public <span class="mono">nodekey:</span> value is sent to the server allowlist.</span>
+                </fieldset>
+            }
+            <label class="field"><span class="field__label">Additional Tailcat client keys</span><textarea class="field__input mono" rows="3" data-testid="tailcat-allowed-clients" placeholder="nodekey:..." disabled="@_allowAnyClient" @bind="_allowedClients" @bind:event="oninput"></textarea><span class="field__hint">@(_allowAnyClient ? "Disabled while insecure mode is selected." : "Optional when a saved Tailcat identity is selected. Comma-separate additional nodekey: public keys.")</span></label>
             <label class="field"><span class="field__label">Lifetime (hours)</span><input class="field__input" type="number" min="1" max="24" data-testid="tailcat-lifetime" @bind="_hours" /></label>
             <label class="forward-option"><input type="checkbox" data-testid="tailcat-exit-node" @bind="_exitNode" /><span><strong>Exit node</strong><small>Allow approved Tailcat clients to route through this phone.</small></span></label>
             @if (_exitNode)
@@ -114,7 +130,11 @@
 </div>
 
 @code {
+    private sealed record SavedTailcatClientKey(string Name, string PublicKey);
+
     private string _allowedClients = "";
+    private IReadOnlyList<SavedTailcatClientKey> _savedTailcatClientKeys = [];
+    private readonly HashSet<string> _selectedTailcatClientNames = new(StringComparer.Ordinal);
     private int _hours = 8;
     private bool _exitNode = true;
     private bool _allowAnyClient;
@@ -137,12 +157,13 @@
     private string? _error;
     private string? _notice;
 
-    private bool CanStart => (_allowAnyClient || !string.IsNullOrWhiteSpace(_allowedClients)) && (_exitNode || _shell || _files)
+    private bool CanStart => (_allowAnyClient || HasAllowedTailcatClients) && (_exitNode || _shell || _files)
         && (!_allowAnyClient || (_exitNode && _insecureConfirmed))
         && (!_useTailcatCredentialForShell || (_shell && _insecureShellConfirmed))
         && (!_shell || _useTailcatCredentialForShell || HasAuthorizedSshKeys) && (!_files || !string.IsNullOrWhiteSpace(_folder))
         && _hours is >= 1 and <= 24;
 
+    private bool HasAllowedTailcatClients => !string.IsNullOrWhiteSpace(_allowedClients) || _selectedTailcatClientNames.Count > 0;
     private bool HasAuthorizedSshKeys => !string.IsNullOrWhiteSpace(_authorizedSsh) || _selectedSshKeyIds.Count > 0;
 
     protected override async Task OnInitializedAsync()
@@ -151,6 +172,37 @@
             .Where(c => !string.IsNullOrWhiteSpace(c.PublicKey))
             .OrderBy(c => c.Label, StringComparer.OrdinalIgnoreCase)];
         _savedTailcatIdentities = [.. (await Hub.ListKeysAsync()).OrderBy(name => name, StringComparer.OrdinalIgnoreCase)];
+
+        var clientKeys = new List<SavedTailcatClientKey>();
+        foreach (var name in _savedTailcatIdentities)
+        {
+            try
+            {
+                var publicKey = await Hub.GetClientPublicKeyAsync(name);
+                if (publicKey.StartsWith("nodekey:", StringComparison.Ordinal))
+                    clientKeys.Add(new SavedTailcatClientKey(name, publicKey.Trim()));
+            }
+            catch
+            {
+                // A saved server identity may not be usable as a client identity.
+            }
+        }
+        _savedTailcatClientKeys = clientKeys;
+    }
+
+    private void SetSavedTailcatClient(string name, bool selected)
+    {
+        if (selected) _selectedTailcatClientNames.Add(name);
+        else _selectedTailcatClientNames.Remove(name);
+    }
+
+    private string AllowedTailcatClientKeys()
+    {
+        var saved = _savedTailcatClientKeys
+            .Where(key => _selectedTailcatClientNames.Contains(key.Name))
+            .Select(key => key.PublicKey);
+        var manual = _allowedClients.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return string.Join(',', saved.Concat(manual).Distinct(StringComparer.Ordinal));
     }
 
     private void SetSavedSshKey(Guid id, bool selected)
@@ -191,7 +243,7 @@
                     : await IdentityStore.ExportAsync(_serverIdentityName);
                 await Hub.StartServerAsync(new TailcatServeRequest(
                     TimeSpan.FromHours(_hours),
-                    _allowedClients,
+                    AllowedTailcatClientKeys(),
                     _shell,
                     AuthorizedSshKeys(),
                     _files,
