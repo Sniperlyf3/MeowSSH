@@ -60,6 +60,7 @@ public sealed class MeowshellTailcatHubService : ITailcatHubService
             var files = request.EnableFiles
                 ? $"{request.SharedFolder!.Trim()}:{request.FileMode}"
                 : null;
+            var privateKeyJson = string.IsNullOrWhiteSpace(request.PrivateKeyJson) ? null : request.PrivateKeyJson;
             var options = new MeowshellOptions
             {
                 BinaryDirectory = _runtime.BinaryDirectory,
@@ -74,7 +75,8 @@ public sealed class MeowshellTailcatHubService : ITailcatHubService
                 AllowExitNode = request.EnableExitNode,
                 FullAddress = request.FullAddress,
                 Psk = request.UsePresharedKey,
-                EphemeralKey = true,
+                PrivateKeyJson = privateKeyJson,
+                EphemeralKey = privateKeyJson is null,
             };
 
             var server = await MeowshellServer.StartAsync(options, cancellationToken, AddLog).ConfigureAwait(false);
