@@ -1,1 +1,124 @@
-# placeholder
+name: Play Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_name:
+        description: Public version name, for example 1.0.0
+        required: true
+        type: string
+      version_code:
+        description: Monotonically increasing Android versionCode
+        required: true
+        type: number
+
+permissions:
+  contents: read
+
+concurrency:
+  group: play-release
+  cancel-in-progress: false
+
+jobs:
+  build-aab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: production
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install the Android workload
+        run: dotnet workload install maui-android
+
+      - name: Validate production configuration
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          LICENSING_API_BASE_URL: ${{ vars.LICENSING_API_BASE_URL }}
+          LICENSING_PUBLIC_KEY: ${{ vars.LICENSING_PUBLIC_KEY_SUBJECT_PUBLIC_KEY_INFO_BASE64 }}
+        run: |
+          set -euo pipefail
+          required=(ANDROID_KEYSTORE_BASE64 ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD ANDROID_STORE_PASSWORD LICENSING_API_BASE_URL LICENSING_PUBLIC_KEY)
+          for name in "${required[@]}"; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::$name is required for a production Play release."
+              exit 1
+            fi
+          done
+
+          if ! [[ "${{ inputs.version_code }}" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::version_code must be a positive integer."
+            exit 1
+          fi
+
+      - name: Restore upload keystore
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          KEYSTORE="$RUNNER_TEMP/meowssh-upload.keystore"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
+          chmod 600 "$KEYSTORE"
+          echo "KEYSTORE=$KEYSTORE" >> "$GITHUB_ENV"
+
+      - name: Build signed Play AAB
+        shell: bash
+        env:
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          LICENSING_API_BASE_URL: ${{ vars.LICENSING_API_BASE_URL }}
+          LICENSING_PUBLIC_KEY: ${{ vars.LICENSING_PUBLIC_KEY_SUBJECT_PUBLIC_KEY_INFO_BASE64 }}
+        run: |
+          set -euo pipefail
+          dotnet publish src/MeowSSH.App/MeowSSH.App.csproj \
+            -c Release -f net10.0-android36.0 \
+            -p:RuntimeIdentifier=android-arm64 \
+            -p:AndroidPackageFormat=aab \
+            -p:AndroidKeyStore=true \
+            "-p:AndroidSigningKeyStore=$KEYSTORE" \
+            "-p:AndroidSigningKeyAlias=$ANDROID_KEY_ALIAS" \
+            "-p:AndroidSigningKeyPass=$ANDROID_KEY_PASSWORD" \
+            "-p:AndroidSigningStorePass=$ANDROID_STORE_PASSWORD" \
+            -p:SourceRevisionId=${{ github.sha }} \
+            "-p:Version=${{ inputs.version_name }}" \
+            "-p:ApplicationDisplayVersion=${{ inputs.version_name }}" \
+            "-p:ApplicationVersion=${{ inputs.version_code }}" \
+            "-p:LicensingApiBaseUrl=$LICENSING_API_BASE_URL" \
+            "-p:LicensingPublicKeySubjectPublicKeyInfoBase64=$LICENSING_PUBLIC_KEY"
+
+      - name: Verify release bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          AAB=$(find src/MeowSSH.App/bin/Release -name "*.aab" | head -1)
+          test -n "$AAB"
+          unzip -t "$AAB" >/dev/null
+          unzip -l "$AAB" | grep -q "base/lib/arm64-v8a/libmeowshell.so"
+          unzip -l "$AAB" | grep -q "base/lib/arm64-v8a/libtailcat.so"
+          unzip -l "$AAB" | grep -q "base/lib/arm64-v8a/libhev-socks5-tunnel.so"
+          echo "AAB=$AAB" >> "$GITHUB_ENV"
+          echo "Play bundle: $AAB ($(du -h "$AAB" | cut -f1))" >> "$GITHUB_STEP_SUMMARY"
+          echo "Version: ${{ inputs.version_name }} (${{ inputs.version_code }})" >> "$GITHUB_STEP_SUMMARY"
+          echo "Commit: ${{ github.sha }}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Play bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: meowssh-play-${{ inputs.version_name }}-${{ inputs.version_code }}
+          path: ${{ env.AAB }}
+          if-no-files-found: error
+          retention-days: 30
