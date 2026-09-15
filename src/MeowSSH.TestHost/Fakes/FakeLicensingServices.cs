@@ -37,6 +37,8 @@ public sealed class FakeStorePurchaseService : IStorePurchaseService
     private static readonly IReadOnlyList<StoreProduct> Products =
     [
         new StoreProduct(MeowSshProducts.ProLifetime, "MeowSSH Pro", "$39.99", "inapp"),
+        new StoreProduct(MeowSshProducts.ProCloud, "MeowSSH Pro Cloud — Monthly", "$2.99", "subs", MeowSshProducts.ProCloudMonthlyBasePlan),
+        new StoreProduct(MeowSshProducts.ProCloud, "MeowSSH Pro Cloud — Yearly", "$24.99", "subs", MeowSshProducts.ProCloudYearlyBasePlan),
     ];
 
     public Task<IReadOnlyList<StoreProduct>> GetProductsAsync(CancellationToken cancellationToken = default)
@@ -55,7 +57,10 @@ public sealed class FakeStorePurchaseService : IStorePurchaseService
         return Task.FromResult(purchases);
     }
 
-    public Task<StorePurchase?> PurchaseAsync(string productId, CancellationToken cancellationToken = default)
+    public Task<StorePurchase?> PurchaseAsync(
+        string productId,
+        string? basePlanId = null,
+        CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(productId);
         cancellationToken.ThrowIfCancellationRequested();
