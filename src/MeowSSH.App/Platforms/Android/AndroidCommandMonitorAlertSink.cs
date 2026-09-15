@@ -1,7 +1,6 @@
 using Android.App;
 using Android.Content;
 using Android.Content.PM;
-using Android.OS;
 using AndroidX.Core.Content;
 using MeowSSH.Core.Services;
 
@@ -17,7 +16,7 @@ public sealed class AndroidCommandMonitorAlertSink : ICommandMonitorAlertSink
         cancellationToken.ThrowIfCancellationRequested();
 
         var context = global::Android.App.Application.Context;
-        if (Build.VERSION.SdkInt >= BuildVersionCodes.Tiramisu
+        if (OperatingSystem.IsAndroidVersionAtLeast(33)
             && ContextCompat.CheckSelfPermission(context, global::Android.Manifest.Permission.PostNotifications)
                 != Permission.Granted)
             return Task.CompletedTask;
@@ -25,23 +24,16 @@ public sealed class AndroidCommandMonitorAlertSink : ICommandMonitorAlertSink
         var manager = context.GetSystemService(Context.NotificationService) as NotificationManager;
         if (manager is null) return Task.CompletedTask;
 
-        if (Build.VERSION.SdkInt >= BuildVersionCodes.O)
+        var channel = new NotificationChannel(
+            ChannelId,
+            "Command monitoring",
+            NotificationImportance.Default)
         {
-            var channel = new NotificationChannel(
-                ChannelId,
-                "Command monitoring",
-                NotificationImportance.Default)
-            {
-                Description = "Alerts when a monitored SSH command fails, recovers, or changes output.",
-            };
-            manager.CreateNotificationChannel(channel);
-        }
+            Description = "Alerts when a monitored SSH command fails, recovers, or changes output.",
+        };
+        manager.CreateNotificationChannel(channel);
 
-        Notification.Builder builder = Build.VERSION.SdkInt >= BuildVersionCodes.O
-            ? new Notification.Builder(context, ChannelId)
-            : new Notification.Builder(context);
-
-        var notification = builder
+        var notification = new Notification.Builder(context, ChannelId)
             .SetSmallIcon(Resource.Mipmap.appicon)
             .SetContentTitle(alert.Title)
             .SetContentText(alert.Message)
