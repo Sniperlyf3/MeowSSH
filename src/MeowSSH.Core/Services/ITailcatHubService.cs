@@ -19,8 +19,6 @@ public interface ITailcatHubService : IAsyncDisposable
     Task<TailcatGeneratedKey> GenerateKeyAsync(TailcatGenerateKeyRequest request, CancellationToken cancellationToken = default);
     Task DeleteKeyAsync(string name, CancellationToken cancellationToken = default);
     Task<string> GetClientPublicKeyAsync(string? name = null, CancellationToken cancellationToken = default);
-    Task<string> ExportKeyAsync(string name, CancellationToken cancellationToken = default);
-    Task ImportKeyAsync(string name, string privateKeyJson, bool overwrite = false, CancellationToken cancellationToken = default);
 
     Task<string> ResolveAddressAsync(string address, string? derpMapUrl = null, CancellationToken cancellationToken = default);
     Task<TailcatAddressDetails> InspectAddressAsync(string address, string? derpMapUrl = null, CancellationToken cancellationToken = default);
