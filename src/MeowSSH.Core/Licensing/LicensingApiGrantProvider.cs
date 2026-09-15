@@ -3,6 +3,7 @@ using System.Security;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace MeowSSH.Core.Licensing;
 
@@ -34,9 +35,16 @@ public sealed record EntitlementGrantClaims(
     DateTimeOffset IssuedAtUtc,
     DateTimeOffset ValidUntilUtc);
 
+[JsonSourceGenerationOptions(JsonSerializerDefaults.Web)]
+[JsonSerializable(typeof(LicensingVerificationRequest))]
+[JsonSerializable(typeof(SignedEntitlementGrant))]
+[JsonSerializable(typeof(EntitlementGrantClaims))]
+internal sealed partial class LicensingApiJsonContext : JsonSerializerContext
+{
+}
+
 public sealed class LicensingApiGrantProvider : IEntitlementGrantProvider
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly IStorePurchaseService _store;
     private readonly IPlayIntegrityService _integrity;
     private readonly HttpClient _httpClient;
@@ -79,14 +87,23 @@ public sealed class LicensingApiGrantProvider : IEntitlementGrantProvider
         var integrityToken = await _integrity.RequestTokenAsync(integrityNonce, cancellationToken).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(integrityToken)) return EntitlementSnapshot.Free(now);
 
+        var verificationRequest = new LicensingVerificationRequest(
+            _options.PackageName,
+            purchases,
+            requestId,
+            integrityNonce,
+            integrityToken);
+
         using var response = await _httpClient.PostAsJsonAsync(
             new Uri(_options.BaseUri!, "v1/entitlements/google-play/verify"),
-            new LicensingVerificationRequest(_options.PackageName, purchases, requestId, integrityNonce, integrityToken),
-            JsonOptions,
+            verificationRequest,
+            LicensingApiJsonContext.Default.LicensingVerificationRequest,
             cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
 
-        var grant = await response.Content.ReadFromJsonAsync<SignedEntitlementGrant>(JsonOptions, cancellationToken)
+        var grant = await response.Content.ReadFromJsonAsync(
+                LicensingApiJsonContext.Default.SignedEntitlementGrant,
+                cancellationToken)
             .ConfigureAwait(false)
             ?? throw new SecurityException("The licensing server returned an empty entitlement grant.");
 
@@ -137,7 +154,9 @@ public sealed class LicensingApiGrantProvider : IEntitlementGrantProvider
         if (bytesRead != publicKey.Length || !verifier.VerifyData(payload, signature, HashAlgorithmName.SHA256))
             throw new SecurityException("The licensing entitlement signature is invalid.");
 
-        var claims = JsonSerializer.Deserialize<EntitlementGrantClaims>(payload, JsonOptions)
+        var claims = JsonSerializer.Deserialize(
+                payload,
+                LicensingApiJsonContext.Default.EntitlementGrantClaims)
             ?? throw new SecurityException("The licensing entitlement payload is invalid.");
 
         if (!string.Equals(claims.PackageName, _options.PackageName, StringComparison.Ordinal))
