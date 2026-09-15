@@ -53,6 +53,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<ISessionLogService>(sp => new FileSessionLogService(
             Path.Combine(FileSystem.AppDataDirectory, "session-logs"),
             sp.GetRequiredService<IEntitlementService>()));
+        builder.Services.AddSingleton<IAdvancedSftpService, AdvancedSftpService>();
 
         var nativeDirectory = global::Android.App.Application.Context.ApplicationInfo!.NativeLibraryDir!;
         var engineOptions = new MeowshellSshEngineOptions(
