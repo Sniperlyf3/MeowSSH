@@ -6,7 +6,7 @@
         <h2>Generate identity</h2>
         <div class="form__row">
             <label class="field field--grow"><span class="field__label">Name</span><input class="field__input mono" data-testid="tailcat-key-name" @bind="_name" @bind:event="oninput" /></label>
-            <label class="field field--grow"><span class="field__label">Type</span><select class="field__input" data-testid="tailcat-key-type" @bind="_client"><option value="false">Server</option><option value="true">Client</option></select></label>
+            <label class="field field--grow"><span class="field__label">Type</span><select class="field__input" data-testid="tailcat-key-type" value="@_client.ToString().ToLowerInvariant()" @onchange="OnClientTypeChanged"><option value="false">Server</option><option value="true">Client</option></select></label>
         </div>
         <label class="field"><span class="field__label">DERP region</span><input class="field__input mono" placeholder="auto" data-testid="tailcat-key-region" @bind="_region" /><span class="field__hint">Optional ID, code, substring, or custom hostname.</span></label>
         <label class="forward-option"><input type="checkbox" @bind="_fixedRegion" /><span><strong>Fix region now</strong><small>Bake the selected or nearest relay into the generated identity.</small></span></label>
@@ -44,6 +44,7 @@
     protected override Task OnInitializedAsync() => ReloadAsync();
 
     private async Task ReloadAsync() => await RunAsync(async () => _keys = await Hub.ListKeysAsync());
+    private void OnClientTypeChanged(ChangeEventArgs args) => _client = bool.TryParse(args.Value?.ToString(), out var value) && value;
     private async Task GenerateAsync() => await RunAsync(async () =>
     {
         _generated = await Hub.GenerateKeyAsync(new TailcatGenerateKeyRequest(_name, _client, Empty(_region), _fixedRegion, _embedDerp));
