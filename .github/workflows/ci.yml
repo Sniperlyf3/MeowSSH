@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: ["**"]
+    branches: ["claude/beautiful-bohr-im81me"]
   pull_request:
 
 concurrency:
