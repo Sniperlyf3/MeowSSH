@@ -93,9 +93,9 @@ public sealed class LicensingApiGrantProviderTests
 
         Assert.Equal(nonce1, nonce2);
         Assert.NotEqual(nonce1, nonce3);
-        Assert.DoesNotContain('+', nonce1, StringComparison.Ordinal);
-        Assert.DoesNotContain('/', nonce1, StringComparison.Ordinal);
-        Assert.DoesNotContain('=', nonce1, StringComparison.Ordinal);
+        Assert.False(nonce1.Contains('+', StringComparison.Ordinal));
+        Assert.False(nonce1.Contains('/', StringComparison.Ordinal));
+        Assert.False(nonce1.Contains('=', StringComparison.Ordinal));
     }
 
     private static LicensingApiGrantProvider CreateProvider(ECDsa signer, HttpClient http, DateTimeOffset now)
