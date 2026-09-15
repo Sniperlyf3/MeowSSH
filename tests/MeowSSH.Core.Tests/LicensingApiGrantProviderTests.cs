@@ -9,6 +9,8 @@ namespace MeowSSH.Core.Tests;
 
 public sealed class LicensingApiGrantProviderTests
 {
+    private static readonly JsonSerializerOptions WebJson = new(JsonSerializerDefaults.Web);
+
     [Fact]
     public async Task ValidSignedGrantUnlocksServerVerifiedPro()
     {
@@ -66,13 +68,13 @@ public sealed class LicensingApiGrantProviderTests
 
     private static HttpResponseMessage CreateSignedResponse(ECDsa signer, EntitlementGrantClaims claims, bool tamperSignature = false)
     {
-        var payload = JsonSerializer.SerializeToUtf8Bytes(claims, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        var payload = JsonSerializer.SerializeToUtf8Bytes(claims, WebJson);
         var signature = signer.SignData(payload, HashAlgorithmName.SHA256);
         if (tamperSignature) signature[0] ^= 0xff;
         var envelope = new SignedEntitlementGrant(Convert.ToBase64String(payload), Convert.ToBase64String(signature));
         return new HttpResponseMessage(HttpStatusCode.OK)
         {
-            Content = new StringContent(JsonSerializer.Serialize(envelope, new JsonSerializerOptions(JsonSerializerDefaults.Web)), Encoding.UTF8, "application/json"),
+            Content = new StringContent(JsonSerializer.Serialize(envelope, WebJson), Encoding.UTF8, "application/json"),
         };
     }
 
