@@ -9,7 +9,7 @@ public sealed class GooglePlayIntegrityService : Java.Lang.Object, IPlayIntegrit
 {
     private readonly IIntegrityManager _manager = IntegrityManagerFactory.Create(global::Android.App.Application.Context);
 
-    public async Task<string?> RequestTokenAsync(string nonce, CancellationToken cancellationToken = default)
+    public async Task<string?> RequestTokenAsync(string nonce, System.Threading.CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(nonce);
         if (nonce.Length is < 16 or > 500)
