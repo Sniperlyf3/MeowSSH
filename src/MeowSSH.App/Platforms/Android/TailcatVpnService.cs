@@ -9,12 +9,16 @@ using System.Globalization;
 
 namespace MeowSSH.App;
 
-public sealed class TailcatVpnServiceState : EventArgs
+public sealed class TailcatVpnServiceStateChangedEventArgs : EventArgs
 {
-    public TailcatVpnServiceState(bool running, string? address, IReadOnlyList<string> routes, string? error = null)
+    public TailcatVpnServiceStateChangedEventArgs(bool running, string? address, IReadOnlyList<string> routes, string? error = null)
     {
-        Running = running; Address = address; Routes = routes; Error = error;
+        Running = running;
+        Address = address;
+        Routes = routes;
+        Error = error;
     }
+
     public bool Running { get; }
     public string? Address { get; }
     public IReadOnlyList<string> Routes { get; }
@@ -45,7 +49,7 @@ public sealed class TailcatVpnService : VpnService
     private string? _address;
     private IReadOnlyList<string> _routes = [];
 
-    public static event EventHandler<TailcatVpnServiceState>? StateChanged;
+    public static event EventHandler<TailcatVpnServiceStateChangedEventArgs>? StateChanged;
 
     internal static void SetHub(ITailcatHubService hub)
     {
@@ -115,10 +119,8 @@ public sealed class TailcatVpnService : VpnService
                 .SetMtu(8500)
                 .AddAddress("198.18.0.1", 32);
 
-            // The Tailcat/DERP native processes run under this app's UID. Excluding
-            // our own package keeps their transport sockets on the real network,
-            // preventing the VPN from recursively capturing its own tunnel.
-            builder.AddDisallowedApplication(PackageName);
+            var packageName = PackageName ?? throw new InvalidOperationException("Android did not provide the MeowSSH package name.");
+            builder.AddDisallowedApplication(packageName);
             foreach (var route in _routes)
             {
                 var (network, prefix) = ParseIpv4Cidr(route);
@@ -133,12 +135,12 @@ public sealed class TailcatVpnService : VpnService
             _ = ObserveNativeAsync(_nativeTask);
 
             StartForeground(NotificationId, BuildNotification($"Tailcat VPN · {_routes.Count} route{(_routes.Count == 1 ? "" : "s")}"));
-            Publish(new TailcatVpnServiceState(true, _address, _routes));
+            Publish(new TailcatVpnServiceStateChangedEventArgs(true, _address, _routes));
         }
         catch (Exception ex)
         {
             await CleanupAsync().ConfigureAwait(false);
-            Publish(new TailcatVpnServiceState(false, _address, _routes, ex.Message));
+            Publish(new TailcatVpnServiceStateChangedEventArgs(false, _address, _routes, ex.Message));
             StopSelf();
         }
         finally { _lifecycle.Release(); }
@@ -151,7 +153,7 @@ public sealed class TailcatVpnService : VpnService
             var exitCode = await task.ConfigureAwait(false);
             if (!_stopping)
             {
-                Publish(new TailcatVpnServiceState(false, _address, _routes, $"The TUN-to-SOCKS bridge stopped unexpectedly (code {exitCode})."));
+                Publish(new TailcatVpnServiceStateChangedEventArgs(false, _address, _routes, $"The TUN-to-SOCKS bridge stopped unexpectedly (code {exitCode})."));
                 await StopTunnelAsync(stopService: true).ConfigureAwait(false);
             }
         }
@@ -159,7 +161,7 @@ public sealed class TailcatVpnService : VpnService
         {
             if (!_stopping)
             {
-                Publish(new TailcatVpnServiceState(false, _address, _routes, $"The TUN-to-SOCKS bridge failed: {ex.Message}"));
+                Publish(new TailcatVpnServiceStateChangedEventArgs(false, _address, _routes, $"The TUN-to-SOCKS bridge failed: {ex.Message}"));
                 await StopTunnelAsync(stopService: true).ConfigureAwait(false);
             }
         }
@@ -177,9 +179,8 @@ public sealed class TailcatVpnService : VpnService
                 try { await _nativeTask.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false); } catch { }
             }
             await CleanupAsync().ConfigureAwait(false);
-            Publish(new TailcatVpnServiceState(false, null, []));
-            if (Build.VERSION.SdkInt >= BuildVersionCodes.N) StopForeground(StopForegroundFlags.Remove);
-            else StopForeground(true);
+            Publish(new TailcatVpnServiceStateChangedEventArgs(false, null, []));
+            StopForeground(StopForegroundFlags.Remove);
             if (stopService) StopSelf();
         }
         finally { _lifecycle.Release(); }
@@ -220,9 +221,9 @@ public sealed class TailcatVpnService : VpnService
           udp-read-write-timeout: 60000
         """;
 
-    private static IReadOnlyList<string> ParseRoutes(string? value) =>
+    private static string[] ParseRoutes(string? value) =>
         string.IsNullOrWhiteSpace(value)
-            ? Array.Empty<string>()
+            ? []
             : [.. value.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Distinct(StringComparer.Ordinal)];
 
     private static (string Network, int Prefix) ParseIpv4Cidr(string value)
@@ -237,7 +238,7 @@ public sealed class TailcatVpnService : VpnService
     {
         if (string.IsNullOrWhiteSpace(value)) throw new InvalidOperationException("Tailcat returned an empty SOCKS listen address.");
         var trimmed = value.Trim();
-        if (trimmed.StartsWith('[', StringComparison.Ordinal))
+        if (trimmed.StartsWith("[", StringComparison.Ordinal))
         {
             var end = trimmed.LastIndexOf(']');
             if (end <= 0 || end + 2 > trimmed.Length || !int.TryParse(trimmed[(end + 2)..], out var port6)) throw new InvalidOperationException($"Invalid SOCKS listen address: {value}");
@@ -260,18 +261,21 @@ public sealed class TailcatVpnService : VpnService
 
     private Notification BuildNotification(string text)
     {
-        var launch = PackageManager?.GetLaunchIntentForPackage(PackageName);
+        var packageName = PackageName ?? throw new InvalidOperationException("Android did not provide the MeowSSH package name.");
+        var manager = PackageManager ?? throw new InvalidOperationException("Android package manager is unavailable.");
+        var launch = manager.GetLaunchIntentForPackage(packageName);
         var pending = launch is null ? null : PendingIntent.GetActivity(this, 0, launch, PendingIntentFlags.Immutable | PendingIntentFlags.UpdateCurrent);
-        return new NotificationCompat.Builder(this, NotificationChannelId)
-            .SetSmallIcon(Resource.Mipmap.appicon)
-            .SetContentTitle("MeowSSH Tailcat VPN")
-            .SetContentText(text)
-            .SetOngoing(true)
-            .SetOnlyAlertOnce(true)
-            .SetContentIntent(pending)
-            .Build();
+
+        var builder = new NotificationCompat.Builder(this, NotificationChannelId);
+        builder.SetSmallIcon(Resource.Mipmap.appicon);
+        builder.SetContentTitle("MeowSSH Tailcat VPN");
+        builder.SetContentText(text);
+        builder.SetOngoing(true);
+        builder.SetOnlyAlertOnce(true);
+        if (pending is not null) builder.SetContentIntent(pending);
+        return builder.Build() ?? throw new InvalidOperationException("Android could not create the Tailcat VPN notification.");
     }
 
-    private static void Publish(TailcatVpnServiceState state) => StateChanged?.Invoke(null, state);
+    private static void Publish(TailcatVpnServiceStateChangedEventArgs state) => StateChanged?.Invoke(null, state);
     private static string? NullIfWhiteSpace(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }
