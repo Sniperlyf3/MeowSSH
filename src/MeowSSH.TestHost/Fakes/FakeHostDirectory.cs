@@ -1,36 +1,20 @@
+using System.Text;
 using MeowSSH.Core.Model;
 using MeowSSH.Core.Services;
 
 namespace MeowSSH.TestHost.Fakes;
 
-/// <summary>
-/// A host list with no SSH engine behind it, so the UI can be driven on Linux CI
-/// without an emulator or a real server.
-/// </summary>
-/// <remarks>
-/// The sample covers the cases that actually change how a row renders: each
-/// transport, each connection state, a long label that must ellipsize, and a
-/// tailcat address long enough to need truncating. A fake that only ever returns
-/// three tidy rows tests nothing.
-/// </remarks>
 public sealed class FakeHostDirectory : IHostDirectory, IHostEditor
 {
     private readonly List<HostStatus> _hosts;
+    private readonly List<CredentialRecord> _credentials = [];
 
-    public FakeHostDirectory(bool empty = false)
-    {
-        _hosts = empty ? [] : BuildSample();
-    }
+    public FakeHostDirectory(bool empty = false) => _hosts = empty ? [] : BuildSample();
 
     public event EventHandler? Changed;
 
     public ValueTask<IReadOnlyList<HostStatus>> GetHostsAsync(CancellationToken cancellationToken = default) =>
         ValueTask.FromResult<IReadOnlyList<HostStatus>>(_hosts);
-
-    // Editing is in memory here on purpose. These tests drive the UI; what the
-    // vault does with a saved host is proven against the real store in
-    // MeowSSH.Core.Tests, where a browser would add nothing.
-    private readonly List<CredentialRecord> _credentials = [];
 
     public ValueTask SaveHostAsync(HostRecord host, CancellationToken cancellationToken = default)
     {
@@ -51,8 +35,14 @@ public sealed class FakeHostDirectory : IHostDirectory, IHostEditor
     public ValueTask<IReadOnlyList<CredentialSummary>> GetCredentialsAsync(CancellationToken cancellationToken = default) =>
         ValueTask.FromResult<IReadOnlyList<CredentialSummary>>(
         [
-            .. _credentials.Select(c =>
-                new CredentialSummary(c.Id, c.Label, c.Kind, c.Username, c.PublicKey, c.DisplayHint))
+            .. _credentials.Select(c => new CredentialSummary(
+                c.Id,
+                c.Label,
+                c.Kind,
+                c.Username,
+                c.PublicKey,
+                c.DisplayHint,
+                c.Kind == CredentialKind.HardwareKey ? Encoding.UTF8.GetString(c.Secret) : null))
         ]);
 
     public ValueTask SaveCredentialAsync(CredentialRecord credential, CancellationToken cancellationToken = default)
@@ -69,7 +59,6 @@ public sealed class FakeHostDirectory : IHostDirectory, IHostEditor
         return ValueTask.CompletedTask;
     }
 
-    /// <summary>Moves a host to a new state, as a real connection attempt would.</summary>
     public void SetState(string label, ConnectionState state, string? detail = null)
     {
         var index = _hosts.FindIndex(h => h.Host.Label == label);
