@@ -37,6 +37,32 @@ public class TailcatHubTests(TestHostFixture fixture)
     }
 
     [Fact]
+    public async Task SavedTailcatIdentityCanBeSelectedAsAllowedClient()
+    {
+        var page = await OpenTailcatAsync();
+
+        await Assertions.Expect(page.GetByTestId("tailcat-saved-client-keys")).ToContainTextAsync("client-default");
+        await page.GetByTestId("tailcat-saved-client-key").First.CheckAsync();
+        await Assertions.Expect(page.GetByTestId("start-tailcat-server")).ToBeEnabledAsync();
+
+        await page.GetByTestId("start-tailcat-server").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("tailcat-server-address")).ToHaveValueAsync("tc-test-address");
+    }
+
+    [Fact]
+    public async Task ServerCanReuseSavedPersistentIdentity()
+    {
+        var page = await OpenTailcatAsync();
+        await page.GetByTestId("tailcat-allowed-clients").FillAsync("nodekey:test-client");
+        await page.GetByTestId("tailcat-server-address-options").ClickAsync();
+        await page.GetByTestId("tailcat-server-identity").SelectOptionAsync("client-default");
+
+        await Assertions.Expect(page.GetByTestId("tailcat-persistent-identity-warning")).ToBeVisibleAsync();
+        await page.GetByTestId("start-tailcat-server").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("tailcat-server-address")).ToBeVisibleAsync();
+    }
+
+    [Fact]
     public async Task ServerCanPublishASelfContainedAddress()
     {
         var page = await OpenTailcatAsync();
