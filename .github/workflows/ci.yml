@@ -153,14 +153,27 @@ jobs:
         run: dotnet workload install maui-android
 
       - name: Build AOT/full-linked Release APK
-        run: >
-          dotnet publish src/MeowSSH.App/MeowSSH.App.csproj
-          -c Release -f net10.0-android36.0
-          -p:RuntimeIdentifier=android-arm64
-          -p:SourceRevisionId=${{ github.sha }}
-          -p:Version=0.1.${{ github.run_number }}
-          -p:ApplicationDisplayVersion=0.1.${{ github.run_number }}
-          -p:ApplicationVersion=${{ github.run_number }}
+        shell: bash
+        run: |
+          set -o pipefail
+          LOG="$RUNNER_TEMP/release-link.log"
+          dotnet publish src/MeowSSH.App/MeowSSH.App.csproj \
+            -c Release -f net10.0-android36.0 \
+            -p:RuntimeIdentifier=android-arm64 \
+            -p:ILLinkTreatWarningsAsErrors=false \
+            -p:SourceRevisionId=${{ github.sha }} \
+            -p:Version=0.1.${{ github.run_number }} \
+            -p:ApplicationDisplayVersion=0.1.${{ github.run_number }} \
+            -p:ApplicationVersion=${{ github.run_number }} \
+            2>&1 | tee "$LOG"
+
+          # Several Android/Blazor/binding packages intentionally use reflection
+          # and Java dynamic callbacks. Their warnings stay visible above, while
+          # any trim diagnostic in code we own still fails the hardened build.
+          if grep -E '/src/MeowSSH\.(App|Core|Android|UI)/.*IL[0-9]{4}' "$LOG"; then
+            echo "::error::MeowSSH-owned code produced linker/AOT trim diagnostics."
+            exit 1
+          fi
 
       - name: Verify hardened Release package
         run: |
