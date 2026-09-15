@@ -26,6 +26,7 @@ public static class MauiProgram
         builder.Services.AddSingleton(sp => new VaultStore(sp.GetRequiredService<IVaultStorage>()));
         builder.Services.AddSingleton<IVaultSession, StoredVaultSession>();
 
+        builder.Services.AddSingleton<IStorePurchaseService, GooglePlayPurchaseService>();
         builder.Services.AddSingleton<IEntitlementCache, SecureStorageEntitlementCache>();
         builder.Services.AddSingleton<IEntitlementGrantProvider, UnconfiguredEntitlementGrantProvider>();
         builder.Services.AddSingleton<EntitlementService>();
