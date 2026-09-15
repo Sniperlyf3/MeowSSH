@@ -69,7 +69,14 @@ public sealed class VaultHostDirectory : IHostDirectory, IHostEditor, ICredentia
         IReadOnlyList<CredentialSummary> summaries =
         [
             .. _store.Document.LiveCredentials.Select(c =>
-                new CredentialSummary(c.Id, c.Label, c.Kind, c.Username, c.PublicKey, c.DisplayHint))
+                new CredentialSummary(
+                    c.Id,
+                    c.Label,
+                    c.Kind,
+                    c.Username,
+                    c.PublicKey,
+                    c.DisplayHint,
+                    c.Kind == CredentialKind.HardwareKey ? Encoding.UTF8.GetString(c.Secret) : null))
         ];
         return ValueTask.FromResult(summaries);
     }
