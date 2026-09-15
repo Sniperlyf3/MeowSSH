@@ -25,6 +25,16 @@ public interface ISshConnection : IHostConnection
         CancellationToken cancellationToken) =>
         await OpenShellAsync(columns, rows, cancellationToken).ConfigureAwait(false);
 
+    /// <summary>
+    /// Runs a non-interactive command without allocating a pseudo-terminal and returns
+    /// its complete stdout, stderr and exit code. Implementations must drain stdout and
+    /// stderr concurrently so either stream can exceed the SSH channel window safely.
+    /// </summary>
+    Task<SshCommandResult> RunCommandAsync(
+        string command,
+        TimeSpan? timeout = null,
+        CancellationToken cancellationToken = default);
+
     Task<ISftpSession> OpenSftpAsync(CancellationToken cancellationToken = default);
 
     Task<ISshForward> OpenLocalForwardAsync(
@@ -62,6 +72,15 @@ public interface ISshConnection : IHostConnection
         string? socksPassword = null,
         int maxConnections = 256,
         CancellationToken cancellationToken = default);
+}
+
+/// <summary>The result of one non-interactive SSH command.</summary>
+/// <param name="ExitCode">Remote process exit status.</param>
+/// <param name="StandardOutput">UTF-8 decoded stdout.</param>
+/// <param name="StandardError">UTF-8 decoded stderr.</param>
+public sealed record SshCommandResult(int ExitCode, string StandardOutput, string StandardError)
+{
+    public bool Succeeded => ExitCode == 0;
 }
 
 /// <summary>An interactive SSH shell with a pseudo-terminal.</summary>
