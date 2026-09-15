@@ -24,7 +24,7 @@ namespace MeowSSH.Core.Storage;
 public sealed record VaultDocument
 {
     /// <summary>The only schema this build writes. A newer file is refused rather than guessed at.</summary>
-    public const int SchemaVersion = 3;
+    public const int SchemaVersion = 4;
 
     /// <summary>
     /// Identifies the device that wrote this vault, so sync can break ties between
