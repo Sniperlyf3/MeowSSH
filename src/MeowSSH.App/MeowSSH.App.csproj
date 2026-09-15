@@ -27,8 +27,11 @@
 
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
     <AndroidPackageFormat>apk</AndroidPackageFormat>
-    <RunAOTCompilation>false</RunAOTCompilation>
-    <AndroidLinkMode>SdkOnly</AndroidLinkMode>
+    <!-- Release builds are materially harder to inspect than the previous
+         interpreter/JIT-oriented package, while Debug remains fast for local
+         development and emulator testing. -->
+    <RunAOTCompilation>true</RunAOTCompilation>
+    <AndroidLinkMode>Full</AndroidLinkMode>
   </PropertyGroup>
 
   <ItemGroup>
