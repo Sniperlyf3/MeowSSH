@@ -33,7 +33,7 @@ public sealed class GooglePlayPurchaseService : Java.Lang.Object, IStorePurchase
         products.AddRange(await QueryProductsAsync(
             new[] { MeowSshProducts.ProLifetime }, ProductType.Inapp, cancellationToken).ConfigureAwait(false));
         products.AddRange(await QueryProductsAsync(
-            new[] { MeowSshProducts.ProCloudMonthly, MeowSshProducts.ProCloudYearly }, ProductType.Subs, cancellationToken).ConfigureAwait(false));
+            new[] { MeowSshProducts.ProCloud }, ProductType.Subs, cancellationToken).ConfigureAwait(false));
         return products;
     }
 
@@ -47,7 +47,10 @@ public sealed class GooglePlayPurchaseService : Java.Lang.Object, IStorePurchase
         return purchases;
     }
 
-    public async Task<StorePurchase?> PurchaseAsync(string productId, CancellationToken cancellationToken = default)
+    public async Task<StorePurchase?> PurchaseAsync(
+        string productId,
+        string? basePlanId = null,
+        CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(productId);
         await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
@@ -68,8 +71,12 @@ public sealed class GooglePlayPurchaseService : Java.Lang.Object, IStorePurchase
         var detailsBuilder = BillingFlowParams.ProductDetailsParams.NewBuilder().SetProductDetails(details);
         if (productType == ProductType.Subs)
         {
-            var offerToken = details.GetSubscriptionOfferDetails()?.FirstOrDefault()?.OfferToken;
-            if (!string.IsNullOrWhiteSpace(offerToken)) detailsBuilder.SetOfferToken(offerToken);
+            if (string.IsNullOrWhiteSpace(basePlanId))
+                throw new InvalidOperationException("A subscription base plan must be selected.");
+
+            var offer = PreferredOffer(details, basePlanId)
+                ?? throw new InvalidOperationException($"Google Play did not return an eligible '{basePlanId}' offer.");
+            detailsBuilder.SetOfferToken(offer.OfferToken);
         }
 
         var flow = BillingFlowParams.NewBuilder()
@@ -154,20 +161,58 @@ public sealed class GooglePlayPurchaseService : Java.Lang.Object, IStorePurchase
             .ToArray();
         var result = await _client.QueryProductDetailsAsync(
             QueryProductDetailsParams.NewBuilder().SetProductList(requestProducts).Build()).ConfigureAwait(false);
+        EnsureOk(result.Result, "query product details");
 
-        return result.ProductDetailsList.Select(details =>
+        if (productType == ProductType.Inapp)
         {
-            var offerToken = productType == ProductType.Subs
-                ? details.GetSubscriptionOfferDetails()?.FirstOrDefault()?.OfferToken
-                : null;
-            return new StoreProduct(details.ProductId, details.Name, string.Empty, details.ProductType, offerToken);
-        }).ToArray();
+            return result.ProductDetailsList
+                .Select(details => new StoreProduct(
+                    details.ProductId,
+                    details.Name,
+                    details.GetOneTimePurchaseOfferDetails()?.FormattedPrice ?? string.Empty,
+                    details.ProductType))
+                .ToArray();
+        }
+
+        var subscriptions = new List<StoreProduct>();
+        foreach (var details in result.ProductDetailsList)
+        {
+            AddBasePlan(details, MeowSshProducts.ProCloudMonthlyBasePlan, "Monthly", subscriptions);
+            AddBasePlan(details, MeowSshProducts.ProCloudYearlyBasePlan, "Yearly", subscriptions);
+        }
+        return subscriptions;
     }
+
+    private static void AddBasePlan(
+        ProductDetails details,
+        string basePlanId,
+        string label,
+        ICollection<StoreProduct> products)
+    {
+        var offer = PreferredOffer(details, basePlanId);
+        if (offer is null) return;
+
+        var phases = offer.PricingPhases?.PricingPhaseList;
+        var paidPhase = phases?.LastOrDefault(static phase => phase.PriceAmountMicros > 0)
+            ?? phases?.LastOrDefault();
+        products.Add(new StoreProduct(
+            details.ProductId,
+            $"{details.Name} — {label}",
+            paidPhase?.FormattedPrice ?? string.Empty,
+            details.ProductType,
+            basePlanId));
+    }
+
+    private static ProductDetails.SubscriptionOfferDetails? PreferredOffer(ProductDetails details, string basePlanId) =>
+        details.GetSubscriptionOfferDetails()?
+            .Where(offer => string.Equals(offer.BasePlanId, basePlanId, StringComparison.Ordinal))
+            .OrderBy(offer => string.IsNullOrWhiteSpace(offer.OfferId) ? 0 : 1)
+            .FirstOrDefault();
 
     private static string ProductTypeFor(string productId) => productId switch
     {
         MeowSshProducts.ProLifetime => ProductType.Inapp,
-        MeowSshProducts.ProCloudMonthly or MeowSshProducts.ProCloudYearly => ProductType.Subs,
+        MeowSshProducts.ProCloud => ProductType.Subs,
         _ => throw new ArgumentOutOfRangeException(nameof(productId), productId, "Unknown MeowSSH Google Play product."),
     };
 
