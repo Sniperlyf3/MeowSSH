@@ -1,12 +1,18 @@
 @inject ITailcatHubService Hub
+@inject IHostDirectory Hosts
 
 <div class="tailcat-stack">
     @if (_error is not null) { <p class="lock__error" role="alert">@_error</p> }
     @if (_notice is not null) { <p class="note" role="status">@_notice</p> }
     <article class="tailcat-card">
         <h2>Remote files</h2>
+        @if (_savedPeers.Count > 0)
+        {
+            <label class="field"><span class="field__label">Saved Tailcat peer</span><select class="field__input" data-testid="tailcat-files-saved-peer" @onchange="SelectPeer"><option value="">Choose a saved host…</option>@foreach (var peer in _savedPeers){<option value="@peer.Id">@peer.Label</option>}</select></label>
+        }
         <label class="field"><span class="field__label">Tailcat server</span><input class="field__input mono" data-testid="tailcat-files-address" placeholder="tc… or DNS name" @bind="_address" @bind:event="oninput" /></label>
-        <label class="field"><span class="field__label">Remote path</span><input class="field__input mono" data-testid="tailcat-files-path" placeholder="/" @bind="_remotePath" /></label>
+        <label class="field"><span class="field__label">Remote path</span><input class="field__input mono" data-testid="tailcat-files-path" placeholder="/" @bind="_remotePath" @bind:event="oninput" /></label>
+        <label class="field"><span class="field__label">Custom DERP map URL</span><input class="field__input mono" data-testid="tailcat-files-derpmap" placeholder="https://…/derpmap/default" @bind="_derpMapUrl" @bind:event="oninput" /></label>
         <button class="btn btn--primary btn--block" disabled="@(_busy || string.IsNullOrWhiteSpace(_address))" data-testid="tailcat-list-files" @onclick="ListAsync">List files</button>
         @foreach (var entry in _entries)
         {
@@ -20,15 +26,17 @@
         <h2>Copy files</h2>
         <fieldset class="field"><legend class="field__label">Direction</legend><div class="segmented"><button type="button" class="segmented__option @(_upload ? "segmented__option--on" : "")" @onclick="() => _upload = true">Upload</button><button type="button" class="segmented__option @(!_upload ? "segmented__option--on" : "")" @onclick="() => _upload = false">Download</button></div></fieldset>
         <label class="field"><span class="field__label">Local path</span><input class="field__input mono" data-testid="tailcat-copy-local" @bind="_localPath" @bind:event="oninput" /></label>
-        <label class="field"><span class="field__label">Remote path</span><input class="field__input mono" data-testid="tailcat-copy-remote" @bind="_copyRemotePath" /></label>
+        <label class="field"><span class="field__label">Remote path</span><input class="field__input mono" data-testid="tailcat-copy-remote" @bind="_copyRemotePath" @bind:event="oninput" /></label>
         <label class="forward-option"><input type="checkbox" @bind="_recursive" /><span><strong>Recursive</strong><small>Copy directories recursively.</small></span></label>
         <button class="btn btn--primary btn--block" disabled="@(_busy || string.IsNullOrWhiteSpace(_address) || string.IsNullOrWhiteSpace(_localPath))" data-testid="tailcat-copy" @onclick="CopyAsync">@(_upload ? "Upload" : "Download")</button>
     </article>
 </div>
 
 @code {
+    private IReadOnlyList<HostRecord> _savedPeers = [];
     private string _address = "";
     private string _remotePath = "/";
+    private string _derpMapUrl = "";
     private IReadOnlyList<TailcatRemoteFile> _entries = [];
     private bool _upload = true;
     private string _localPath = "";
@@ -38,12 +46,27 @@
     private string? _error;
     private string? _notice;
 
-    private async Task ListAsync() => await RunAsync(async () => _entries = await Hub.ListRemoteFilesAsync(_address, _remotePath));
+    protected override async Task OnInitializedAsync()
+    {
+        _savedPeers = [.. (await Hosts.GetHostsAsync())
+            .Select(status => status.Host)
+            .Where(host => !host.IsDeleted && host.Protocol == HostProtocol.Ssh && host.Transport == SshTransport.Tailcat)
+            .OrderBy(host => host.Label, StringComparer.OrdinalIgnoreCase)];
+    }
+
+    private void SelectPeer(ChangeEventArgs args)
+    {
+        if (!Guid.TryParse(args.Value?.ToString(), out var id)) return;
+        var peer = _savedPeers.FirstOrDefault(host => host.Id == id);
+        if (peer is not null) _address = peer.Address;
+    }
+
+    private async Task ListAsync() => await RunAsync(async () => _entries = await Hub.ListRemoteFilesAsync(_address, _remotePath, Empty(_derpMapUrl)));
 
     private async Task CopyAsync() => await RunAsync(async () =>
     {
-        if (_upload) await Hub.UploadAsync(_localPath, _address, _copyRemotePath, _recursive);
-        else await Hub.DownloadAsync(_address, _copyRemotePath, _localPath, _recursive);
+        if (_upload) await Hub.UploadAsync(_localPath, _address, _copyRemotePath, _recursive, Empty(_derpMapUrl));
+        else await Hub.DownloadAsync(_address, _copyRemotePath, _localPath, _recursive, Empty(_derpMapUrl));
         _notice = _upload ? "Upload completed." : "Download completed.";
     });
 
@@ -53,4 +76,6 @@
         try { await action(); } catch (Exception ex) { _error = ex.Message; }
         finally { _busy = false; }
     }
+
+    private static string? Empty(string value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }
