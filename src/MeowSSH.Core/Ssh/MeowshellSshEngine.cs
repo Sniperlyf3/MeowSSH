@@ -159,6 +159,12 @@ public sealed class MeowshellSshEngine(MeowshellSshEngineOptions options) : ISsh
                 ct).ConfigureAwait(false);
             return answers is null ? [] : [.. answers];
         };
+
+        if (credentials.HardwareKeySigner is { } signer)
+        {
+            agent.SignRequested += async (request, ct) =>
+                await signer.SignAsync(request.KeyId, request.Algorithm, request.Data, ct).ConfigureAwait(false);
+        }
     }
 
     private static string SecretToString(SecretBuffer? secret) =>
