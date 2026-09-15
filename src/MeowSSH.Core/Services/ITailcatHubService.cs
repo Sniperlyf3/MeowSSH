@@ -67,7 +67,8 @@ public sealed record TailcatServeRequest(
     bool UseTailcatCredentialForShell = false,
     bool FullAddress = false,
     bool UsePresharedKey = true,
-    string? DerpMapUrl = null);
+    string? DerpMapUrl = null,
+    IReadOnlyList<string>? ForcedCommand = null);
 
 public sealed record TailcatSocksRequest(
     string ListenAddress = "127.0.0.1:0",
