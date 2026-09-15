@@ -1,0 +1,104 @@
+.session-logs {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+  padding-bottom: 6rem;
+}
+
+.session-logs__search {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: .75rem;
+  align-items: end;
+}
+
+.session-logs__summary,
+.session-log-detail__header,
+.session-log-detail__meta,
+.session-log-detail__actions,
+.session-log-card {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+}
+
+.session-logs__summary,
+.session-log-detail__header,
+.session-log-card {
+  justify-content: space-between;
+}
+
+.session-log-list {
+  display: grid;
+  gap: .75rem;
+}
+
+.session-log-card,
+.session-log-detail {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.session-log-card {
+  padding: .75rem;
+}
+
+.session-log-card__main {
+  display: grid;
+  gap: .2rem;
+  min-width: 0;
+  flex: 1;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.session-log-card__title {
+  font-weight: 600;
+}
+
+.session-log-card__meta,
+.session-log-detail__meta {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.session-log-detail {
+  display: grid;
+  gap: .85rem;
+  padding: 1rem;
+}
+
+.session-log-detail__content {
+  overflow: auto;
+  max-height: min(55vh, 36rem);
+  margin: 0;
+  padding: .85rem;
+  border-radius: var(--radius-sm);
+  background: var(--ground);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+.session-log-detail__actions {
+  flex-wrap: wrap;
+}
+
+@media (max-width: 560px) {
+  .session-logs__search {
+    grid-template-columns: 1fr;
+  }
+
+  .session-log-card {
+    align-items: flex-start;
+  }
+
+  .session-log-detail__header {
+    align-items: flex-start;
+  }
+}
