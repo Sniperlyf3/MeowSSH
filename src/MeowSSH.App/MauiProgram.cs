@@ -48,6 +48,7 @@ public static class MauiProgram
             Path.Combine(FileSystem.AppDataDirectory, "tailcat-home"),
             Path.Combine(FileSystem.CacheDirectory, "tailcat-work")));
         builder.Services.AddSingleton<ITailcatHubService, MeowshellTailcatHubService>();
+        builder.Services.AddSingleton<ITailcatIdentityStore, TailcatIdentityStore>();
 
         builder.Services.AddSingleton<ISshEngine>(sp =>
             new MeowshellSshEngine(sp.GetRequiredService<MeowshellSshEngineOptions>()));
