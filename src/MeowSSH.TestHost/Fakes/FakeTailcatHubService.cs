@@ -17,7 +17,8 @@ public sealed class FakeTailcatHubService : ITailcatHubService
     {
         cancellationToken.ThrowIfCancellationRequested();
         _server = new TailcatServerSnapshot(
-            "tc-test-address", DateTimeOffset.UtcNow + request.Lifetime,
+            request.FullAddress ? "tc-test-full-address" : "tc-test-address",
+            DateTimeOffset.UtcNow + request.Lifetime,
             request.EnableShell, request.EnableFiles, request.EnableExitNode, request.AllowAnyClient, request.UseTailcatCredentialForShell,
             request.SharedFolder, request.FileMode);
         RaiseChanged();
@@ -94,7 +95,25 @@ public sealed class FakeTailcatHubService : ITailcatHubService
         return Task.FromResult("nodekey:test-client-public");
     }
 
-    public Task<TailcatDiagnosticResult> DiagnoseAsync(string address, bool waitForDirect, CancellationToken cancellationToken = default)
+    public Task<string> ResolveAddressAsync(string address, string? derpMapUrl = null, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult("tc-test-resolved-full-address");
+    }
+
+    public Task<TailcatAddressDetails> InspectAddressAsync(string address, string? derpMapUrl = null, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(new TailcatAddressDetails(
+            "tc-test-resolved-full-address",
+            "nodekey:test-server",
+            "discokey:test-server",
+            true,
+            0,
+            [new TailcatDerpRegionDetails(1, "test", "Test DERP", [new TailcatDerpNodeDetails("test-1", "derp.example.test", null, "192.0.2.10", null, 3478, 443)])]));
+    }
+
+    public Task<TailcatDiagnosticResult> DiagnoseAsync(string address, bool waitForDirect, string? derpMapUrl = null, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         return Task.FromResult(new TailcatDiagnosticResult(
@@ -102,7 +121,7 @@ public sealed class FakeTailcatHubService : ITailcatHubService
             "192.0.2.1:41641", 1, "test", "nodekey:test-server", true));
     }
 
-    public Task<IReadOnlyList<TailcatRemoteFile>> ListRemoteFilesAsync(string address, string path, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<TailcatRemoteFile>> ListRemoteFilesAsync(string address, string path, string? derpMapUrl = null, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         return Task.FromResult<IReadOnlyList<TailcatRemoteFile>>
@@ -112,13 +131,13 @@ public sealed class FakeTailcatHubService : ITailcatHubService
         ]);
     }
 
-    public Task UploadAsync(string localPath, string address, string remotePath, bool recursive = false, CancellationToken cancellationToken = default)
+    public Task UploadAsync(string localPath, string address, string remotePath, bool recursive = false, string? derpMapUrl = null, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         return Task.CompletedTask;
     }
 
-    public Task DownloadAsync(string address, string remotePath, string localPath, bool recursive = false, CancellationToken cancellationToken = default)
+    public Task DownloadAsync(string address, string remotePath, string localPath, bool recursive = false, string? derpMapUrl = null, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         return Task.CompletedTask;
