@@ -1,4 +1,6 @@
 using MeowSSH.Android;
+using MeowSSH.App.Services;
+using MeowSSH.Core.Licensing;
 using MeowSSH.Core.Security;
 using MeowSSH.Core.Services;
 using MeowSSH.Core.Ssh;
@@ -23,6 +25,11 @@ public static class MauiProgram
         builder.Services.AddSingleton<IDeviceIdentity>(_ => new FileDeviceIdentity(Path.Combine(FileSystem.AppDataDirectory, "device.seed")));
         builder.Services.AddSingleton(sp => new VaultStore(sp.GetRequiredService<IVaultStorage>()));
         builder.Services.AddSingleton<IVaultSession, StoredVaultSession>();
+
+        builder.Services.AddSingleton<IEntitlementCache, SecureStorageEntitlementCache>();
+        builder.Services.AddSingleton<IEntitlementGrantProvider, UnconfiguredEntitlementGrantProvider>();
+        builder.Services.AddSingleton<EntitlementService>();
+        builder.Services.AddSingleton<IEntitlementService>(sp => sp.GetRequiredService<EntitlementService>());
 
         builder.Services.AddSingleton<VaultHostDirectory>();
         builder.Services.AddSingleton<IHostDirectory>(sp => sp.GetRequiredService<VaultHostDirectory>());
