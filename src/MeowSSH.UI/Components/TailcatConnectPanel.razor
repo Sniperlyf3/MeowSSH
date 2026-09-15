@@ -1,0 +1,116 @@
+@using MeowSSH.UI.Services
+@inject ITailcatHubService Hub
+@inject IHostDirectory Hosts
+@inject IActiveSessionLifetime SessionLifetime
+@inject IExternalUriLauncher UriLauncher
+
+<div class="tailcat-stack">
+    @if (_error is not null) { <p class="lock__error" role="alert">@_error</p> }
+    <article class="tailcat-card">
+        <h2>SOCKS5 gateway</h2>
+        @if (Hub.Snapshot.Socks is { } socks)
+        {
+            <p class="note" data-testid="tailcat-socks-running">Listening at <span class="mono">@socks.ListenAddress</span></p>
+            <button class="btn btn--danger btn--block" disabled="@_busy" data-testid="stop-tailcat-socks" @onclick="StopSocksAsync">Stop gateway</button>
+        }
+        else
+        {
+            <label class="field"><span class="field__label">Listen address</span><input class="field__input mono" data-testid="tailcat-socks-listen" @bind="_socksListen" @bind:event="oninput" /></label>
+            <label class="field"><span class="field__label">Client key name</span><input class="field__input mono" data-testid="tailcat-socks-key" placeholder="client-default" @bind="_clientKey" @bind:event="oninput" /><span class="field__hint">Leave blank for Tailcat's default client identity.</span></label>
+            <label class="field"><span class="field__label">Custom DERP map URL</span><input class="field__input mono" data-testid="tailcat-socks-derpmap" placeholder="https://…/derpmap/default" @bind="_derpMapUrl" @bind:event="oninput" /></label>
+            <button class="btn btn--primary btn--block" disabled="@_busy" data-testid="start-tailcat-socks" @onclick="StartSocksAsync">Start gateway</button>
+        }
+    </article>
+
+    <article class="tailcat-card">
+        <h2>Port forwarding</h2>
+        @if (_savedPeers.Count > 0)
+        {
+            <label class="field"><span class="field__label">Saved Tailcat peer</span><select class="field__input" data-testid="tailcat-forward-saved-peer" @onchange="SelectPeer"><option value="">Choose a saved host…</option>@foreach (var peer in _savedPeers){<option value="@peer.Id">@peer.Label</option>}</select></label>
+        }
+        <label class="field"><span class="field__label">Tailcat server</span><input class="field__input mono" data-testid="tailcat-forward-address" placeholder="tc…" @bind="_address" @bind:event="oninput" /></label>
+        <label class="field"><span class="field__label">Mappings</span><textarea class="field__input mono" rows="3" data-testid="tailcat-forward-mappings" placeholder="8080:80&#10;8443:192.168.1.10:443" @bind="_mappings" @bind:event="oninput"></textarea><span class="field__hint">One per line: port, local:remote, or local:remote-host:remote-port. Remote LAN destinations require an exit-node server.</span></label>
+        <label class="forward-option"><input type="checkbox" data-testid="tailcat-forward-udp" @bind="_udp" /><span><strong>UDP forwarding</strong><small>Preserve UDP datagrams instead of opening TCP streams. All mappings in this forward use the selected protocol.</small></span></label>
+        <label class="field"><span class="field__label">Bind address</span><input class="field__input mono" data-testid="tailcat-forward-bind" @bind="_bind" @bind:event="oninput" /></label>
+        <label class="field"><span class="field__label">Custom DERP map URL</span><input class="field__input mono" data-testid="tailcat-forward-derpmap" placeholder="https://…/derpmap/default" @bind="_derpMapUrl" @bind:event="oninput" /></label>
+        <button class="btn btn--primary btn--block" disabled="@(_busy || string.IsNullOrWhiteSpace(_address) || MappingList.Count == 0)" data-testid="start-tailcat-forward" @onclick="StartForwardAsync">Start @(_udp ? "UDP" : "TCP") forward</button>
+        <button class="btn btn--ghost btn--block" disabled="@(_busy || string.IsNullOrWhiteSpace(_address))" data-testid="tailcat-browse" @onclick="BrowseAsync">Open web service (port 80)</button>
+        @foreach (var forward in Hub.Snapshot.Forwards)
+        {
+            <div class="tailcat-running-row" data-testid="tailcat-forward-row">
+                <span><strong class="mono">@(forward.Udp ? "UDP" : "TCP") · @string.Join(", ", forward.BoundAddresses)</strong><small>@forward.Address · @string.Join(", ", forward.Mappings)</small></span>
+                <button class="btn btn--icon" aria-label="Stop forward" @onclick="() => StopForwardAsync(forward.Id)"><Icon Name="close" /></button>
+            </div>
+        }
+    </article>
+</div>
+
+@code {
+    private IReadOnlyList<HostRecord> _savedPeers = [];
+    private string _socksListen = "127.0.0.1:0";
+    private string _clientKey = "";
+    private string _address = "";
+    private string _mappings = "";
+    private string _bind = "127.0.0.1";
+    private string _derpMapUrl = "";
+    private bool _udp;
+    private bool _busy;
+    private string? _error;
+
+    private IReadOnlyList<string> MappingList => [.. _mappings.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
+    private bool Active() { var s = Hub.Snapshot; return s.Server is not null || s.Socks is not null || s.Forwards.Count > 0; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _savedPeers = [.. (await Hosts.GetHostsAsync())
+            .Select(status => status.Host)
+            .Where(host => !host.IsDeleted && host.Protocol == HostProtocol.Ssh && host.Transport == SshTransport.Tailcat)
+            .OrderBy(host => host.Label, StringComparer.OrdinalIgnoreCase)];
+    }
+
+    private void SelectPeer(ChangeEventArgs args)
+    {
+        if (!Guid.TryParse(args.Value?.ToString(), out var id)) return;
+        var peer = _savedPeers.FirstOrDefault(host => host.Id == id);
+        if (peer is not null) _address = peer.Address;
+    }
+
+    private async Task StartSocksAsync() => await RunStartAsync(() => Hub.StartSocksAsync(new TailcatSocksRequest(_socksListen, Empty(_clientKey), Empty(_derpMapUrl))));
+    private async Task StartForwardAsync() => await RunStartAsync(() => Hub.StartForwardAsync(new TailcatForwardRequest(_address, MappingList, _bind, Empty(_clientKey), Empty(_derpMapUrl), Udp: _udp)));
+
+    private async Task BrowseAsync()
+    {
+        _busy = true;
+        _error = null;
+        var wasActive = Active();
+        TailcatForwardSnapshot? forward = null;
+        try
+        {
+            if (!wasActive) await SessionLifetime.StartAsync();
+            forward = await Hub.StartForwardAsync(new TailcatForwardRequest(_address, ["0:80"], "127.0.0.1", Empty(_clientKey), Empty(_derpMapUrl), Udp: false));
+            var bound = forward.BoundAddresses.FirstOrDefault()
+                ?? throw new InvalidOperationException("Tailcat did not report the browser forward's local address.");
+            if (!await UriLauncher.OpenAsync(new Uri($"http://{bound}/", UriKind.Absolute)))
+                throw new InvalidOperationException("Android could not open a browser for the Tailcat forward.");
+        }
+        catch (Exception ex)
+        {
+            if (forward is not null) await Hub.StopForwardAsync(forward.Id);
+            if (!wasActive && !Active()) await SessionLifetime.StopAsync();
+            _error = ex.Message;
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task RunStartAsync(Func<Task> start)
+    {
+        _busy = true; _error = null; var wasActive = Active();
+        try { if (!wasActive) await SessionLifetime.StartAsync(); try { await start(); } catch { if (!wasActive) await SessionLifetime.StopAsync(); throw; } }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task StopSocksAsync() { _busy = true; try { await Hub.StopSocksAsync(); if (!Active()) await SessionLifetime.StopAsync(); } catch (Exception ex) { _error = ex.Message; } finally { _busy = false; } }
+    private async Task StopForwardAsync(Guid id) { _busy = true; try { await Hub.StopForwardAsync(id); if (!Active()) await SessionLifetime.StopAsync(); } catch (Exception ex) { _error = ex.Message; } finally { _busy = false; } }
+    private static string? Empty(string value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+}

@@ -8,6 +8,7 @@
     <SingleProject>true</SingleProject>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 
     <ApplicationTitle>MeowSSH</ApplicationTitle>
     <ApplicationId>dev.sniperlyf3.meowssh</ApplicationId>
@@ -41,6 +42,14 @@
     <PackageReference Include="Microsoft.Maui.Controls" Version="10.0.101" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebView.Maui" Version="10.0.101" />
     <PackageReference Include="UsbSerialForAndroid" Version="2.0.1" />
+    <PackageReference Include="ZXing.Net.Maui.Controls" Version="0.10.4" />
+  </ItemGroup>
+
+  <!-- Native TCP+UDP TUN-to-SOCKS bridge used by Android VpnService. The AAR is
+       pinned on Maven Central and is included for its native libraries only;
+       MeowSSH calls the stable hev C ABI directly. -->
+  <ItemGroup>
+    <AndroidMavenLibrary Include="com.wgtunnel:hevtunnel" Version="1.0.4" Bind="false" VerifyDependencies="false" />
   </ItemGroup>
 
   <ItemGroup>

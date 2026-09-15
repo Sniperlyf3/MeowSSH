@@ -1,5 +1,6 @@
 @using System.Text
 @inject IHostEditor Editor
+@inject IJSRuntime Js
 
 <AppShell Title="Keys" ActiveTab="keys" OnTabSelected="OnTabSelected">
     <Actions>
@@ -41,6 +42,10 @@
                                         role="radio" aria-checked="@(_kind == CredentialKind.PrivateKey ? "true" : "false")"
                                         data-testid="kind-key" @onclick="() => _kind = CredentialKind.PrivateKey">Private key</button>
                                 <button type="button"
+                                        class="segmented__option @(_kind == CredentialKind.PublicKey ? "segmented__option--on" : "")"
+                                        role="radio" aria-checked="@(_kind == CredentialKind.PublicKey ? "true" : "false")"
+                                        data-testid="kind-public-key" @onclick="() => _kind = CredentialKind.PublicKey">Public key</button>
+                                <button type="button"
                                         class="segmented__option @(_kind == CredentialKind.Password ? "segmented__option--on" : "")"
                                         role="radio" aria-checked="@(_kind == CredentialKind.Password ? "true" : "false")"
                                         data-testid="kind-password" @onclick="() => _kind = CredentialKind.Password">Password</button>
@@ -57,6 +62,12 @@
 
                         @if (_kind == CredentialKind.PrivateKey)
                         {
+                            <button type="button" class="btn btn--ghost btn--block"
+                                    data-testid="generate-ssh-key" @onclick="GenerateSshKey">
+                                <Icon Name="key" /> Generate SSH key
+                            </button>
+                            <span class="field__hint">Generates a 3072-bit RSA key pair locally. The private key is stored in the vault; the public key can be copied for authorized_keys.</span>
+
                             <label class="field">
                                 <span class="field__label">Private key</span>
                                 <textarea class="field__input field__input--code mono" rows="6"
@@ -67,11 +78,35 @@
                                 <span class="field__hint">Pasted as-is and sealed immediately inside the vault.</span>
                             </label>
 
+                            @if (!string.IsNullOrWhiteSpace(_publicKey))
+                            {
+                                <label class="field">
+                                    <span class="field__label">Public key</span>
+                                    <textarea class="field__input field__input--code mono" rows="4"
+                                              data-testid="generated-public-key" readonly>@_publicKey</textarea>
+                                    <button type="button" class="btn btn--ghost"
+                                            data-testid="copy-generated-public-key"
+                                            @onclick="() => CopyPublicKeyAsync(_publicKey)">Copy public key</button>
+                                </label>
+                            }
+
                             <label class="field">
                                 <span class="field__label">Key passphrase</span>
                                 <input class="field__input mono" type="password" data-testid="credential-passphrase"
                                        autocomplete="off" @bind="_passphrase" @bind:event="oninput" />
                                 <span class="field__hint">Leave blank if the key has none.</span>
+                            </label>
+                        }
+                        else if (_kind == CredentialKind.PublicKey)
+                        {
+                            <label class="field">
+                                <span class="field__label">Public key</span>
+                                <textarea class="field__input field__input--code mono" rows="5"
+                                          data-testid="credential-public-key"
+                                          placeholder="ssh-ed25519 AAAA... user@host"
+                                          autocomplete="off" autocapitalize="none" spellcheck="false"
+                                          @bind="_publicKey" @bind:event="oninput"></textarea>
+                                <span class="field__hint">Authorization-only key. Useful for Tailcat shell allowlists; no private key is stored.</span>
                             </label>
                         }
                         else
@@ -133,16 +168,38 @@
                             <span class="credential-card__body">
                                 <span class="credential-card__title-row">
                                     <strong class="credential-card__title">@credential.Label</strong>
-                                    <span class="credential-card__kind">@(credential.Kind == CredentialKind.Password ? "Password" : "Private key")</span>
+                                    <span class="credential-card__kind">@CredentialKindLabel(credential.Kind)</span>
                                 </span>
                                 <span class="credential-card__hint mono">@credential.DisplayHint</span>
                             </span>
-                            <button type="button" class="btn btn--icon credential-card__delete"
-                                    aria-label="@($"Delete {credential.Label}")"
-                                    data-testid="delete-credential"
-                                    @onclick="() => DeleteAsync(credential)">
-                                <Icon Name="trash" />
-                            </button>
+                            <span class="credential-card__actions">
+                                @if (!string.IsNullOrWhiteSpace(credential.PublicKey))
+                                {
+                                    <button type="button" class="btn btn--icon"
+                                            aria-label="@($"Show public key for {credential.Label}")"
+                                            data-testid="show-public-key"
+                                            @onclick="() => TogglePublicKey(credential.Id)">
+                                        <Icon Name="key" />
+                                    </button>
+                                    <button type="button" class="btn btn--icon"
+                                            aria-label="@($"Copy public key for {credential.Label}")"
+                                            data-testid="copy-public-key"
+                                            @onclick="() => CopyPublicKeyAsync(credential.PublicKey!)">
+                                        <Icon Name="copy" />
+                                    </button>
+                                }
+                                <button type="button" class="btn btn--icon credential-card__delete"
+                                        aria-label="@($"Delete {credential.Label}")"
+                                        data-testid="delete-credential"
+                                        @onclick="() => DeleteAsync(credential)">
+                                    <Icon Name="trash" />
+                                </button>
+                            </span>
+                            @if (_expandedPublicKeyId == credential.Id && !string.IsNullOrWhiteSpace(credential.PublicKey))
+                            {
+                                <textarea class="field__input field__input--code mono credential-card__public-key"
+                                          rows="4" readonly data-testid="public-key-value">@credential.PublicKey</textarea>
+                            }
                         </article>
                     }
                 </div>
@@ -168,11 +225,14 @@
     private string _username = "";
     private string _secret = "";
     private string _passphrase = "";
+    private string _publicKey = "";
+    private Guid? _expandedPublicKeyId;
     private CredentialKind _kind = CredentialKind.PrivateKey;
 
     [Parameter] public EventCallback<string> OnTabSelected { get; set; }
 
-    private bool IsComplete => !string.IsNullOrWhiteSpace(_label) && _secret.Length > 0;
+    private bool IsComplete => !string.IsNullOrWhiteSpace(_label)
+        && (_kind == CredentialKind.PublicKey ? !string.IsNullOrWhiteSpace(_publicKey) : _secret.Length > 0);
 
     protected override Task OnInitializedAsync() => ReloadAsync();
     private async Task ReloadAsync() => _credentials = await Editor.GetCredentialsAsync();
@@ -180,7 +240,7 @@
     private void StartAdding()
     {
         _adding = true;
-        _label = _username = _secret = _passphrase = "";
+        _label = _username = _secret = _passphrase = _publicKey = "";
         _kind = CredentialKind.PrivateKey;
         _revealed = false;
     }
@@ -188,7 +248,7 @@
     private void StopAdding()
     {
         _adding = false;
-        _secret = _passphrase = "";
+        _secret = _passphrase = _publicKey = "";
     }
 
     private async Task SaveAsync()
@@ -202,14 +262,41 @@
                 Label = _label.Trim(),
                 Kind = _kind,
                 Username = string.IsNullOrWhiteSpace(_username) ? null : _username.Trim(),
-                Secret = Encoding.UTF8.GetBytes(_secret),
-                Passphrase = _passphrase.Length == 0 ? null : Encoding.UTF8.GetBytes(_passphrase),
+                Secret = _kind == CredentialKind.PublicKey ? [] : Encoding.UTF8.GetBytes(_secret),
+                Passphrase = _kind == CredentialKind.PrivateKey && _passphrase.Length > 0 ? Encoding.UTF8.GetBytes(_passphrase) : null,
+                PublicKey = (_kind is CredentialKind.PrivateKey or CredentialKind.PublicKey) && !string.IsNullOrWhiteSpace(_publicKey)
+                    ? _publicKey.Trim()
+                    : null,
             });
 
             StopAdding();
             await ReloadAsync();
         }
         finally { _busy = false; }
+    }
+
+    private static string CredentialKindLabel(CredentialKind kind) => kind switch
+    {
+        CredentialKind.Password => "Password",
+        CredentialKind.PublicKey => "Public key",
+        _ => "Private key",
+    };
+
+    private void GenerateSshKey()
+    {
+        var generated = SshKeyGenerator.GenerateRsa(string.IsNullOrWhiteSpace(_label) ? "meowssh" : _label.Trim());
+        _secret = generated.PrivateKey;
+        _publicKey = generated.PublicKey;
+        _passphrase = "";
+    }
+
+    private void TogglePublicKey(Guid credentialId) =>
+        _expandedPublicKeyId = _expandedPublicKeyId == credentialId ? null : credentialId;
+
+    private async Task CopyPublicKeyAsync(string publicKey)
+    {
+        await using var clipboard = await Js.InvokeAsync<IJSObjectReference>("import", "./_content/MeowSSH.UI/js/clipboard.js");
+        await clipboard.InvokeAsync<bool>("copyText", publicKey);
     }
 
     private async Task DeleteAsync(CredentialSummary credential)

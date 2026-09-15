@@ -1,0 +1,104 @@
+@implements IDisposable
+@using MeowSSH.UI.Services
+@inject ITailcatVpnController Vpn
+@inject IHostDirectory Hosts
+
+<div class="tailcat-stack">
+    @if (_error is not null) { <p class="lock__error" role="alert">@_error</p> }
+    @if (_notice is not null) { <p class="note" role="status">@_notice</p> }
+
+    <article class="tailcat-card">
+        <h2>Android VPN</h2>
+        @if (_snapshot.IsRunning)
+        {
+            <p class="note" data-testid="tailcat-vpn-running"><strong>Tailcat VPN is active.</strong> Routing @string.Join(", ", _snapshot.Routes)</p>
+            <p class="field__hint">MeowSSH itself is excluded from the VPN so its Tailcat/DERP transport cannot loop back into the tunnel.</p>
+            <button class="btn btn--danger btn--block" disabled="@_busy" data-testid="tailcat-vpn-stop" @onclick="StopAsync">Stop VPN</button>
+        }
+        else
+        {
+            @if (_savedPeers.Count > 0)
+            {
+                <label class="field"><span class="field__label">Saved Tailcat peer</span><select class="field__input" data-testid="tailcat-vpn-saved-peer" @onchange="SelectPeer"><option value="">Choose a saved host…</option>@foreach (var peer in _savedPeers){<option value="@peer.Id">@peer.Label</option>}</select></label>
+            }
+            <label class="field"><span class="field__label">Tailcat exit-node server</span><textarea class="field__input mono" rows="4" data-testid="tailcat-vpn-address" placeholder="tc…" @bind="_address" @bind:event="oninput"></textarea><span class="field__hint">The server must expose exit-node routing for full-device or subnet VPN traffic.</span></label>
+            <label class="forward-option"><input type="checkbox" data-testid="tailcat-vpn-full-device" @bind="_fullDevice" /><span><strong>Route all IPv4 traffic</strong><small>Uses 0.0.0.0/0. Android will show its normal VPN indicator while active.</small></span></label>
+            @if (!_fullDevice)
+            {
+                <label class="field"><span class="field__label">Selected IPv4 subnets</span><textarea class="field__input mono" rows="4" data-testid="tailcat-vpn-routes" placeholder="192.168.1.0/24&#10;10.20.0.0/16" @bind="_routes" @bind:event="oninput"></textarea><span class="field__hint">Comma- or line-separated IPv4 CIDRs. Only these destinations are captured by Android's VPN interface.</span></label>
+            }
+            <details class="tailcat-advanced">
+                <summary>Identity and DERP options</summary>
+                <div class="tailcat-stack">
+                    <label class="field"><span class="field__label">Client key name</span><input class="field__input mono" data-testid="tailcat-vpn-client-key" placeholder="client-default" @bind="_clientKey" @bind:event="oninput" /><span class="field__hint">Leave blank for Tailcat's default client identity.</span></label>
+                    <label class="field"><span class="field__label">Custom DERP map URL</span><input class="field__input mono" data-testid="tailcat-vpn-derpmap" placeholder="https://…/derpmap/default" @bind="_derpMapUrl" @bind:event="oninput" /></label>
+                </div>
+            </details>
+            <p class="field__hint">TCP and UDP are bridged through Tailcat's local SOCKS5 gateway. MeowSSH's own network traffic is excluded from the VPN to keep the underlying tunnel reachable.</p>
+            <button class="btn btn--primary btn--block" disabled="@(_busy || string.IsNullOrWhiteSpace(_address) || EffectiveRoutes.Count == 0)" data-testid="tailcat-vpn-start" @onclick="StartAsync">Start Tailcat VPN</button>
+        }
+    </article>
+</div>
+
+@code {
+    private IReadOnlyList<HostRecord> _savedPeers = [];
+    private TailcatVpnSnapshot _snapshot = new(false, null, []);
+    private string _address = "";
+    private string _routes = "192.168.0.0/16\n10.0.0.0/8";
+    private bool _fullDevice = true;
+    private string _clientKey = "";
+    private string _derpMapUrl = "";
+    private bool _busy;
+    private string? _error;
+    private string? _notice;
+
+    private IReadOnlyList<string> EffectiveRoutes => _fullDevice
+        ? ["0.0.0.0/0"]
+        : [.. _routes.Split([',', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Distinct(StringComparer.Ordinal)];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _snapshot = Vpn.Snapshot;
+        Vpn.Changed += OnChanged;
+        _savedPeers = [.. (await Hosts.GetHostsAsync()).Select(status => status.Host)
+            .Where(host => !host.IsDeleted && host.Protocol == HostProtocol.Ssh && host.Transport == SshTransport.Tailcat)
+            .OrderBy(host => host.Label, StringComparer.OrdinalIgnoreCase)];
+    }
+
+    private void SelectPeer(ChangeEventArgs args)
+    {
+        if (!Guid.TryParse(args.Value?.ToString(), out var id)) return;
+        var peer = _savedPeers.FirstOrDefault(host => host.Id == id);
+        if (peer is not null) _address = peer.Address;
+    }
+
+    private async Task StartAsync()
+    {
+        _busy = true; _error = _notice = null;
+        try
+        {
+            await Vpn.StartAsync(new TailcatVpnRequest(_address.Trim(), EffectiveRoutes, Empty(_clientKey), Empty(_derpMapUrl)));
+            _notice = "Tailcat VPN started.";
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task StopAsync()
+    {
+        _busy = true; _error = _notice = null;
+        try { await Vpn.StopAsync(); _notice = "Tailcat VPN stopped."; }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private void OnChanged(object? sender, EventArgs e) => _ = InvokeAsync(() =>
+    {
+        _snapshot = Vpn.Snapshot;
+        if (!string.IsNullOrWhiteSpace(_snapshot.Error)) _error = _snapshot.Error;
+        StateHasChanged();
+    });
+
+    public void Dispose() => Vpn.Changed -= OnChanged;
+    private static string? Empty(string value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+}

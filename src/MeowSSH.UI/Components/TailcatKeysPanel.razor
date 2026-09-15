@@ -1,0 +1,153 @@
+@inject ITailcatHubService Hub
+@inject ITailcatIdentityStore IdentityStore
+@inject IJSRuntime Js
+
+<div class="tailcat-stack">
+    @if (_error is not null) { <p class="lock__error" role="alert">@_error</p> }
+    @if (_notice is not null) { <p class="note" role="status">@_notice</p> }
+
+    <article class="tailcat-card">
+        <h2>Generate identity</h2>
+        <div class="form__row">
+            <label class="field field--grow"><span class="field__label">Name</span><input class="field__input mono" data-testid="tailcat-key-name" @bind="_name" @bind:event="oninput" /></label>
+            <label class="field field--grow"><span class="field__label">Type</span><select class="field__input" data-testid="tailcat-key-type" value="@_client.ToString().ToLowerInvariant()" @onchange="OnClientTypeChanged"><option value="false">Server</option><option value="true">Client</option></select></label>
+        </div>
+        @if (!_client)
+        {
+            <label class="field"><span class="field__label">DERP region</span><input class="field__input mono" placeholder="auto" data-testid="tailcat-key-region" @bind="_region" @bind:event="oninput" /><span class="field__hint">Optional region ID, code, substring, or comma-separated custom DERP hostname(s).</span></label>
+            <label class="forward-option"><input type="checkbox" data-testid="tailcat-key-fixed-region" @bind="_fixedRegion" /><span><strong>Fix region now</strong><small>Discover/select a relay now and bake it into the identity instead of choosing on each startup.</small></span></label>
+            <label class="forward-option"><input type="checkbox" data-testid="tailcat-key-embed-derp" @bind="_embedDerp" /><span><strong>Embed DERP map</strong><small>Generate a self-contained address that does not need a DERP-map lookup.</small></span></label>
+            <label class="forward-option"><input type="checkbox" data-testid="tailcat-key-psk" @bind="_usePresharedKey" /><span><strong>Include WireGuard PSK</strong><small>Recommended. Adds a pre-shared key to the generated Tailcat address.</small></span></label>
+        }
+        <label class="forward-option"><input type="checkbox" data-testid="tailcat-key-overwrite" @bind="_overwrite" /><span><strong>Overwrite existing identity</strong><small>Replace a saved identity with the same name.</small></span></label>
+        <label class="field"><span class="field__label">Custom DERP map URL</span><input class="field__input mono" placeholder="https://…/derpmap/default" data-testid="tailcat-key-derpmap" @bind="_derpMapUrl" @bind:event="oninput" /><span class="field__hint">Optional. Used while choosing/resolving DERP regions for this identity.</span></label>
+        <button class="btn btn--primary btn--block" disabled="@(_busy || string.IsNullOrWhiteSpace(_name))" data-testid="tailcat-generate-key" @onclick="GenerateAsync">Generate</button>
+        @if (_generated is not null)
+        {
+            <p class="note mono tailcat-break" data-testid="tailcat-generated-key">@_generated.Value</p>
+            <button class="btn btn--ghost btn--block" data-testid="tailcat-copy-generated-key" @onclick="() => CopyAsync(_generated.Value)"><Icon Name="copy" /> Copy @(_generated.Client ? "public key" : "address")</button>
+        }
+    </article>
+
+    <article class="tailcat-card">
+        <h2>Saved identities</h2>
+        <button class="btn btn--ghost btn--block" disabled="@_busy" data-testid="tailcat-refresh-keys" @onclick="ReloadAsync">Refresh</button>
+        @foreach (var key in _keys)
+        {
+            <div class="tailcat-running-row" data-testid="tailcat-key-row">
+                <strong class="mono">@key</strong>
+                <span>
+                    <button class="btn btn--icon" aria-label="Export Tailcat identity" data-testid="tailcat-export-key" @onclick="() => BeginExportAsync(key)"><Icon Name="download" /></button>
+                    <button class="btn btn--icon" aria-label="Delete Tailcat key" @onclick="() => DeleteAsync(key)"><Icon Name="trash" /></button>
+                </span>
+            </div>
+        }
+        <label class="field"><span class="field__label">Client key name</span><input class="field__input mono" placeholder="client-default" data-testid="tailcat-public-key-name" @bind="_publicName" @bind:event="oninput" /></label>
+        <button class="btn btn--ghost btn--block" disabled="@_busy" data-testid="tailcat-show-public-key" @onclick="ShowPublicAsync">Show public key</button>
+        @if (_publicKey is not null)
+        {
+            <p class="note mono tailcat-break" data-testid="tailcat-public-key">@_publicKey</p>
+            <button class="btn btn--ghost btn--block" data-testid="tailcat-copy-public-key" @onclick="() => CopyAsync(_publicKey)"><Icon Name="copy" /> Copy public key</button>
+        }
+    </article>
+
+    <article class="tailcat-card" data-testid="tailcat-identity-portability">
+        <h2>Import / export identity</h2>
+        <div class="tailcat-danger-warning" role="note">
+            <strong>Private identity backup</strong>
+            <p>The JSON here contains the Tailcat private key and may contain a WireGuard pre-shared key. Anyone who gets it can impersonate this identity. Keep exports encrypted and private.</p>
+        </div>
+        @if (_exportName is not null)
+        {
+            <label class="field">
+                <span class="field__label">Export: @_exportName</span>
+                <textarea class="field__input field__input--code mono" rows="6" readonly data-testid="tailcat-export-json">@_portableJson</textarea>
+            </label>
+            <button class="btn btn--ghost btn--block" data-testid="tailcat-copy-export-json" @onclick="() => CopyAsync(_portableJson)"><Icon Name="copy" /> Copy private identity JSON</button>
+            <button class="btn btn--ghost btn--block" @onclick="ClearPortableJson">Hide private identity</button>
+        }
+        <label class="field"><span class="field__label">Import name</span><input class="field__input mono" data-testid="tailcat-import-name" placeholder="client-phone" @bind="_importName" @bind:event="oninput" /></label>
+        <label class="field"><span class="field__label">Private identity JSON</span><textarea class="field__input field__input--code mono" rows="6" data-testid="tailcat-import-json" autocomplete="off" spellcheck="false" @bind="_portableJson" @bind:event="oninput"></textarea></label>
+        <label class="forward-option"><input type="checkbox" data-testid="tailcat-import-overwrite" @bind="_importOverwrite" /><span><strong>Overwrite existing identity</strong><small>Required to replace a saved identity with the same name.</small></span></label>
+        <button class="btn btn--primary btn--block" disabled="@(_busy || string.IsNullOrWhiteSpace(_importName) || string.IsNullOrWhiteSpace(_portableJson))" data-testid="tailcat-import-key" @onclick="ImportAsync">Import identity</button>
+    </article>
+</div>
+
+@code {
+    private IReadOnlyList<string> _keys = [];
+    private string _name = "";
+    private bool _client;
+    private string _region = "";
+    private bool _fixedRegion;
+    private bool _embedDerp;
+    private bool _usePresharedKey = true;
+    private bool _overwrite;
+    private string _derpMapUrl = "";
+    private TailcatGeneratedKey? _generated;
+    private string _publicName = "";
+    private string? _publicKey;
+    private string? _exportName;
+    private string _importName = "";
+    private string _portableJson = "";
+    private bool _importOverwrite;
+    private bool _busy;
+    private string? _error;
+    private string? _notice;
+
+    protected override Task OnInitializedAsync() => ReloadAsync();
+
+    private async Task ReloadAsync() => await RunAsync(async () => _keys = await Hub.ListKeysAsync());
+    private void OnClientTypeChanged(ChangeEventArgs args) => _client = bool.TryParse(args.Value?.ToString(), out var value) && value;
+    private async Task GenerateAsync() => await RunAsync(async () =>
+    {
+        _generated = await Hub.GenerateKeyAsync(new TailcatGenerateKeyRequest(
+            _name,
+            _client,
+            Empty(_region),
+            _fixedRegion,
+            _embedDerp,
+            _usePresharedKey,
+            _overwrite,
+            Empty(_derpMapUrl)));
+        _keys = await Hub.ListKeysAsync();
+    });
+    private async Task DeleteAsync(string name) => await RunAsync(async () => { await Hub.DeleteKeyAsync(name); _keys = await Hub.ListKeysAsync(); });
+    private async Task ShowPublicAsync() => await RunAsync(async () => _publicKey = await Hub.GetClientPublicKeyAsync(Empty(_publicName)));
+
+    private async Task BeginExportAsync(string name) => await RunAsync(async () =>
+    {
+        _portableJson = await IdentityStore.ExportAsync(name);
+        _exportName = name;
+        _importName = name;
+        _notice = "Private identity revealed. Hide it when finished.";
+    });
+
+    private async Task ImportAsync() => await RunAsync(async () =>
+    {
+        await IdentityStore.ImportAsync(_importName, _portableJson, _importOverwrite);
+        _keys = await Hub.ListKeysAsync();
+        _notice = $"Imported {_importName.Trim()}.";
+        ClearPortableJson();
+    });
+
+    private void ClearPortableJson()
+    {
+        _portableJson = "";
+        _exportName = null;
+    }
+
+    private async Task CopyAsync(string text)
+    {
+        await using var clipboard = await Js.InvokeAsync<IJSObjectReference>("import", "./_content/MeowSSH.UI/js/clipboard.js");
+        await clipboard.InvokeAsync<bool>("copyText", text);
+    }
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        if (_busy) return;
+        _busy = true; _error = _notice = null;
+        try { await action(); } catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+    private static string? Empty(string value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+}

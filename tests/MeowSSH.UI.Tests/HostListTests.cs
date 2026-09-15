@@ -52,7 +52,7 @@ public class HostListTests(TestHostFixture fixture)
     {
         var page = await fixture.NewPageAsync();
 
-        foreach (var tab in new[] { "hosts", "files", "keys", "settings" })
+        foreach (var tab in new[] { "hosts", "files", "tailcat", "keys", "settings" })
             await Assertions.Expect(page.GetByTestId($"tab-{tab}")).ToBeVisibleAsync();
     }
 

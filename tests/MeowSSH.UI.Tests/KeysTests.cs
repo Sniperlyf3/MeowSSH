@@ -52,6 +52,57 @@ public class KeysTests(TestHostFixture fixture)
     }
 
     [Fact]
+    public async Task AGeneratedSshKeyIsSavedWithItsPublicKeyAndCanBeReused()
+    {
+        var page = await fixture.NewPageAsync("/?keys");
+        await page.GetByTestId("add-credential").ClickAsync();
+        await page.GetByTestId("credential-label").FillAsync("generated deploy key");
+
+        await page.GetByTestId("generate-ssh-key").ClickAsync();
+
+        await Assertions.Expect(page.GetByTestId("credential-secret"))
+            .ToHaveValueAsync(new System.Text.RegularExpressions.Regex("BEGIN PRIVATE KEY"));
+        await Assertions.Expect(page.GetByTestId("generated-public-key"))
+            .ToHaveValueAsync(new System.Text.RegularExpressions.Regex("^ssh-rsa "));
+        await Assertions.Expect(page.GetByTestId("save-credential")).ToBeEnabledAsync();
+
+        await page.GetByTestId("save-credential").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("show-public-key")).ToBeVisibleAsync();
+
+        await page.GetByTestId("show-public-key").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("public-key-value"))
+            .ToHaveValueAsync(new System.Text.RegularExpressions.Regex("^ssh-rsa "));
+
+        await page.GetByTestId("tab-hosts").ClickAsync();
+        await page.GetByTestId("add-host").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("host-credential")).ToContainTextAsync("generated deploy key");
+    }
+
+    [Fact]
+    public async Task PublicKeyCredentialCanAuthorizeTailcatShellButIsNotAnOutboundCredential()
+    {
+        var page = await fixture.NewPageAsync("/?keys");
+        await page.GetByTestId("add-credential").ClickAsync();
+        await page.GetByTestId("credential-label").FillAsync("ops laptop");
+        await page.GetByTestId("kind-public-key").ClickAsync();
+        await page.GetByTestId("credential-public-key").FillAsync("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITestKey ops@example");
+        await page.GetByTestId("save-credential").ClickAsync();
+
+        await page.GetByTestId("tab-tailcat").ClickAsync();
+        await page.GetByTestId("tailcat-exit-node").UncheckAsync();
+        await page.GetByTestId("tailcat-allowed-clients").FillAsync("nodekey:test-client");
+        await page.GetByTestId("tailcat-shell").CheckAsync();
+
+        await Assertions.Expect(page.GetByTestId("tailcat-saved-ssh-keys")).ToContainTextAsync("ops laptop");
+        await page.GetByTestId("tailcat-saved-ssh-key").CheckAsync();
+        await Assertions.Expect(page.GetByTestId("start-tailcat-server")).ToBeEnabledAsync();
+
+        await page.GetByTestId("tab-hosts").ClickAsync();
+        await page.GetByTestId("add-host").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("host-credential")).Not.ToContainTextAsync("ops laptop");
+    }
+
+    [Fact]
     public async Task APasswordIsMaskedUntilTheUserAsksToSeeIt()
     {
         var page = await fixture.NewPageAsync("/?keys");
