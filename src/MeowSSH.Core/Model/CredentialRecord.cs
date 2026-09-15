@@ -11,6 +11,12 @@ public enum CredentialKind
 
     /// <summary>An SSH public key used only to authorize access; it cannot authenticate an outbound connection.</summary>
     PublicKey = 3,
+
+    /// <summary>
+    /// A private key that remains inside the platform key store. <see cref="CredentialRecord.Secret"/>
+    /// contains only the opaque platform key id; the private key bytes do not exist in the vault.
+    /// </summary>
+    HardwareKey = 4,
 }
 
 /// <summary>
@@ -22,6 +28,12 @@ public enum CredentialKind
 /// drawing the host list never decrypts a password. One credential can serve
 /// several hosts — a single deploy key across a fleet is the normal case — which
 /// is why the link points from host to credential and not the other way.
+/// </para>
+/// <para>
+/// For <see cref="CredentialKind.HardwareKey"/>, <see cref="Secret"/> is not key
+/// material. It is the UTF-8 encoded opaque alias that identifies a non-exportable
+/// key in the platform key store. <see cref="PublicKey"/> remains copyable so the
+/// user can add it to a server's <c>authorized_keys</c> file.
 /// </para>
 /// <para>
 /// The same sync bookkeeping as a host, for the same reason: these fields cannot
@@ -42,8 +54,9 @@ public sealed record CredentialRecord
     public string? Username { get; init; }
 
     /// <summary>
-    /// The password, or the private key file's bytes. Sealed at rest; in memory
-    /// only while a connection is being made.
+    /// The password or private-key bytes for exportable credentials. For a
+    /// <see cref="CredentialKind.HardwareKey"/>, this is only the UTF-8 encoded
+    /// platform key id and never contains the private key.
     /// </summary>
     public required byte[] Secret { get; init; }
 
@@ -72,6 +85,7 @@ public sealed record CredentialRecord
     {
         CredentialKind.Password => "••••••••",
         CredentialKind.PublicKey => PublicKey is null ? "public key" : Fingerprint(PublicKey),
+        CredentialKind.HardwareKey => PublicKey is null ? "non-exportable key" : $"non-exportable · {Fingerprint(PublicKey)}",
         _ => PublicKey is null ? "private key" : Fingerprint(PublicKey),
     };
 
