@@ -153,6 +153,11 @@ public class TerminalTests(TestHostFixture fixture)
     {
         var page = await OpenSessionAsync();
 
+        // Explicitly focus xterm's input before typing. Opening a session can leave
+        // focus on the host-row click target under CI, which made this test race and
+        // occasionally send no command at all.
+        var input = page.Locator(".xterm-helper-textarea");
+        await input.FocusAsync();
         await page.Keyboard.TypeAsync("tput cols");
         await page.Keyboard.PressAsync("Enter");
         await Assertions.Expect(page.Locator(".xterm-rows"))
