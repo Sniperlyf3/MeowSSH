@@ -149,7 +149,7 @@ public sealed class CommandActionServiceTests
     {
         public EntitlementSnapshot Current { get; } = pro
             ? new EntitlementSnapshot(EntitlementTier.Pro, EntitlementSource.Promotional, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddDays(1))
-            : EntitlementSnapshot.Free;
+            : EntitlementSnapshot.Free(DateTimeOffset.UtcNow);
 
         public event EventHandler? Changed
         {
