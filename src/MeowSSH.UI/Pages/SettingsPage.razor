@@ -2,7 +2,14 @@
 @inject IJSRuntime Js
 @inject IEntitlementService Entitlements
 @inject IStorePurchaseService Store
+@inject ISessionLogService SessionLogs
 
+@if (_showSessionLogs)
+{
+    <SessionLogsPage OnClosed="CloseSessionLogs" OnTabSelected="OnTabSelected" />
+}
+else
+{
 <AppShell Title="Settings" ActiveTab="settings" OnTabSelected="OnTabSelected">
     <ChildContent>
         <section class="settings" data-testid="settings-page">
@@ -22,9 +29,9 @@
                     @foreach (var product in _products)
                     {
                         <button type="button" class="setting-card"
-                                data-testid="purchase-@product.ProductId"
+                                data-testid="purchase-@PurchaseTestId(product)"
                                 disabled="@_premiumBusy"
-                                @onclick="() => PurchaseAsync(product.ProductId)">
+                                @onclick="() => PurchaseAsync(product)">
                             <span class="setting-card__copy">
                                 <span class="setting-card__title">@ProductName(product)</span>
                                 <span class="setting-card__body">Purchased through Google Play. Paid access is enabled only after server verification.</span>
@@ -53,6 +60,38 @@
                 @if (!string.IsNullOrWhiteSpace(_premiumMessage))
                 {
                     <p class="setting-card__body" role="status" data-testid="plan-message">@_premiumMessage</p>
+                }
+            </div>
+
+            <div class="settings__section" data-testid="session-log-settings">
+                <h2 class="section-label">Session logs <span class="action-pro-badge">PRO</span></h2>
+
+                <label class="setting-card setting-card--toggle" for="session-log-auto-record">
+                    <span class="setting-card__copy">
+                        <span class="setting-card__title">Automatically record terminal output</span>
+                        <span class="setting-card__body">
+                            Saves output only. MeowSSH deliberately does not record what you type, so passwords and passphrases entered at a terminal are not persisted.
+                        </span>
+                    </span>
+                    <input id="session-log-auto-record" type="checkbox" class="settings__toggle"
+                           data-testid="session-log-auto-record"
+                           checked="@SessionLogs.AutoRecord"
+                           disabled="@_sessionLogsBusy"
+                           @onchange="OnSessionLogRecordingChangedAsync" />
+                </label>
+
+                <button type="button" class="setting-card" data-testid="open-session-logs"
+                        @onclick="OpenSessionLogs">
+                    <span class="setting-card__copy">
+                        <span class="setting-card__title">Session log history</span>
+                        <span class="setting-card__body">Search recorded output, inspect exit status, copy transcripts, export .log files, or delete local history.</span>
+                    </span>
+                    <span class="setting-card__value">View</span>
+                </button>
+
+                @if (!string.IsNullOrWhiteSpace(_sessionLogsMessage))
+                {
+                    <p class="setting-card__body" role="status" data-testid="session-log-settings-message">@_sessionLogsMessage</p>
                 }
             </div>
 
@@ -142,6 +181,7 @@
         </section>
     </ChildContent>
 </AppShell>
+}
 
 @code {
     private const int DefaultZoom = 100;
@@ -158,6 +198,9 @@
     private IReadOnlyList<StoreProduct> _products = [];
     private bool _premiumBusy;
     private string? _premiumMessage;
+    private bool _sessionLogsBusy;
+    private string? _sessionLogsMessage;
+    private bool _showSessionLogs;
 
     [Parameter] public EventCallback<string> OnTabSelected { get; set; }
 
@@ -223,14 +266,14 @@
         }
     }
 
-    private async Task PurchaseAsync(string productId)
+    private async Task PurchaseAsync(StoreProduct product)
     {
         if (_premiumBusy) return;
         _premiumBusy = true;
         _premiumMessage = null;
         try
         {
-            var purchase = await Store.PurchaseAsync(productId);
+            var purchase = await Store.PurchaseAsync(product.ProductId, product.BasePlanId);
             if (purchase is null)
             {
                 _premiumMessage = "The Google Play purchase was not completed.";
@@ -301,8 +344,43 @@
         }
     }
 
+    private async Task OnSessionLogRecordingChangedAsync(ChangeEventArgs args)
+    {
+        var enabled = args.Value is bool value && value;
+        _sessionLogsBusy = true;
+        _sessionLogsMessage = null;
+        try
+        {
+            await SessionLogs.SetAutoRecordAsync(enabled);
+            _sessionLogsMessage = enabled
+                ? "New terminal sessions will record output locally."
+                : "Automatic session recording is off.";
+        }
+        catch (InvalidOperationException exception)
+        {
+            _sessionLogsMessage = exception.Message;
+        }
+        finally
+        {
+            _sessionLogsBusy = false;
+        }
+    }
+
+    private void OpenSessionLogs()
+    {
+        _showSessionLogs = true;
+        _sessionLogsMessage = null;
+    }
+
+    private void CloseSessionLogs() => _showSessionLogs = false;
+
     private static string ProductName(StoreProduct product) =>
         string.IsNullOrWhiteSpace(product.DisplayName) ? product.ProductId : product.DisplayName;
+
+    private static string PurchaseTestId(StoreProduct product) =>
+        string.IsNullOrWhiteSpace(product.BasePlanId)
+            ? product.ProductId
+            : $"{product.ProductId}-{product.BasePlanId}";
 
     private void OnEntitlementChanged(object? sender, EventArgs e) => _ = InvokeAsync(StateHasChanged);
 

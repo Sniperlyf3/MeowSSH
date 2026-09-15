@@ -1,0 +1,300 @@
+@using MeowSSH.UI.Services
+@implements IDisposable
+@inject ITailcatWorkspaceService Workspaces
+@inject IEntitlementService Entitlements
+@inject ITailcatHubService Hub
+@inject IActiveSessionLifetime SessionLifetime
+
+<div class="tailcat-stack" data-testid="tailcat-workspaces">
+    @if (!Entitlements.Has(PremiumFeature.TailcatWorkspaces))
+    {
+        <article class="tailcat-card" data-testid="tailcat-workspaces-locked">
+            <h2>Tailcat Workspaces · Pro</h2>
+            <p class="note">Save repeatable Tailcat setups and bring up SOCKS plus multiple TCP/UDP forwarding groups in one action.</p>
+            <p class="note">Upgrade to MeowSSH Pro to create or start workspaces.</p>
+        </article>
+    }
+    else
+    {
+        @if (_error is not null)
+        {
+            <p class="lock__error" role="alert" data-testid="tailcat-workspace-error">@_error</p>
+        }
+
+        <article class="tailcat-card">
+            <div class="tailcat-card__heading">
+                <span>
+                    <h2>Workspaces</h2>
+                    <p class="note">Reusable connection bundles for recurring environments.</p>
+                </span>
+                <button type="button" class="btn btn--ghost" disabled="@_busy" data-testid="new-tailcat-workspace" @onclick="NewWorkspace">New workspace</button>
+            </div>
+
+            @if (_workspaces.Count == 0)
+            {
+                <p class="note" data-testid="tailcat-workspaces-empty">No saved workspaces yet.</p>
+            }
+            else
+            {
+                @foreach (var workspace in _workspaces)
+                {
+                    var active = Workspaces.Active?.WorkspaceId == workspace.Id;
+                    <div class="tailcat-running-row" data-testid="tailcat-workspace-row">
+                        <span>
+                            <strong>@workspace.Name</strong>
+                            <small>
+                                @(workspace.StartSocks ? "SOCKS" : "No SOCKS") · @workspace.Forwards.Count forward group@(workspace.Forwards.Count == 1 ? "" : "s")
+                                @if (!string.IsNullOrWhiteSpace(workspace.Address)) { <text> · <span class="mono">@workspace.Address</span></text> }
+                            </small>
+                        </span>
+                        <span class="workspace-actions">
+                            @if (active)
+                            {
+                                <button type="button" class="btn btn--danger" disabled="@_busy" data-testid="stop-tailcat-workspace" @onclick="StopAsync">Stop</button>
+                            }
+                            else
+                            {
+                                <button type="button" class="btn btn--primary" disabled="@(_busy || Workspaces.Active is not null)" data-testid="start-tailcat-workspace" @onclick="() => StartAsync(workspace.Id)">Start</button>
+                                <button type="button" class="btn btn--ghost" disabled="@_busy" data-testid="edit-tailcat-workspace" @onclick="() => Edit(workspace)">Edit</button>
+                                <button type="button" class="btn btn--icon" disabled="@_busy" aria-label="Delete workspace" data-testid="delete-tailcat-workspace" @onclick="() => DeleteAsync(workspace.Id)"><Icon Name="close" /></button>
+                            }
+                        </span>
+                    </div>
+                }
+            }
+        </article>
+
+        @if (_editing)
+        {
+            <article class="tailcat-card" data-testid="tailcat-workspace-editor">
+                <h2>@(_editingId == Guid.Empty ? "New workspace" : "Edit workspace")</h2>
+                <label class="field">
+                    <span class="field__label">Name</span>
+                    <input class="field__input" maxlength="80" data-testid="tailcat-workspace-name" @bind="_name" @bind:event="oninput" />
+                </label>
+                <label class="field">
+                    <span class="field__label">Tailcat server</span>
+                    <input class="field__input mono" data-testid="tailcat-workspace-address" placeholder="tc…" @bind="_address" @bind:event="oninput" />
+                    <span class="field__hint">Required when this workspace starts forwards.</span>
+                </label>
+                <label class="field">
+                    <span class="field__label">Client key name</span>
+                    <input class="field__input mono" data-testid="tailcat-workspace-key" placeholder="client-default" @bind="_clientKey" @bind:event="oninput" />
+                </label>
+                <label class="field">
+                    <span class="field__label">Custom DERP map URL</span>
+                    <input class="field__input mono" data-testid="tailcat-workspace-derpmap" placeholder="https://…/derpmap/default" @bind="_derpMapUrl" @bind:event="oninput" />
+                </label>
+
+                <label class="forward-option">
+                    <input type="checkbox" data-testid="tailcat-workspace-start-socks" @bind="_startSocks" />
+                    <span><strong>Start SOCKS5 gateway</strong><small>Starts only if another Tailcat SOCKS gateway is not already running.</small></span>
+                </label>
+                @if (_startSocks)
+                {
+                    <label class="field">
+                        <span class="field__label">SOCKS listen address</span>
+                        <input class="field__input mono" data-testid="tailcat-workspace-socks-listen" @bind="_socksListen" @bind:event="oninput" />
+                    </label>
+                }
+
+                <div class="tailcat-workspace-forwards">
+                    <div class="tailcat-card__heading">
+                        <span><h3>Forwarding groups</h3><p class="note">Each group uses one protocol and bind address with one or more mappings.</p></span>
+                        <button type="button" class="btn btn--ghost" disabled="@(_busy || _forwards.Count >= 20)" data-testid="add-tailcat-workspace-forward" @onclick="AddForward">Add forward</button>
+                    </div>
+
+                    @for (var i = 0; i < _forwards.Count; i++)
+                    {
+                        var index = i;
+                        <div class="tailcat-subcard" data-testid="tailcat-workspace-forward-editor">
+                            <div class="tailcat-card__heading">
+                                <strong>Forward @(index + 1)</strong>
+                                <button type="button" class="btn btn--icon" aria-label="Remove forward" @onclick="() => RemoveForward(index)"><Icon Name="close" /></button>
+                            </div>
+                            <label class="field">
+                                <span class="field__label">Mappings</span>
+                                <textarea class="field__input mono" rows="3" data-testid="tailcat-workspace-forward-mappings" placeholder="8080:80&#10;8443:192.168.1.10:443" @bind="_forwards[index].Mappings" @bind:event="oninput"></textarea>
+                            </label>
+                            <label class="field">
+                                <span class="field__label">Bind address</span>
+                                <input class="field__input mono" data-testid="tailcat-workspace-forward-bind" @bind="_forwards[index].BindAddress" @bind:event="oninput" />
+                            </label>
+                            <label class="forward-option">
+                                <input type="checkbox" data-testid="tailcat-workspace-forward-udp" @bind="_forwards[index].Udp" />
+                                <span><strong>UDP</strong><small>Leave off for TCP.</small></span>
+                            </label>
+                        </div>
+                    }
+                </div>
+
+                <div class="settings__actions">
+                    <button type="button" class="btn btn--primary" disabled="@(_busy || string.IsNullOrWhiteSpace(_name))" data-testid="save-tailcat-workspace" @onclick="SaveAsync">Save workspace</button>
+                    <button type="button" class="btn btn--ghost" disabled="@_busy" data-testid="cancel-tailcat-workspace" @onclick="CancelEdit">Cancel</button>
+                </div>
+            </article>
+        }
+    }
+</div>
+
+@code {
+    private sealed class ForwardEditor
+    {
+        public string Mappings { get; set; } = string.Empty;
+        public string BindAddress { get; set; } = "127.0.0.1";
+        public bool Udp { get; set; }
+    }
+
+    private IReadOnlyList<TailcatWorkspace> _workspaces = [];
+    private readonly List<ForwardEditor> _forwards = [];
+    private bool _editing;
+    private Guid _editingId;
+    private string _name = string.Empty;
+    private string _address = string.Empty;
+    private string _clientKey = string.Empty;
+    private string _derpMapUrl = string.Empty;
+    private bool _startSocks = true;
+    private string _socksListen = "127.0.0.1:0";
+    private bool _busy;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Workspaces.Changed += OnChanged;
+        Entitlements.Changed += OnChanged;
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        _workspaces = await Workspaces.GetAllAsync();
+    }
+
+    private void NewWorkspace()
+    {
+        _editing = true;
+        _editingId = Guid.Empty;
+        _name = string.Empty;
+        _address = string.Empty;
+        _clientKey = string.Empty;
+        _derpMapUrl = string.Empty;
+        _startSocks = true;
+        _socksListen = "127.0.0.1:0";
+        _forwards.Clear();
+        _error = null;
+    }
+
+    private void Edit(TailcatWorkspace workspace)
+    {
+        _editing = true;
+        _editingId = workspace.Id;
+        _name = workspace.Name;
+        _address = workspace.Address;
+        _clientKey = workspace.ClientKey ?? string.Empty;
+        _derpMapUrl = workspace.DerpMapUrl ?? string.Empty;
+        _startSocks = workspace.StartSocks;
+        _socksListen = workspace.SocksListenAddress;
+        _forwards.Clear();
+        _forwards.AddRange(workspace.Forwards.Select(static forward => new ForwardEditor
+        {
+            Mappings = string.Join("\n", forward.Mappings),
+            BindAddress = forward.BindAddress,
+            Udp = forward.Udp,
+        }));
+        _error = null;
+    }
+
+    private void AddForward() => _forwards.Add(new ForwardEditor());
+    private void RemoveForward(int index) { if (index >= 0 && index < _forwards.Count) _forwards.RemoveAt(index); }
+    private void CancelEdit() { _editing = false; _error = null; }
+
+    private async Task SaveAsync()
+    {
+        await RunAsync(async () =>
+        {
+            var forwards = _forwards
+                .Select(editor => new TailcatWorkspaceForward(
+                    SplitMappings(editor.Mappings),
+                    string.IsNullOrWhiteSpace(editor.BindAddress) ? "127.0.0.1" : editor.BindAddress.Trim(),
+                    editor.Udp))
+                .Where(static forward => forward.Mappings.Count > 0)
+                .ToArray();
+            var workspace = new TailcatWorkspace(
+                _editingId == Guid.Empty ? Guid.NewGuid() : _editingId,
+                _name.Trim(),
+                _address.Trim(),
+                Empty(_clientKey),
+                Empty(_derpMapUrl),
+                _startSocks,
+                string.IsNullOrWhiteSpace(_socksListen) ? "127.0.0.1:0" : _socksListen.Trim(),
+                forwards);
+            await Workspaces.SaveAsync(workspace);
+            await ReloadAsync();
+            _editing = false;
+        });
+    }
+
+    private async Task DeleteAsync(Guid id) => await RunAsync(async () =>
+    {
+        await Workspaces.DeleteAsync(id);
+        await ReloadAsync();
+        if (_editingId == id) _editing = false;
+    });
+
+    private async Task StartAsync(Guid id)
+    {
+        await RunAsync(async () =>
+        {
+            var wasTailcatActive = TailcatActive();
+            if (!wasTailcatActive) await SessionLifetime.StartAsync();
+            try { await Workspaces.StartAsync(id); }
+            catch
+            {
+                if (!wasTailcatActive && !TailcatActive()) await SessionLifetime.StopAsync();
+                throw;
+            }
+        });
+    }
+
+    private async Task StopAsync() => await RunAsync(async () =>
+    {
+        await Workspaces.StopAsync();
+        if (!TailcatActive()) await SessionLifetime.StopAsync();
+    });
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        if (_busy) return;
+        _busy = true;
+        _error = null;
+        try { await action(); }
+        catch (Exception exception) when (exception is InvalidOperationException or ArgumentException or KeyNotFoundException or AggregateException)
+        {
+            _error = exception.Message;
+        }
+        finally { _busy = false; }
+    }
+
+    private bool TailcatActive()
+    {
+        var snapshot = Hub.Snapshot;
+        return snapshot.Server is not null || snapshot.Socks is not null || snapshot.Forwards.Count > 0;
+    }
+
+    private static IReadOnlyList<string> SplitMappings(string value) =>
+        [.. value.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
+
+    private static string? Empty(string value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private void OnChanged(object? sender, EventArgs e) => _ = InvokeAsync(async () =>
+    {
+        await ReloadAsync();
+        StateHasChanged();
+    });
+
+    public void Dispose()
+    {
+        Workspaces.Changed -= OnChanged;
+        Entitlements.Changed -= OnChanged;
+    }
+}

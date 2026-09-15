@@ -50,6 +50,11 @@ public static class MauiProgram
         builder.Services.AddSingleton<IExternalUriLauncher, AndroidExternalUriLauncher>();
         builder.Services.AddSingleton<IQrScanner, AndroidQrScanner>();
         builder.Services.AddSingleton<ISerialDeviceService, AndroidUsbSerialDeviceService>();
+        builder.Services.AddSingleton<ISessionLogService>(sp => new FileSessionLogService(
+            Path.Combine(FileSystem.AppDataDirectory, "session-logs"),
+            sp.GetRequiredService<IEntitlementService>()));
+        builder.Services.AddSingleton<IAdvancedSftpService, AdvancedSftpService>();
+        builder.Services.AddSingleton<IEncryptedVaultBackupService, EncryptedVaultBackupService>();
 
         var nativeDirectory = global::Android.App.Application.Context.ApplicationInfo!.NativeLibraryDir!;
         var engineOptions = new MeowshellSshEngineOptions(
@@ -61,8 +66,22 @@ public static class MauiProgram
             nativeDirectory,
             Path.Combine(FileSystem.AppDataDirectory, "tailcat-home"),
             Path.Combine(FileSystem.CacheDirectory, "tailcat-work")));
-        builder.Services.AddSingleton<ITailcatHubService, MeowshellTailcatHubService>();
+        builder.Services.AddSingleton<MeowshellTailcatHubService>();
+        builder.Services.AddSingleton<ITailcatHubService>(sp => new EntitlementTailcatHubService(
+            sp.GetRequiredService<MeowshellTailcatHubService>(),
+            sp.GetRequiredService<IEntitlementService>()));
         builder.Services.AddSingleton<ITailcatIdentityStore, TailcatIdentityStore>();
+        builder.Services.AddSingleton<ITailcatWorkspaceStore>(_ => new FileTailcatWorkspaceStore(
+            Path.Combine(FileSystem.AppDataDirectory, "tailcat-workspaces.json")));
+        builder.Services.AddSingleton<ITailcatWorkspaceService, TailcatWorkspaceService>();
+        builder.Services.AddSingleton<ICommandActionStore>(_ => new FileCommandActionStore(
+            Path.Combine(FileSystem.AppDataDirectory, "actions.json")));
+        builder.Services.AddSingleton<ICommandActionService, CommandActionService>();
+        builder.Services.AddSingleton<ICommandMonitorStore>(_ => new FileCommandMonitorStore(
+            Path.Combine(FileSystem.AppDataDirectory, "command-monitors.json")));
+        builder.Services.AddSingleton<ICommandMonitorAlertSink, AndroidCommandMonitorAlertSink>();
+        builder.Services.AddSingleton<CommandMonitoringService>();
+        builder.Services.AddSingleton<ICommandMonitoringService>(sp => sp.GetRequiredService<CommandMonitoringService>());
         builder.Services.AddSingleton<AndroidTailcatVpnController>();
         builder.Services.AddSingleton<ITailcatVpnController>(sp => new EntitlementTailcatVpnController(
             sp.GetRequiredService<AndroidTailcatVpnController>(),
@@ -75,7 +94,10 @@ public static class MauiProgram
         builder.Services.AddSingleton<IProtocolConnectionEngine, SerialConnectionEngine>();
         builder.Services.AddSingleton<IProtocolConnectionEngine>(sp => new LocalTerminalConnectionEngine(sp.GetRequiredService<MeowshellSshEngineOptions>()));
         builder.Services.AddSingleton<ConnectionEngine>();
-        builder.Services.AddSingleton<IConnectionEngine, ProxyJumpConnector>();
+        builder.Services.AddSingleton<ProxyJumpConnector>();
+        builder.Services.AddSingleton<IConnectionEngine>(sp => new SessionLoggingConnectionEngine(
+            sp.GetRequiredService<ProxyJumpConnector>(),
+            sp.GetRequiredService<ISessionLogService>()));
 
 #if DEBUG
         builder.Services.AddBlazorWebViewDeveloperTools();

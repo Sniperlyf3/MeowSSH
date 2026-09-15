@@ -1,3 +1,4 @@
+using System.Text;
 using Meowshell;
 
 namespace MeowSSH.Core.Ssh;
@@ -21,6 +22,64 @@ internal sealed class MeowshellSshConnection(Guid hostId, MeowshellAgentConnecti
         catch (TailcatException ex)
         {
             throw MeowshellSshEngine.Translate(ex);
+        }
+    }
+
+    public async Task<SshCommandResult> RunCommandAsync(
+        string command,
+        TimeSpan? timeout = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(command))
+            throw new ArgumentException("Command must not be empty.", nameof(command));
+        if (timeout is { } commandTimeout && commandTimeout <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(timeout), timeout, "Timeout must be positive.");
+
+        using var timeoutCts = timeout is null ? null : new CancellationTokenSource(timeout.Value);
+        using var linkedCts = timeoutCts is null
+            ? CancellationTokenSource.CreateLinkedTokenSource(cancellationToken)
+            : CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+
+        MeowshellAgentShellChannel? channel = null;
+        try
+        {
+            channel = await agent.OpenExecAsync([command], pty: false, cancellationToken: linkedCts.Token)
+                .ConfigureAwait(false);
+
+            var stdoutTask = ReadUtf8Async(channel.Output, linkedCts.Token);
+            var stderrTask = ReadUtf8Async(channel.Error, linkedCts.Token);
+            var exitCodeTask = channel.Completed.WaitAsync(linkedCts.Token);
+
+            await Task.WhenAll(stdoutTask, stderrTask, exitCodeTask).ConfigureAwait(false);
+            return new SshCommandResult(
+                await exitCodeTask.ConfigureAwait(false),
+                await stdoutTask.ConfigureAwait(false),
+                await stderrTask.ConfigureAwait(false));
+        }
+        catch (OperationCanceledException ex) when (timeoutCts?.IsCancellationRequested == true && !cancellationToken.IsCancellationRequested)
+        {
+            if (channel is not null)
+            {
+                try { await channel.CloseAsync(CancellationToken.None).ConfigureAwait(false); } catch { }
+            }
+            throw new SshException(SshFailure.Timeout, $"The command exceeded the {timeout} timeout.", ex);
+        }
+        catch (OperationCanceledException)
+        {
+            if (channel is not null)
+            {
+                try { await channel.CloseAsync(CancellationToken.None).ConfigureAwait(false); } catch { }
+            }
+            throw;
+        }
+        catch (TailcatException ex)
+        {
+            throw MeowshellSshEngine.Translate(ex);
+        }
+        finally
+        {
+            if (channel is not null)
+                await channel.DisposeAsync().ConfigureAwait(false);
         }
     }
 
@@ -111,6 +170,13 @@ internal sealed class MeowshellSshConnection(Guid hostId, MeowshellAgentConnecti
         {
             throw MeowshellSshEngine.Translate(ex);
         }
+    }
+
+    private static async Task<string> ReadUtf8Async(Stream stream, CancellationToken cancellationToken)
+    {
+        using var buffer = new MemoryStream();
+        await stream.CopyToAsync(buffer, cancellationToken).ConfigureAwait(false);
+        return Encoding.UTF8.GetString(buffer.GetBuffer(), 0, checked((int)buffer.Length));
     }
 
     private void OnChannelLost(SshConnectionLost lost)

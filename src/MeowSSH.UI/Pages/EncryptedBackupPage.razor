@@ -1,0 +1,198 @@
+@inject IEncryptedVaultBackupService Backups
+@inject ILocalFileTransferService LocalFiles
+
+<section class="settings" data-testid="encrypted-backup-page">
+    <div class="settings__section">
+        <h2 class="section-label">Encrypted local backup <span class="action-pro-badge">PRO</span></h2>
+        <div class="setting-card">
+            <span class="setting-card__copy">
+                <span class="setting-card__title">Portable encrypted vault</span>
+                <span class="setting-card__body">Exports the encrypted vault exactly as stored. Hosts, passwords and private keys are never written as plaintext. Your recovery code is required to restore it on another device.</span>
+            </span>
+        </div>
+        <button type="button" class="btn btn--primary btn--block" data-testid="backup-export"
+                disabled="@_busy" @onclick="ExportAsync">Export encrypted backup</button>
+        <button type="button" class="btn btn--ghost btn--block" data-testid="backup-import"
+                disabled="@_busy" @onclick="PickBackupAsync">Choose backup to restore</button>
+    </div>
+
+    @if (_selected is not null)
+    {
+        <div class="settings__section" data-testid="backup-restore-form">
+            <h2 class="section-label">Restore backup</h2>
+            <div class="setting-card">
+                <span class="setting-card__copy">
+                    <span class="setting-card__title">@_selected.Name</span>
+                    <span class="setting-card__body mono">schema @_selected.Info.SchemaVersion · revision @_selected.Info.Revision · @FormatBytes(_selected.Info.SizeBytes)</span>
+                    <span class="setting-card__body">Written by device @_selected.Info.DeviceId. Restoring replaces the current vault only after the recovery code has successfully decrypted and authenticated this backup.</span>
+                </span>
+            </div>
+            <label class="field">
+                <span class="field__label">Recovery code</span>
+                <input class="field__input mono" type="password" autocomplete="off" spellcheck="false"
+                       data-testid="backup-recovery-code" @bind="_recoveryCode" @bind:event="oninput" />
+            </label>
+            <label class="forward-option">
+                <input type="checkbox" data-testid="backup-confirm-replace" @bind="_confirmReplace" />
+                <span>
+                    <strong>Replace this device's current vault</strong>
+                    <small>The selected backup is validated before the current encrypted vault is touched. If replacement fails, MeowSSH restores the previous encrypted vault.</small>
+                </span>
+            </label>
+            <button type="button" class="btn btn--danger btn--block" data-testid="backup-restore"
+                    disabled="@(_busy || !_confirmReplace || string.IsNullOrWhiteSpace(_recoveryCode))"
+                    @onclick="RestoreAsync">Restore encrypted vault</button>
+            <button type="button" class="btn btn--ghost btn--block" disabled="@_busy" @onclick="CancelRestore">Cancel</button>
+        </div>
+    }
+
+    @if (_restoredNeedsRebind)
+    {
+        <div class="settings__section" data-testid="backup-rebind-section">
+            <h2 class="section-label">Device unlock</h2>
+            <div class="notice">
+                <Icon Name="shield" />
+                <div>
+                    <p class="notice__title">Backup restored</p>
+                    <p class="notice__body">The restored vault is open with its recovery code. Enable biometric/device unlock only after the restore is committed; this intentionally happens outside the rollback transaction.</p>
+                </div>
+            </div>
+            <button type="button" class="btn btn--primary btn--block" data-testid="backup-rebind"
+                    disabled="@_busy" @onclick="RebindAsync">Enable biometric unlock on this device</button>
+        </div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(_message))
+    {
+        <p class="setting-card__body" role="status" data-testid="backup-message">@_message</p>
+    }
+</section>
+
+@code {
+    private bool _busy;
+    private string? _message;
+    private SelectedBackup? _selected;
+    private string _recoveryCode = "";
+    private bool _confirmReplace;
+    private bool _restoredNeedsRebind;
+
+    private sealed record SelectedBackup(string Name, byte[] Bytes, EncryptedVaultBackupInfo Info);
+
+    private async Task ExportAsync()
+    {
+        if (_busy) return;
+        _busy = true;
+        _message = null;
+        string? temporary = null;
+        try
+        {
+            var bytes = await Backups.ExportAsync();
+            var name = $"meowssh-backup-{DateTime.UtcNow:yyyyMMdd-HHmmss}{EncryptedVaultBackupService.FileExtension}";
+            temporary = LocalFiles.CreateTemporaryPath(name);
+            await File.WriteAllBytesAsync(temporary, bytes);
+            var destination = await LocalFiles.PublishDownloadAsync(temporary, name);
+            _message = $"Encrypted backup saved to {destination}";
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or IOException or UnauthorizedAccessException)
+        {
+            _message = exception.Message;
+        }
+        finally
+        {
+            if (temporary is not null) LocalFiles.DeleteTemporaryFile(temporary);
+            _busy = false;
+        }
+    }
+
+    private async Task PickBackupAsync()
+    {
+        if (_busy) return;
+        _busy = true;
+        _message = null;
+        LocalFileSelection? picked = null;
+        try
+        {
+            picked = await LocalFiles.PickFileAsync();
+            if (picked is null) return;
+            var length = new FileInfo(picked.TemporaryPath).Length;
+            if (length > EncryptedVaultBackupService.MaxBackupBytes)
+                throw new InvalidDataException($"The selected backup exceeds the {EncryptedVaultBackupService.MaxBackupBytes / (1024 * 1024)} MiB safety limit.");
+            var bytes = await File.ReadAllBytesAsync(picked.TemporaryPath);
+            var info = await Backups.InspectAsync(bytes);
+            _selected = new SelectedBackup(picked.Name, bytes, info);
+            _recoveryCode = "";
+            _confirmReplace = false;
+            _restoredNeedsRebind = false;
+        }
+        catch (Exception exception) when (exception is InvalidBackupFileException or VaultFormatException or InvalidDataException or IOException or UnauthorizedAccessException)
+        {
+            _message = exception.Message;
+            _selected = null;
+        }
+        finally
+        {
+            if (picked is not null) LocalFiles.DeleteTemporaryFile(picked.TemporaryPath);
+            _busy = false;
+        }
+    }
+
+    private async Task RestoreAsync()
+    {
+        if (_selected is null || _busy || !_confirmReplace || string.IsNullOrWhiteSpace(_recoveryCode)) return;
+        _busy = true;
+        _message = null;
+        try
+        {
+            await Backups.RestoreAsync(_selected.Bytes, _recoveryCode.Trim());
+            _message = "Encrypted vault restored. Enable biometric unlock for this device when ready.";
+            _restoredNeedsRebind = true;
+            _selected = null;
+            _recoveryCode = "";
+            _confirmReplace = false;
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or CryptographicException or VaultFormatException)
+        {
+            _message = exception is CryptographicException ? "The recovery code is incorrect or the backup was altered." : exception.Message;
+        }
+        finally
+        {
+            _recoveryCode = "";
+            _busy = false;
+        }
+    }
+
+    private async Task RebindAsync()
+    {
+        if (_busy) return;
+        _busy = true;
+        _message = null;
+        try
+        {
+            await Backups.RebindDeviceKeyAsync();
+            _restoredNeedsRebind = false;
+            _message = "Biometric/device unlock is now bound to the restored vault.";
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or DeviceKeyUnavailableException)
+        {
+            _message = exception.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private void CancelRestore()
+    {
+        _selected = null;
+        _recoveryCode = "";
+        _confirmReplace = false;
+    }
+
+    private static string FormatBytes(long bytes) => bytes switch
+    {
+        < 1024 => $"{bytes} B",
+        < 1024 * 1024 => $"{bytes / 1024d:F1} KiB",
+        _ => $"{bytes / (1024d * 1024d):F1} MiB",
+    };
+}
