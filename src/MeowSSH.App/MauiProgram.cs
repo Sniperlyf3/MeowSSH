@@ -19,10 +19,8 @@ public static class MauiProgram
         builder.Services.AddSingleton<IDeviceKeyStore>(_ => new AndroidDeviceKeyStore());
         builder.Services.AddSingleton<IBiometricGate>(_ => new AndroidBiometricGate(() => Platform.CurrentActivity));
 
-        builder.Services.AddSingleton<IVaultStorage>(_ =>
-            new FileVaultStorage(Path.Combine(FileSystem.AppDataDirectory, "meowssh.vault")));
-        builder.Services.AddSingleton<IDeviceIdentity>(_ =>
-            new FileDeviceIdentity(Path.Combine(FileSystem.AppDataDirectory, "device.seed")));
+        builder.Services.AddSingleton<IVaultStorage>(_ => new FileVaultStorage(Path.Combine(FileSystem.AppDataDirectory, "meowssh.vault")));
+        builder.Services.AddSingleton<IDeviceIdentity>(_ => new FileDeviceIdentity(Path.Combine(FileSystem.AppDataDirectory, "device.seed")));
         builder.Services.AddSingleton(sp => new VaultStore(sp.GetRequiredService<IVaultStorage>()));
         builder.Services.AddSingleton<IVaultSession, StoredVaultSession>();
 
@@ -51,17 +49,14 @@ public static class MauiProgram
             Path.Combine(FileSystem.CacheDirectory, "tailcat-work")));
         builder.Services.AddSingleton<ITailcatHubService, MeowshellTailcatHubService>();
         builder.Services.AddSingleton<ITailcatIdentityStore, TailcatIdentityStore>();
+        builder.Services.AddSingleton<ITailcatVpnController>(sp => new AndroidTailcatVpnController(sp.GetRequiredService<ITailcatHubService>()));
 
-        builder.Services.AddSingleton<ISshEngine>(sp =>
-            new MeowshellSshEngine(sp.GetRequiredService<MeowshellSshEngineOptions>()));
-        builder.Services.AddSingleton<IProtocolConnectionEngine>(sp =>
-            new SshProtocolConnectionEngine(sp.GetRequiredService<ISshEngine>()));
-        builder.Services.AddSingleton<IProtocolConnectionEngine>(sp =>
-            new MoshConnectionEngine(sp.GetRequiredService<MeowshellSshEngineOptions>()));
+        builder.Services.AddSingleton<ISshEngine>(sp => new MeowshellSshEngine(sp.GetRequiredService<MeowshellSshEngineOptions>()));
+        builder.Services.AddSingleton<IProtocolConnectionEngine>(sp => new SshProtocolConnectionEngine(sp.GetRequiredService<ISshEngine>()));
+        builder.Services.AddSingleton<IProtocolConnectionEngine>(sp => new MoshConnectionEngine(sp.GetRequiredService<MeowshellSshEngineOptions>()));
         builder.Services.AddSingleton<IProtocolConnectionEngine, TelnetConnectionEngine>();
         builder.Services.AddSingleton<IProtocolConnectionEngine, SerialConnectionEngine>();
-        builder.Services.AddSingleton<IProtocolConnectionEngine>(sp =>
-            new LocalTerminalConnectionEngine(sp.GetRequiredService<MeowshellSshEngineOptions>()));
+        builder.Services.AddSingleton<IProtocolConnectionEngine>(sp => new LocalTerminalConnectionEngine(sp.GetRequiredService<MeowshellSshEngineOptions>()));
         builder.Services.AddSingleton<ConnectionEngine>();
         builder.Services.AddSingleton<IConnectionEngine, ProxyJumpConnector>();
 
