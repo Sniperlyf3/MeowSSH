@@ -178,7 +178,7 @@ public sealed class AdvancedSftpService(IEntitlementService entitlements) : IAdv
         }
     }
 
-    private async Task<IReadOnlyList<TreeNode>> BuildTreeAsync(
+    private static async Task<IReadOnlyList<TreeNode>> BuildTreeAsync(
         ISftpSession sftp,
         RemoteFile directory,
         CancellationToken cancellationToken)
