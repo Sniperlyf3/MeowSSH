@@ -47,7 +47,7 @@ public sealed class TailcatVpnService : VpnService
     private bool _ownsSocks;
     private bool _stopping;
     private string? _address;
-    private IReadOnlyList<string> _routes = [];
+    private string[] _routes = [];
 
     public static event EventHandler<TailcatVpnServiceStateChangedEventArgs>? StateChanged;
 
@@ -89,7 +89,7 @@ public sealed class TailcatVpnService : VpnService
             var clientKey = NullIfWhiteSpace(intent.GetStringExtra(ExtraClientKey));
             var derpMapUrl = NullIfWhiteSpace(intent.GetStringExtra(ExtraDerpMapUrl));
             if (string.IsNullOrWhiteSpace(_address)) throw new InvalidOperationException("A Tailcat address is required for VPN mode.");
-            if (_routes.Count == 0) throw new InvalidOperationException("At least one VPN route is required.");
+            if (_routes.Length == 0) throw new InvalidOperationException("At least one VPN route is required.");
 
             EnsureNotificationChannel();
             StartForeground(NotificationId, BuildNotification("Starting Tailcat VPN…"));
@@ -134,7 +134,7 @@ public sealed class TailcatVpnService : VpnService
             _nativeTask = Task.Run(() => HevSocks5TunnelNative.Run(config, fd));
             _ = ObserveNativeAsync(_nativeTask);
 
-            StartForeground(NotificationId, BuildNotification($"Tailcat VPN · {_routes.Count} route{(_routes.Count == 1 ? "" : "s")}"));
+            StartForeground(NotificationId, BuildNotification($"Tailcat VPN · {_routes.Length} route{(_routes.Length == 1 ? "" : "s")}"));
             Publish(new TailcatVpnServiceStateChangedEventArgs(true, _address, _routes));
         }
         catch (Exception ex)
@@ -238,7 +238,7 @@ public sealed class TailcatVpnService : VpnService
     {
         if (string.IsNullOrWhiteSpace(value)) throw new InvalidOperationException("Tailcat returned an empty SOCKS listen address.");
         var trimmed = value.Trim();
-        if (trimmed.StartsWith("[", StringComparison.Ordinal))
+        if (trimmed.StartsWith('['))
         {
             var end = trimmed.LastIndexOf(']');
             if (end <= 0 || end + 2 > trimmed.Length || !int.TryParse(trimmed[(end + 2)..], out var port6)) throw new InvalidOperationException($"Invalid SOCKS listen address: {value}");
