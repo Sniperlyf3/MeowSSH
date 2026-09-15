@@ -17,7 +17,17 @@
 
     <AndroidExtractNativeLibraries>true</AndroidExtractNativeLibraries>
     <SupportedOSPlatformVersion>28.0</SupportedOSPlatformVersion>
+
+    <!-- Public deployment configuration injected by MSBuild/CI. Empty values
+         deliberately leave licensing fail-closed for local/dev builds. -->
+    <LicensingApiBaseUrl Condition="'$(LicensingApiBaseUrl)' == ''"></LicensingApiBaseUrl>
+    <LicensingPublicKeySubjectPublicKeyInfoBase64 Condition="'$(LicensingPublicKeySubjectPublicKeyInfoBase64)' == ''"></LicensingPublicKeySubjectPublicKeyInfoBase64>
   </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyMetadata Include="MeowSSH.Licensing.ApiBaseUrl" Value="$(LicensingApiBaseUrl)" />
+    <AssemblyMetadata Include="MeowSSH.Licensing.PublicKeySubjectPublicKeyInfoBase64" Value="$(LicensingPublicKeySubjectPublicKeyInfoBase64)" />
+  </ItemGroup>
 
   <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
     <AndroidPackageFormat>apk</AndroidPackageFormat>
