@@ -175,7 +175,7 @@ public sealed class AndroidSshHardwareKeyStore : ISshHardwareKeyStore
 
     private static string ToOpenSshPublicKey(IECPublicKey publicKey, string keyId)
     {
-        var point = publicKey.W ?? throw new InvalidOperationException("Android returned an EC key with no public point.");
+        var point = publicKey.GetW() ?? throw new InvalidOperationException("Android returned an EC key with no public point.");
         var x = FixedUnsigned(point.AffineX?.ToByteArray(), CoordinateBytes);
         var y = FixedUnsigned(point.AffineY?.ToByteArray(), CoordinateBytes);
         var q = new byte[1 + CoordinateBytes * 2];
