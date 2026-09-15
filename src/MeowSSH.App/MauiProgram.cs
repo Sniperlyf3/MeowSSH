@@ -19,6 +19,9 @@ public static class MauiProgram
         builder.Services.AddMauiBlazorWebView();
 
         builder.Services.AddSingleton<IDeviceKeyStore>(_ => new AndroidDeviceKeyStore());
+        builder.Services.AddSingleton<AndroidSshHardwareKeyStore>();
+        builder.Services.AddSingleton<ISshHardwareKeyStore>(sp => sp.GetRequiredService<AndroidSshHardwareKeyStore>());
+        builder.Services.AddSingleton<ISshHardwareKeySigner>(sp => sp.GetRequiredService<AndroidSshHardwareKeyStore>());
         builder.Services.AddSingleton<IBiometricGate>(_ => new AndroidBiometricGate(() => Platform.CurrentActivity));
 
         builder.Services.AddSingleton<IVaultStorage>(_ => new FileVaultStorage(Path.Combine(FileSystem.AppDataDirectory, "meowssh.vault")));
