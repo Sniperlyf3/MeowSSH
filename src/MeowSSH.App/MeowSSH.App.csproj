@@ -44,6 +44,16 @@
     <PackageReference Include="UsbSerialForAndroid" Version="2.0.1" />
     <PackageReference Include="ZXing.Net.Maui.Controls" Version="0.10.4" />
     <PackageReference Include="Xamarin.Android.Google.BillingClient" Version="9.1.0.2" />
+
+    <!-- Billing 9.1 pulls the current AndroidX Activity/Core generation.
+         MAUI also references KTX packages with narrow ranges, so align those
+         wrappers explicitly instead of allowing a mixed-generation graph. -->
+    <PackageReference Include="Xamarin.AndroidX.Collection.Ktx" Version="1.6.0.1" />
+    <PackageReference Include="Xamarin.AndroidX.Fragment.Ktx" Version="1.9.0" />
+    <PackageReference Include="Xamarin.AndroidX.Lifecycle.LiveData" Version="2.11.0.1" />
+    <PackageReference Include="Xamarin.AndroidX.Lifecycle.LiveData.Core.Ktx" Version="2.11.0.1" />
+    <PackageReference Include="Xamarin.AndroidX.Lifecycle.Process" Version="2.11.0.1" />
+    <PackageReference Include="Xamarin.AndroidX.Tracing.Tracing.Ktx" Version="2.0.0" />
   </ItemGroup>
 
   <!-- Native TCP+UDP TUN-to-SOCKS bridge used by Android VpnService. The AAR is
