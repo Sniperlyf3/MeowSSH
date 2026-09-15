@@ -50,6 +50,9 @@ public static class MauiProgram
         builder.Services.AddSingleton<IExternalUriLauncher, AndroidExternalUriLauncher>();
         builder.Services.AddSingleton<IQrScanner, AndroidQrScanner>();
         builder.Services.AddSingleton<ISerialDeviceService, AndroidUsbSerialDeviceService>();
+        builder.Services.AddSingleton<ISessionLogService>(sp => new FileSessionLogService(
+            Path.Combine(FileSystem.AppDataDirectory, "session-logs"),
+            sp.GetRequiredService<IEntitlementService>()));
 
         var nativeDirectory = global::Android.App.Application.Context.ApplicationInfo!.NativeLibraryDir!;
         var engineOptions = new MeowshellSshEngineOptions(
@@ -84,7 +87,10 @@ public static class MauiProgram
         builder.Services.AddSingleton<IProtocolConnectionEngine, SerialConnectionEngine>();
         builder.Services.AddSingleton<IProtocolConnectionEngine>(sp => new LocalTerminalConnectionEngine(sp.GetRequiredService<MeowshellSshEngineOptions>()));
         builder.Services.AddSingleton<ConnectionEngine>();
-        builder.Services.AddSingleton<IConnectionEngine, ProxyJumpConnector>();
+        builder.Services.AddSingleton<ProxyJumpConnector>();
+        builder.Services.AddSingleton<IConnectionEngine>(sp => new SessionLoggingConnectionEngine(
+            sp.GetRequiredService<ProxyJumpConnector>(),
+            sp.GetRequiredService<ISessionLogService>()));
 
 #if DEBUG
         builder.Services.AddBlazorWebViewDeveloperTools();
