@@ -1,5 +1,6 @@
 @using MeowSSH.UI.Services
 @inject ITailcatHubService Hub
+@inject ITailcatIdentityStore IdentityStore
 @inject IHostEditor Editor
 @inject IActiveSessionLifetime SessionLifetime
 
@@ -79,6 +80,27 @@
             <details class="tailcat-advanced" data-testid="tailcat-server-address-options">
                 <summary>Address and DERP options</summary>
                 <div class="tailcat-stack">
+                    @if (_savedTailcatIdentities.Count > 0)
+                    {
+                        <label class="field">
+                            <span class="field__label">Server identity</span>
+                            <select class="field__input" data-testid="tailcat-server-identity" @bind="_serverIdentityName">
+                                <option value="">Ephemeral — new address each start</option>
+                                @foreach (var name in _savedTailcatIdentities)
+                                {
+                                    <option value="@name">@name</option>
+                                }
+                            </select>
+                            <span class="field__hint">A saved identity gives this phone a stable/reusable Tailcat address across restarts.</span>
+                        </label>
+                        @if (!string.IsNullOrWhiteSpace(_serverIdentityName))
+                        {
+                            <div class="tailcat-danger-warning" role="note" data-testid="tailcat-persistent-identity-warning">
+                                <strong>Persistent address selected.</strong>
+                                <p>Anyone who has received this identity's address may try it again on future starts. Use the Tailcat client allowlist and/or SSH authentication when the address is not strictly private.</p>
+                            </div>
+                        }
+                    }
                     <label class="forward-option"><input type="checkbox" data-testid="tailcat-full-address" @bind="_fullAddress" /><span><strong>Embed DERP details in address</strong><small>Publish a self-contained/full Tailcat address so clients do not need to fetch a DERP map.</small></span></label>
                     <label class="forward-option"><input type="checkbox" data-testid="tailcat-use-psk" @bind="_usePresharedKey" /><span><strong>Embed WireGuard pre-shared key</strong><small>Recommended. Adds a PSK to the Tailcat address in addition to WireGuard public-key authentication.</small></span></label>
                     <label class="field"><span class="field__label">Custom DERP map URL</span><input class="field__input mono" data-testid="tailcat-server-derpmap" placeholder="https://…/derpmap/default" @bind="_derpMapUrl" @bind:event="oninput" /><span class="field__hint">Optional. Leave blank for Tailcat's default DERP map.</span></label>
@@ -106,6 +128,8 @@
     private bool _files;
     private string _folder = "";
     private string _fileMode = "ro";
+    private IReadOnlyList<string> _savedTailcatIdentities = [];
+    private string _serverIdentityName = "";
     private bool _fullAddress;
     private bool _usePresharedKey = true;
     private string _derpMapUrl = "";
@@ -126,6 +150,7 @@
         _sshPublicKeys = [.. (await Editor.GetCredentialsAsync())
             .Where(c => !string.IsNullOrWhiteSpace(c.PublicKey))
             .OrderBy(c => c.Label, StringComparer.OrdinalIgnoreCase)];
+        _savedTailcatIdentities = [.. (await Hub.ListKeysAsync()).OrderBy(name => name, StringComparer.OrdinalIgnoreCase)];
     }
 
     private void SetSavedSshKey(Guid id, bool selected)
@@ -161,6 +186,9 @@
             if (!wasActive) await SessionLifetime.StartAsync();
             try
             {
+                var privateKeyJson = string.IsNullOrWhiteSpace(_serverIdentityName)
+                    ? null
+                    : await IdentityStore.ExportAsync(_serverIdentityName);
                 await Hub.StartServerAsync(new TailcatServeRequest(
                     TimeSpan.FromHours(_hours),
                     _allowedClients,
@@ -174,7 +202,8 @@
                     UseTailcatCredentialForShell: _useTailcatCredentialForShell,
                     FullAddress: _fullAddress,
                     UsePresharedKey: _usePresharedKey,
-                    DerpMapUrl: Empty(_derpMapUrl)));
+                    DerpMapUrl: Empty(_derpMapUrl),
+                    PrivateKeyJson: privateKeyJson));
             }
             catch { if (!wasActive) await SessionLifetime.StopAsync(); throw; }
             _notice = "Tailcat sharing started.";
