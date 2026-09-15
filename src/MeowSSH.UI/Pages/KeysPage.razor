@@ -1,5 +1,7 @@
 @using System.Text
+@implements IAsyncDisposable
 @inject IHostEditor Editor
+@inject ISshHardwareKeyStore HardwareKeys
 @inject IJSRuntime Js
 
 <AppShell Title="Keys" ActiveTab="keys" OnTabSelected="OnTabSelected">
@@ -40,15 +42,19 @@
                                 <button type="button"
                                         class="segmented__option @(_kind == CredentialKind.PrivateKey ? "segmented__option--on" : "")"
                                         role="radio" aria-checked="@(_kind == CredentialKind.PrivateKey ? "true" : "false")"
-                                        data-testid="kind-key" @onclick="() => _kind = CredentialKind.PrivateKey">Private key</button>
+                                        data-testid="kind-key" @onclick="() => SetKindAsync(CredentialKind.PrivateKey)">Private key</button>
+                                <button type="button"
+                                        class="segmented__option @(_kind == CredentialKind.HardwareKey ? "segmented__option--on" : "")"
+                                        role="radio" aria-checked="@(_kind == CredentialKind.HardwareKey ? "true" : "false")"
+                                        data-testid="kind-hardware-key" @onclick="() => SetKindAsync(CredentialKind.HardwareKey)">Device key</button>
                                 <button type="button"
                                         class="segmented__option @(_kind == CredentialKind.PublicKey ? "segmented__option--on" : "")"
                                         role="radio" aria-checked="@(_kind == CredentialKind.PublicKey ? "true" : "false")"
-                                        data-testid="kind-public-key" @onclick="() => _kind = CredentialKind.PublicKey">Public key</button>
+                                        data-testid="kind-public-key" @onclick="() => SetKindAsync(CredentialKind.PublicKey)">Public key</button>
                                 <button type="button"
                                         class="segmented__option @(_kind == CredentialKind.Password ? "segmented__option--on" : "")"
                                         role="radio" aria-checked="@(_kind == CredentialKind.Password ? "true" : "false")"
-                                        data-testid="kind-password" @onclick="() => _kind = CredentialKind.Password">Password</button>
+                                        data-testid="kind-password" @onclick="() => SetKindAsync(CredentialKind.Password)">Password</button>
                             </div>
                         </fieldset>
 
@@ -80,14 +86,7 @@
 
                             @if (!string.IsNullOrWhiteSpace(_publicKey))
                             {
-                                <label class="field">
-                                    <span class="field__label">Public key</span>
-                                    <textarea class="field__input field__input--code mono" rows="4"
-                                              data-testid="generated-public-key" readonly>@_publicKey</textarea>
-                                    <button type="button" class="btn btn--ghost"
-                                            data-testid="copy-generated-public-key"
-                                            @onclick="() => CopyPublicKeyAsync(_publicKey)">Copy public key</button>
-                                </label>
+                                <PublicKeyField Value="_publicKey" />
                             }
 
                             <label class="field">
@@ -96,6 +95,43 @@
                                        autocomplete="off" @bind="_passphrase" @bind:event="oninput" />
                                 <span class="field__hint">Leave blank if the key has none.</span>
                             </label>
+                        }
+                        else if (_kind == CredentialKind.HardwareKey)
+                        {
+                            <div class="keys-security-note" role="note" data-testid="hardware-key-explanation">
+                                <span class="keys-security-note__icon" aria-hidden="true"><Icon Name="shield" /></span>
+                                <span>
+                                    <strong>Non-exportable device key</strong>
+                                    <small>Android generates the P-256 private key inside Android Keystore. MeowSSH can ask it to sign, but cannot read or export the private key.</small>
+                                </span>
+                            </div>
+
+                            <button type="button" class="btn btn--primary btn--block"
+                                    disabled="@_busy" data-testid="generate-hardware-key"
+                                    @onclick="GenerateHardwareKeyAsync">
+                                <Icon Name="shield" /> @(_pendingHardwareKey is null ? "Generate device key" : "Replace generated key")
+                            </button>
+
+                            @if (_pendingHardwareKey is { } generated)
+                            {
+                                <p class="note" data-testid="generated-hardware-key-status">
+                                    <Icon Name="shield" /> @BackingLabel(generated)
+                                </p>
+                                <label class="field">
+                                    <span class="field__label">Public key</span>
+                                    <textarea class="field__input field__input--code mono" rows="4"
+                                              data-testid="generated-hardware-public-key" readonly>@generated.PublicKey</textarea>
+                                    <button type="button" class="btn btn--ghost"
+                                            data-testid="copy-generated-public-key"
+                                            @onclick="() => CopyPublicKeyAsync(generated.PublicKey)">Copy public key</button>
+                                    <span class="field__hint">Add this public key to the server. Only the public half is copyable.</span>
+                                </label>
+                            }
+
+                            @if (_hardwareError is not null)
+                            {
+                                <p class="lock__error" role="alert" data-testid="hardware-key-error">@_hardwareError</p>
+                            }
                         }
                         else if (_kind == CredentialKind.PublicKey)
                         {
@@ -132,7 +168,7 @@
                                     disabled="@(_busy || !IsComplete)" data-testid="save-credential"
                                     @onclick="SaveAsync">@(_busy ? "Saving…" : "Save to vault")</button>
                             <button type="button" class="btn btn--ghost btn--block"
-                                    data-testid="cancel-credential" @onclick="StopAdding">Cancel</button>
+                                    disabled="@_busy" data-testid="cancel-credential" @onclick="CancelAsync">Cancel</button>
                         </div>
                     </div>
                 </div>
@@ -142,7 +178,7 @@
                 <div class="empty keys-empty" data-testid="keys-empty">
                     <span class="empty__glyph"><Icon Name="key" /></span>
                     <p class="empty__title">No saved credentials</p>
-                    <p class="empty__body">Save a private key or password once, then reuse it across any number of hosts. Secrets stay encrypted in the vault.</p>
+                    <p class="empty__body">Save a private key, non-exportable device key or password once, then reuse it across any number of hosts.</p>
                     <button type="button" class="btn btn--primary" @onclick="StartAdding"><Icon Name="plus" /> Add credential</button>
                 </div>
             }
@@ -163,7 +199,7 @@
                     {
                         <article class="credential-card" data-testid="credential-row">
                             <span class="credential-card__icon" aria-hidden="true">
-                                <Icon Name="@(credential.Kind == CredentialKind.Password ? "lock" : "key")" />
+                                <Icon Name="@(credential.Kind == CredentialKind.Password ? "lock" : credential.Kind == CredentialKind.HardwareKey ? "shield" : "key")" />
                             </span>
                             <span class="credential-card__body">
                                 <span class="credential-card__title-row">
@@ -171,6 +207,10 @@
                                     <span class="credential-card__kind">@CredentialKindLabel(credential.Kind)</span>
                                 </span>
                                 <span class="credential-card__hint mono">@credential.DisplayHint</span>
+                                @if (credential.Kind == CredentialKind.HardwareKey)
+                                {
+                                    <span class="credential-card__hint" data-testid="hardware-key-status">@SavedHardwareStatus(credential)</span>
+                                }
                             </span>
                             <span class="credential-card__actions">
                                 @if (!string.IsNullOrWhiteSpace(credential.PublicKey))
@@ -208,7 +248,7 @@
                     <span class="keys-security-note__icon" aria-hidden="true"><Icon Name="shield" /></span>
                     <span>
                         <strong>Deletion is immediate.</strong>
-                        <small>Deleting a credential wipes its secret from the vault file straight away and detaches it from hosts that used it.</small>
+                        <small>Deleting a credential wipes vault material immediately. For device keys, MeowSSH also removes the Android Keystore key from this device.</small>
                     </span>
                 </div>
             }
@@ -218,6 +258,7 @@
 
 @code {
     private IReadOnlyList<CredentialSummary> _credentials = [];
+    private readonly Dictionary<Guid, SshHardwareKeyInfo?> _hardwareInfo = [];
     private bool _adding;
     private bool _busy;
     private bool _revealed;
@@ -226,16 +267,38 @@
     private string _secret = "";
     private string _passphrase = "";
     private string _publicKey = "";
+    private string? _hardwareError;
     private Guid? _expandedPublicKeyId;
+    private Guid? _pendingHardwareCredentialId;
+    private SshHardwareKeyInfo? _pendingHardwareKey;
     private CredentialKind _kind = CredentialKind.PrivateKey;
 
     [Parameter] public EventCallback<string> OnTabSelected { get; set; }
 
-    private bool IsComplete => !string.IsNullOrWhiteSpace(_label)
-        && (_kind == CredentialKind.PublicKey ? !string.IsNullOrWhiteSpace(_publicKey) : _secret.Length > 0);
+    private bool IsComplete => !string.IsNullOrWhiteSpace(_label) && _kind switch
+    {
+        CredentialKind.PublicKey => !string.IsNullOrWhiteSpace(_publicKey),
+        CredentialKind.HardwareKey => _pendingHardwareKey is not null,
+        _ => _secret.Length > 0,
+    };
 
-    protected override Task OnInitializedAsync() => ReloadAsync();
-    private async Task ReloadAsync() => _credentials = await Editor.GetCredentialsAsync();
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _credentials = await Editor.GetCredentialsAsync();
+        _hardwareInfo.Clear();
+        foreach (var credential in _credentials.Where(c => c.Kind == CredentialKind.HardwareKey))
+        {
+            SshHardwareKeyInfo? info = null;
+            if (!string.IsNullOrWhiteSpace(credential.HardwareKeyId))
+            {
+                try { info = await HardwareKeys.GetInfoAsync(credential.HardwareKeyId); }
+                catch { }
+            }
+            _hardwareInfo[credential.Id] = info;
+        }
+    }
 
     private void StartAdding()
     {
@@ -243,12 +306,56 @@
         _label = _username = _secret = _passphrase = _publicKey = "";
         _kind = CredentialKind.PrivateKey;
         _revealed = false;
+        _hardwareError = null;
+        _pendingHardwareCredentialId = null;
+        _pendingHardwareKey = null;
     }
 
-    private void StopAdding()
+    private void FinishAdding()
     {
         _adding = false;
         _secret = _passphrase = _publicKey = "";
+        _hardwareError = null;
+        _pendingHardwareCredentialId = null;
+        _pendingHardwareKey = null;
+    }
+
+    private async Task SetKindAsync(CredentialKind kind)
+    {
+        if (_kind == kind) return;
+        if (_pendingHardwareKey is not null) await DeletePendingHardwareKeyAsync();
+        _kind = kind;
+        _secret = _passphrase = _publicKey = "";
+        _hardwareError = null;
+    }
+
+    private async Task GenerateHardwareKeyAsync()
+    {
+        _busy = true;
+        _hardwareError = null;
+        try
+        {
+            if (_pendingHardwareKey is not null) await DeletePendingHardwareKeyAsync();
+            var credentialId = Guid.NewGuid();
+            var keyId = credentialId.ToString("N");
+            _pendingHardwareCredentialId = credentialId;
+            try
+            {
+                _pendingHardwareKey = await HardwareKeys.GenerateP256Async(keyId);
+                _publicKey = _pendingHardwareKey.PublicKey;
+            }
+            catch
+            {
+                try { await HardwareKeys.DeleteAsync(keyId); } catch { }
+                _pendingHardwareCredentialId = null;
+                throw;
+            }
+        }
+        catch (Exception ex)
+        {
+            _hardwareError = ex.Message;
+        }
+        finally { _busy = false; }
     }
 
     private async Task SaveAsync()
@@ -256,31 +363,81 @@
         _busy = true;
         try
         {
+            var id = _kind == CredentialKind.HardwareKey
+                ? _pendingHardwareCredentialId ?? throw new InvalidOperationException("Generate the device key before saving.")
+                : Guid.NewGuid();
+
             await Editor.SaveCredentialAsync(new CredentialRecord
             {
-                Id = Guid.NewGuid(),
+                Id = id,
                 Label = _label.Trim(),
                 Kind = _kind,
                 Username = string.IsNullOrWhiteSpace(_username) ? null : _username.Trim(),
-                Secret = _kind == CredentialKind.PublicKey ? [] : Encoding.UTF8.GetBytes(_secret),
+                Secret = _kind switch
+                {
+                    CredentialKind.PublicKey => [],
+                    CredentialKind.HardwareKey => Encoding.UTF8.GetBytes(_pendingHardwareKey!.KeyId),
+                    _ => Encoding.UTF8.GetBytes(_secret),
+                },
                 Passphrase = _kind == CredentialKind.PrivateKey && _passphrase.Length > 0 ? Encoding.UTF8.GetBytes(_passphrase) : null,
-                PublicKey = (_kind is CredentialKind.PrivateKey or CredentialKind.PublicKey) && !string.IsNullOrWhiteSpace(_publicKey)
-                    ? _publicKey.Trim()
-                    : null,
+                PublicKey = (_kind is CredentialKind.PrivateKey or CredentialKind.PublicKey or CredentialKind.HardwareKey)
+                    && !string.IsNullOrWhiteSpace(_publicKey) ? _publicKey.Trim() : null,
             });
 
-            StopAdding();
+            // Ownership of a hardware key transfers to the saved credential only
+            // after the vault write succeeds. Before this line, Cancel/Dispose
+            // must remove it to avoid leaving an orphaned signing key behind.
+            _pendingHardwareKey = null;
+            _pendingHardwareCredentialId = null;
+            FinishAdding();
             await ReloadAsync();
         }
+        catch (Exception ex)
+        {
+            if (_kind == CredentialKind.HardwareKey) _hardwareError = ex.Message;
+            else throw;
+        }
         finally { _busy = false; }
+    }
+
+    private async Task CancelAsync()
+    {
+        await DeletePendingHardwareKeyAsync();
+        FinishAdding();
+    }
+
+    private async Task DeletePendingHardwareKeyAsync()
+    {
+        if (_pendingHardwareKey is not { } pending) return;
+        try { await HardwareKeys.DeleteAsync(pending.KeyId); }
+        finally
+        {
+            _pendingHardwareKey = null;
+            _pendingHardwareCredentialId = null;
+            _publicKey = "";
+        }
     }
 
     private static string CredentialKindLabel(CredentialKind kind) => kind switch
     {
         CredentialKind.Password => "Password",
         CredentialKind.PublicKey => "Public key",
+        CredentialKind.HardwareKey => "Device key",
         _ => "Private key",
     };
+
+    private static string BackingLabel(SshHardwareKeyInfo info) => info.StrongBoxBacked
+        ? "StrongBox-backed · private key cannot be exported"
+        : info.HardwareBacked
+            ? "Hardware-backed · private key cannot be exported"
+            : "Android Keystore · private key cannot be exported";
+
+    private string SavedHardwareStatus(CredentialSummary credential)
+    {
+        if (!_hardwareInfo.TryGetValue(credential.Id, out var info) || info is null)
+            return "Unavailable on this device — restore or generate a replacement key.";
+        return BackingLabel(info);
+    }
 
     private void GenerateSshKey()
     {
@@ -302,6 +459,31 @@
     private async Task DeleteAsync(CredentialSummary credential)
     {
         await Editor.DeleteCredentialAsync(credential.Id);
+        if (credential.Kind == CredentialKind.HardwareKey && !string.IsNullOrWhiteSpace(credential.HardwareKeyId))
+            await HardwareKeys.DeleteAsync(credential.HardwareKeyId);
         await ReloadAsync();
     }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_pendingHardwareKey is not null) await DeletePendingHardwareKeyAsync();
+    }
+
+    private RenderFragment PublicKeyField(string Value) => builder =>
+    {
+        builder.OpenElement(0, "label");
+        builder.AddAttribute(1, "class", "field");
+        builder.OpenElement(2, "span");
+        builder.AddAttribute(3, "class", "field__label");
+        builder.AddContent(4, "Public key");
+        builder.CloseElement();
+        builder.OpenElement(5, "textarea");
+        builder.AddAttribute(6, "class", "field__input field__input--code mono");
+        builder.AddAttribute(7, "rows", "4");
+        builder.AddAttribute(8, "data-testid", "generated-public-key");
+        builder.AddAttribute(9, "readonly", true);
+        builder.AddContent(10, Value);
+        builder.CloseElement();
+        builder.CloseElement();
+    };
 }
