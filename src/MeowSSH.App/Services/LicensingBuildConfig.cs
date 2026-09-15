@@ -1,9 +1,20 @@
+using System.Reflection;
+
 namespace MeowSSH.App.Services;
 
 internal static class LicensingBuildConfig
 {
-    // These values are public configuration, not secrets. The private signing key
-    // lives only on the licensing service. Empty values intentionally fail closed.
-    public const string ApiBaseUrl = "";
-    public const string PublicKeySubjectPublicKeyInfoBase64 = "";
+    private const string ApiBaseUrlKey = "MeowSSH.Licensing.ApiBaseUrl";
+    private const string PublicKeyKey = "MeowSSH.Licensing.PublicKeySubjectPublicKeyInfoBase64";
+
+    // These values are public configuration, not secrets. CI injects them as
+    // assembly metadata. Empty values intentionally leave licensing fail-closed.
+    public static string ApiBaseUrl => GetMetadata(ApiBaseUrlKey);
+    public static string PublicKeySubjectPublicKeyInfoBase64 => GetMetadata(PublicKeyKey);
+
+    private static string GetMetadata(string key) =>
+        typeof(LicensingBuildConfig).Assembly
+            .GetCustomAttributes<AssemblyMetadataAttribute>()
+            .FirstOrDefault(attribute => string.Equals(attribute.Key, key, StringComparison.Ordinal))
+            ?.Value ?? string.Empty;
 }
