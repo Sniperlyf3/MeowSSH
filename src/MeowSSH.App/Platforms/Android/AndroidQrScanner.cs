@@ -17,10 +17,10 @@ public sealed class AndroidQrScanner : IQrScanner
 
         return await MainThread.InvokeOnMainThreadAsync(async () =>
         {
-            var window = Application.Current?.Windows.FirstOrDefault()
-                ?? throw new InvalidOperationException("No active application window is available for QR scanning.");
-            var hostPage = window.Page
-                ?? throw new InvalidOperationException("No active application page is available for QR scanning.");
+            var app = Application.Current ?? throw new InvalidOperationException("No active application is available for QR scanning.");
+            if (app.Windows.Count == 0) throw new InvalidOperationException("No active application window is available for QR scanning.");
+            var window = app.Windows[0];
+            var hostPage = window.Page ?? throw new InvalidOperationException("No active application page is available for QR scanning.");
             var tcs = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
             var reader = new CameraBarcodeReaderView
             {
@@ -60,7 +60,7 @@ public sealed class AndroidQrScanner : IQrScanner
 
             reader.BarcodesDetected += (_, args) =>
             {
-                var value = args.Results.FirstOrDefault()?.Value?.Trim();
+                var value = args.Results.Count > 0 ? args.Results[0].Value?.Trim() : null;
                 if (!string.IsNullOrWhiteSpace(value)) MainThread.BeginInvokeOnMainThread(() => _ = CompleteAsync(value));
             };
             cancel.Clicked += (_, _) => _ = CompleteAsync(null);
