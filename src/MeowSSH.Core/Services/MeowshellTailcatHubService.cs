@@ -65,7 +65,7 @@ public sealed class MeowshellTailcatHubService : ITailcatHubService
                 BinaryDirectory = _runtime.BinaryDirectory,
                 HomeDirectory = _runtime.HomeDirectory,
                 WorkDirectory = _runtime.WorkDirectory,
-                DerpMapUrl = _runtime.DerpMapUrl,
+                DerpMapUrl = EffectiveDerpMapUrl(request.DerpMapUrl),
                 Lifetime = request.Lifetime,
                 AllowClientKeys = request.AllowAnyClient ? null : request.AllowedClientKeys.Trim(),
                 AuthorizedKeys = request.EnableShell && !request.UseTailcatCredentialForShell ? request.AuthorizedSshKeys!.Trim() : null,
@@ -137,7 +137,7 @@ public sealed class MeowshellTailcatHubService : ITailcatHubService
             {
                 BinaryDirectory = _runtime.BinaryDirectory,
                 HomeDirectory = _runtime.HomeDirectory,
-                DerpMapUrl = _runtime.DerpMapUrl,
+                DerpMapUrl = EffectiveDerpMapUrl(request.DerpMapUrl),
                 Listen = request.ListenAddress.Trim(),
                 ClientKey = NullIfWhiteSpace(request.ClientKey),
             }, AddLog, cancellationToken).ConfigureAwait(false);
@@ -191,7 +191,7 @@ public sealed class MeowshellTailcatHubService : ITailcatHubService
             {
                 BinaryDirectory = _runtime.BinaryDirectory,
                 HomeDirectory = _runtime.HomeDirectory,
-                DerpMapUrl = _runtime.DerpMapUrl,
+                DerpMapUrl = EffectiveDerpMapUrl(request.DerpMapUrl),
                 Address = request.Address.Trim(),
                 Mappings = [.. request.Mappings.Select(mapping => mapping.Trim())],
                 Bind = NullIfWhiteSpace(request.BindAddress),
@@ -249,7 +249,7 @@ public sealed class MeowshellTailcatHubService : ITailcatHubService
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (string.IsNullOrWhiteSpace(request.Name)) throw new ArgumentException("A key name is required.", nameof(request));
-        var value = await TailcatClient.GenerateKeyAsync(ClientOptions(), new TailcatKeyOptions
+        var value = await TailcatClient.GenerateKeyAsync(ClientOptions(derpMapUrl: request.DerpMapUrl), new TailcatKeyOptions
         {
             Name = request.Name.Trim(),
             Client = request.Client,
@@ -277,11 +277,52 @@ public sealed class MeowshellTailcatHubService : ITailcatHubService
         return TailcatClient.PrintPubAsync(ClientOptions(), NullIfWhiteSpace(name));
     }
 
-    public async Task<TailcatDiagnosticResult> DiagnoseAsync(string address, bool waitForDirect, CancellationToken cancellationToken = default)
+    public async Task<string> ResolveAddressAsync(string address, string? derpMapUrl = null, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (string.IsNullOrWhiteSpace(address)) throw new ArgumentException("A Tailcat address or DNS name is required.", nameof(address));
-        var options = ClientOptions();
+        var resolved = await TailcatClient.ResolveAsync(ClientOptions(derpMapUrl: derpMapUrl), address.Trim()).ConfigureAwait(false);
+        return resolved.ToString();
+    }
+
+    public async Task<TailcatAddressDetails> InspectAddressAsync(string address, string? derpMapUrl = null, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (string.IsNullOrWhiteSpace(address)) throw new ArgumentException("A Tailcat address or DNS name is required.", nameof(address));
+        var options = ClientOptions(derpMapUrl: derpMapUrl);
+        var resolved = await TailcatClient.ResolveAsync(options, address.Trim()).ConfigureAwait(false);
+        var parsed = await TailcatClient.ParseAsync(options, resolved).ConfigureAwait(false);
+        var regions = parsed.Region is null
+            ? Array.Empty<TailcatDerpRegionDetails>()
+            : parsed.Region.Select(region => new TailcatDerpRegionDetails(
+                region.RegionId,
+                region.RegionCode,
+                region.RegionName,
+                region.Nodes is null
+                    ? Array.Empty<TailcatDerpNodeDetails>()
+                    : [.. region.Nodes.Select(node => new TailcatDerpNodeDetails(
+                        node.Name,
+                        node.HostName,
+                        node.CertName,
+                        node.IPv4,
+                        node.IPv6,
+                        node.StunPort,
+                        node.DerpPort))])).ToArray();
+
+        return new TailcatAddressDetails(
+            resolved.ToString(),
+            parsed.ServerPublic,
+            parsed.ServerDiscoPublic,
+            !string.IsNullOrWhiteSpace(parsed.PresharedKey),
+            parsed.RegionId,
+            regions);
+    }
+
+    public async Task<TailcatDiagnosticResult> DiagnoseAsync(string address, bool waitForDirect, string? derpMapUrl = null, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (string.IsNullOrWhiteSpace(address)) throw new ArgumentException("A Tailcat address or DNS name is required.", nameof(address));
+        var options = ClientOptions(derpMapUrl: derpMapUrl);
         var resolved = await TailcatClient.ResolveAsync(options, address.Trim()).ConfigureAwait(false);
         var parsed = await TailcatClient.ParseAsync(options, resolved).ConfigureAwait(false);
         var ping = await TailcatClient.PingAsync(options, resolved.ToString(), waitForDirect, TimeSpan.FromSeconds(15)).ConfigureAwait(false);
@@ -295,30 +336,30 @@ public sealed class MeowshellTailcatHubService : ITailcatHubService
             !string.IsNullOrWhiteSpace(parsed.PresharedKey));
     }
 
-    public async Task<IReadOnlyList<TailcatRemoteFile>> ListRemoteFilesAsync(string address, string path, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<TailcatRemoteFile>> ListRemoteFilesAsync(string address, string path, string? derpMapUrl = null, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var target = RemotePath(address, path);
-        var entries = await TailcatClient.ListFilesAsync(ClientOptions(), target, longListing: true).ConfigureAwait(false);
+        var entries = await TailcatClient.ListFilesAsync(ClientOptions(derpMapUrl: derpMapUrl), target, longListing: true).ConfigureAwait(false);
         return [.. entries.Select(entry => new TailcatRemoteFile(entry.Name, entry.IsDirectory, entry.Mode, entry.Size, entry.ModifiedAt))];
     }
 
-    public async Task UploadAsync(string localPath, string address, string remotePath, bool recursive = false, CancellationToken cancellationToken = default)
+    public async Task UploadAsync(string localPath, string address, string remotePath, bool recursive = false, string? derpMapUrl = null, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         ValidateLocalPath(localPath);
         var result = await TailcatClient.CpAsync(
-            ClientOptions(TimeSpan.FromMinutes(10)),
+            ClientOptions(TimeSpan.FromMinutes(10), derpMapUrl),
             TailcatPath.Local(localPath.Trim()), RemotePath(address, remotePath), recursive).ConfigureAwait(false);
         if (!result.Success) throw new TailcatException("Tailcat upload failed", result.ExitCode, result.Stderr);
     }
 
-    public async Task DownloadAsync(string address, string remotePath, string localPath, bool recursive = false, CancellationToken cancellationToken = default)
+    public async Task DownloadAsync(string address, string remotePath, string localPath, bool recursive = false, string? derpMapUrl = null, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         ValidateLocalPath(localPath);
         var result = await TailcatClient.CpAsync(
-            ClientOptions(TimeSpan.FromMinutes(10)),
+            ClientOptions(TimeSpan.FromMinutes(10), derpMapUrl),
             RemotePath(address, remotePath), TailcatPath.Local(localPath.Trim()), recursive).ConfigureAwait(false);
         if (!result.Success) throw new TailcatException("Tailcat download failed", result.ExitCode, result.Stderr);
     }
@@ -335,13 +376,16 @@ public sealed class MeowshellTailcatHubService : ITailcatHubService
         _gate.Dispose();
     }
 
-    private TailcatClientOptions ClientOptions(TimeSpan? timeout = null) => new()
+    private TailcatClientOptions ClientOptions(TimeSpan? timeout = null, string? derpMapUrl = null) => new()
     {
         BinaryDirectory = _runtime.BinaryDirectory,
         HomeDirectory = _runtime.HomeDirectory,
-        DerpMapUrl = _runtime.DerpMapUrl,
+        DerpMapUrl = EffectiveDerpMapUrl(derpMapUrl),
         Timeout = timeout ?? TimeSpan.FromSeconds(30),
     };
+
+    private string? EffectiveDerpMapUrl(string? overrideUrl) =>
+        NullIfWhiteSpace(overrideUrl) ?? _runtime.DerpMapUrl;
 
     private static TailcatPath RemotePath(string address, string? path)
     {
