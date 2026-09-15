@@ -34,6 +34,20 @@
     <AndroidLinkMode>Full</AndroidLinkMode>
   </PropertyGroup>
 
+  <!-- Full linking remains enabled for MeowSSH itself. These assemblies use
+       reflection, Java export callbacks, or other runtime discovery that the
+       trimmer cannot prove safe statically, so preserve them as explicit
+       boundaries instead of disabling aggressive trimming globally. -->
+  <ItemGroup Condition="'$(Configuration)' == 'Release'">
+    <TrimmerRootAssembly Include="Meowshell" />
+    <TrimmerRootAssembly Include="Microsoft.AspNetCore.Components" />
+    <TrimmerRootAssembly Include="Microsoft.AspNetCore.Components.WebView" />
+    <TrimmerRootAssembly Include="Microsoft.JSInterop" />
+    <TrimmerRootAssembly Include="UsbSerialForAndroid" />
+    <TrimmerRootAssembly Include="Mono.Android" />
+    <TrimmerRootAssembly Include="Java.Interop" />
+  </ItemGroup>
+
   <ItemGroup>
     <MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#0b0e13" />
     <MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#0b0e13" BaseSize="128,128" />
