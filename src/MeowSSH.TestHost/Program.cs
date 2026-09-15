@@ -26,6 +26,10 @@ builder.Services.AddScoped<ITailcatWorkspaceStore, MemoryTailcatWorkspaceStore>(
 builder.Services.AddScoped<ITailcatWorkspaceService, TailcatWorkspaceService>();
 builder.Services.AddScoped<ICommandActionStore, MemoryCommandActionStore>();
 builder.Services.AddScoped<ICommandActionService, CommandActionService>();
+builder.Services.AddScoped<ICommandMonitorStore, MemoryCommandMonitorStore>();
+builder.Services.AddScoped<ICommandMonitorAlertSink, NoOpCommandMonitorAlertSink>();
+builder.Services.AddScoped<CommandMonitoringService>();
+builder.Services.AddScoped<ICommandMonitoringService>(sp => sp.GetRequiredService<CommandMonitoringService>());
 builder.Services.AddScoped<IQrScanner, FakeQrScanner>();
 builder.Services.AddScoped<ITailcatVpnController, FakeTailcatVpnController>();
 builder.Services.AddScoped<IEntitlementService, FakeEntitlementService>();
