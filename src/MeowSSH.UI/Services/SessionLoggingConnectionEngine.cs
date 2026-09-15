@@ -29,7 +29,9 @@ public sealed class SessionLoggingConnectionEngine(
         IHostConnection innerConnection,
         ISessionLogService logs) : IHostConnection
     {
+        protected HostRecord Host { get; } = host;
         protected IHostConnection Inner { get; } = innerConnection;
+        protected ISessionLogService Logs { get; } = logs;
 
         public Guid HostId => Inner.HostId;
         public bool IsConnected => Inner.IsConnected;
@@ -46,11 +48,11 @@ public sealed class SessionLoggingConnectionEngine(
             CancellationToken cancellationToken = default)
         {
             var terminal = await Inner.OpenTerminalAsync(columns, rows, cancellationToken).ConfigureAwait(false);
-            if (!logs.AutoRecord) return terminal;
+            if (!Logs.AutoRecord) return terminal;
 
             try
             {
-                var capture = await logs.StartAsync(host, cancellationToken).ConfigureAwait(false);
+                var capture = await Logs.StartAsync(Host, cancellationToken).ConfigureAwait(false);
                 return new LoggingTerminalSession(terminal, capture);
             }
             catch (InvalidOperationException)
@@ -64,17 +66,21 @@ public sealed class SessionLoggingConnectionEngine(
         public virtual ValueTask DisposeAsync() => Inner.DisposeAsync();
     }
 
-    private sealed class LoggingSshConnection(
-        HostRecord host,
-        ISshConnection ssh,
-        ISessionLogService logs)
-        : LoggingHostConnection(host, ssh, logs), ISshConnection
+    private sealed class LoggingSshConnection : LoggingHostConnection, ISshConnection
     {
+        private readonly ISshConnection _ssh;
+
+        public LoggingSshConnection(HostRecord host, ISshConnection ssh, ISessionLogService logs)
+            : base(host, ssh, logs)
+        {
+            _ssh = ssh;
+        }
+
         public Task<SshCommandResult> RunCommandAsync(
             string command,
             TimeSpan? timeout = null,
             CancellationToken cancellationToken = default) =>
-            ssh.RunCommandAsync(command, timeout, cancellationToken);
+            _ssh.RunCommandAsync(command, timeout, cancellationToken);
 
         public Task<ISshShell> OpenShellAsync(
             int columns,
@@ -87,12 +93,12 @@ public sealed class SessionLoggingConnectionEngine(
             int rows,
             CancellationToken cancellationToken)
         {
-            var shell = await ssh.OpenShellAsync(columns, rows, cancellationToken).ConfigureAwait(false);
-            if (!logs.AutoRecord) return shell;
+            var shell = await _ssh.OpenShellAsync(columns, rows, cancellationToken).ConfigureAwait(false);
+            if (!Logs.AutoRecord) return shell;
 
             try
             {
-                var capture = await logs.StartAsync(host, cancellationToken).ConfigureAwait(false);
+                var capture = await Logs.StartAsync(Host, cancellationToken).ConfigureAwait(false);
                 return new LoggingSshShell(shell, capture);
             }
             catch (InvalidOperationException)
@@ -102,7 +108,7 @@ public sealed class SessionLoggingConnectionEngine(
         }
 
         public Task<ISftpSession> OpenSftpAsync(CancellationToken cancellationToken = default) =>
-            ssh.OpenSftpAsync(cancellationToken);
+            _ssh.OpenSftpAsync(cancellationToken);
 
         public Task<ISshForward> OpenLocalForwardAsync(
             string listenAddress,
@@ -110,21 +116,21 @@ public sealed class SessionLoggingConnectionEngine(
             bool allowNonLoopbackBind = false,
             int maxConnections = 256,
             CancellationToken cancellationToken = default) =>
-            ssh.OpenLocalForwardAsync(listenAddress, remoteAddress, allowNonLoopbackBind, maxConnections, cancellationToken);
+            _ssh.OpenLocalForwardAsync(listenAddress, remoteAddress, allowNonLoopbackBind, maxConnections, cancellationToken);
 
         public Task<ISshForward> OpenLocalForwardOnUnixSocketAsync(
             string socketPath,
             string remoteAddress,
             int maxConnections = 256,
             CancellationToken cancellationToken = default) =>
-            ssh.OpenLocalForwardOnUnixSocketAsync(socketPath, remoteAddress, maxConnections, cancellationToken);
+            _ssh.OpenLocalForwardOnUnixSocketAsync(socketPath, remoteAddress, maxConnections, cancellationToken);
 
         public Task<ISshForward> OpenRemoteForwardAsync(
             string listenAddress,
             string localAddress,
             int maxConnections = 256,
             CancellationToken cancellationToken = default) =>
-            ssh.OpenRemoteForwardAsync(listenAddress, localAddress, maxConnections, cancellationToken);
+            _ssh.OpenRemoteForwardAsync(listenAddress, localAddress, maxConnections, cancellationToken);
 
         public Task<ISshForward> OpenSocksForwardAsync(
             string listenAddress,
@@ -134,7 +140,7 @@ public sealed class SessionLoggingConnectionEngine(
             bool allowNonLoopbackBind = false,
             int maxConnections = 256,
             CancellationToken cancellationToken = default) =>
-            ssh.OpenSocksForwardAsync(
+            _ssh.OpenSocksForwardAsync(
                 listenAddress,
                 requireAuth,
                 socksUsername,
@@ -150,7 +156,7 @@ public sealed class SessionLoggingConnectionEngine(
             string? socksPassword = null,
             int maxConnections = 256,
             CancellationToken cancellationToken = default) =>
-            ssh.OpenSocksForwardOnUnixSocketAsync(
+            _ssh.OpenSocksForwardOnUnixSocketAsync(
                 socketPath,
                 requireAuth,
                 socksUsername,
