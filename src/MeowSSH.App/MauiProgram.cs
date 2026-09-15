@@ -27,6 +27,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<IVaultSession, StoredVaultSession>();
 
         builder.Services.AddSingleton<IStorePurchaseService, GooglePlayPurchaseService>();
+        builder.Services.AddSingleton<IPlayIntegrityService, GooglePlayIntegrityService>();
         builder.Services.AddSingleton<IEntitlementCache, SecureStorageEntitlementCache>();
         builder.Services.AddSingleton(new LicensingApiOptions(
             Uri.TryCreate(LicensingBuildConfig.ApiBaseUrl, UriKind.Absolute, out var licensingUri) ? licensingUri : null,
