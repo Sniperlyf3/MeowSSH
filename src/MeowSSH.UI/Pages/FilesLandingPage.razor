@@ -1,8 +1,37 @@
 @inject IHostDirectory Directory
-@implements IDisposable
+@inject ICredentialResolver Credentials
+@inject ISshEngine Ssh
+@inject ISshPrompts Prompts
+@inject IActiveSessionLifetime SessionLifetime
+@implements IAsyncDisposable
 
+@if (_advancedHost is not null && _advancedSftp is not null)
+{
+    <AdvancedSftpPage Host="_advancedHost" Sftp="_advancedSftp" OnClosed="CloseAdvancedAsync" />
+}
+else
+{
 <AppShell Title="Files" ActiveTab="files" OnTabSelected="OnTabSelected">
     <ChildContent>
+        @if (_advancedBusy)
+        {
+            <div class="sheet" role="status" data-testid="advanced-sftp-connecting">
+                <p class="sheet__title">Opening Advanced SFTP…</p>
+                <p class="sheet__body">Connecting securely to @_advancedTargetLabel.</p>
+            </div>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(_advancedError))
+        {
+            <div class="notice notice--danger" role="alert" data-testid="advanced-sftp-connect-error">
+                <Icon Name="alert" />
+                <div>
+                    <p class="notice__title">Could not open Advanced SFTP</p>
+                    <p class="notice__body">@_advancedError</p>
+                </div>
+            </div>
+        }
+
         @if (_hosts is null)
         {
             <p class="visually-hidden" role="status">Loading hosts</p>
@@ -21,15 +50,34 @@
             <div class="host-list" data-testid="files-host-list">
                 @foreach (var status in _hosts)
                 {
-                    <HostRow Status="status" OnSelected="OnHostSelected" />
+                    <div class="files-host-option">
+                        <HostRow Status="status" OnSelected="OnHostSelected" />
+                        @if (status.Host.Protocol == HostProtocol.Ssh)
+                        {
+                            <button type="button" class="btn btn--ghost files-host-option__advanced"
+                                    data-testid="advanced-sftp-host" data-host-label="@status.Host.Label"
+                                    disabled="@_advancedBusy"
+                                    @onclick="() => OpenAdvancedAsync(status.Host)">
+                                Advanced SFTP <span class="action-pro-badge">PRO</span>
+                            </button>
+                        }
+                    </div>
                 }
             </div>
         }
     </ChildContent>
 </AppShell>
+}
 
 @code {
     private IReadOnlyList<HostStatus>? _hosts;
+    private HostRecord? _advancedHost;
+    private ISshConnection? _advancedConnection;
+    private ISftpSession? _advancedSftp;
+    private bool _advancedBusy;
+    private string? _advancedError;
+    private string? _advancedTargetLabel;
+    private bool _lifetimeStarted;
 
     [Parameter] public EventCallback<HostRecord> OnHostSelected { get; set; }
     [Parameter] public EventCallback<string> OnTabSelected { get; set; }
@@ -40,6 +88,66 @@
         _hosts = await Directory.GetHostsAsync();
     }
 
+    private async Task OpenAdvancedAsync(HostRecord host)
+    {
+        if (_advancedBusy || host.Protocol != HostProtocol.Ssh) return;
+        _advancedBusy = true;
+        _advancedError = null;
+        _advancedTargetLabel = host.Label;
+        ISshConnection? connection = null;
+        ISftpSession? sftp = null;
+        try
+        {
+            await SessionLifetime.StartAsync();
+            _lifetimeStarted = true;
+            using var credentials = await Credentials.ResolveAsync(host);
+            var target = !string.IsNullOrWhiteSpace(credentials.Username)
+                ? host with { Username = credentials.Username }
+                : host;
+            var credentialPrompts = new CredentialSshPrompts(Prompts, credentials);
+            connection = await Ssh.ConnectAsync(target, credentials, credentialPrompts);
+            sftp = await connection.OpenSftpAsync();
+
+            _advancedHost = target;
+            _advancedConnection = connection;
+            _advancedSftp = sftp;
+            connection = null;
+            sftp = null;
+        }
+        catch (Exception exception) when (exception is SshException or IOException or InvalidOperationException or ObjectDisposedException)
+        {
+            _advancedError = exception.Message;
+            if (_lifetimeStarted)
+            {
+                await SessionLifetime.StopAsync();
+                _lifetimeStarted = false;
+            }
+        }
+        finally
+        {
+            if (sftp is not null) await sftp.DisposeAsync();
+            if (connection is not null) await connection.DisposeAsync();
+            _advancedBusy = false;
+            _advancedTargetLabel = null;
+        }
+    }
+
+    private async Task CloseAdvancedAsync()
+    {
+        var sftp = _advancedSftp;
+        var connection = _advancedConnection;
+        _advancedSftp = null;
+        _advancedConnection = null;
+        _advancedHost = null;
+        if (sftp is not null) await sftp.DisposeAsync();
+        if (connection is not null) await connection.DisposeAsync();
+        if (_lifetimeStarted)
+        {
+            await SessionLifetime.StopAsync();
+            _lifetimeStarted = false;
+        }
+    }
+
     private void OnDirectoryChanged(object? sender, EventArgs e) =>
         _ = InvokeAsync(async () =>
         {
@@ -47,5 +155,9 @@
             StateHasChanged();
         });
 
-    public void Dispose() => Directory.Changed -= OnDirectoryChanged;
+    public async ValueTask DisposeAsync()
+    {
+        Directory.Changed -= OnDirectoryChanged;
+        await CloseAdvancedAsync();
+    }
 }
