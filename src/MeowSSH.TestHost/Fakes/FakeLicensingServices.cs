@@ -60,6 +60,6 @@ public sealed class FakeStorePurchaseService : IStorePurchaseService
         ArgumentException.ThrowIfNullOrWhiteSpace(productId);
         cancellationToken.ThrowIfCancellationRequested();
         StorePurchase? purchase = new(productId, "test-token", true, false);
-        return Task.FromResult(purchase);
+        return Task.FromResult<StorePurchase?>(purchase);
     }
 }
