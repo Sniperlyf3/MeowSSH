@@ -43,7 +43,8 @@ public sealed record TailcatServerSnapshot(
     bool AllowsAnyClient,
     bool UseTailcatCredentialForShell,
     string? SharedFolder,
-    string FileMode);
+    string FileMode,
+    IReadOnlyList<string> ServeTargets);
 
 public sealed record TailcatSocksSnapshot(string ListenAddress, string? ClientKey);
 
@@ -52,7 +53,8 @@ public sealed record TailcatForwardSnapshot(
     string Address,
     IReadOnlyList<string> Mappings,
     IReadOnlyList<string> BoundAddresses,
-    string? ClientKey);
+    string? ClientKey,
+    bool Udp);
 
 public sealed record TailcatServeRequest(
     TimeSpan Lifetime,
@@ -68,7 +70,8 @@ public sealed record TailcatServeRequest(
     bool FullAddress = false,
     bool UsePresharedKey = true,
     string? DerpMapUrl = null,
-    string? PrivateKeyJson = null);
+    string? PrivateKeyJson = null,
+    IReadOnlyList<string>? ServeTargets = null);
 
 public sealed record TailcatSocksRequest(
     string ListenAddress = "127.0.0.1:0",
@@ -80,7 +83,8 @@ public sealed record TailcatForwardRequest(
     IReadOnlyList<string> Mappings,
     string BindAddress = "127.0.0.1",
     string? ClientKey = null,
-    string? DerpMapUrl = null);
+    string? DerpMapUrl = null,
+    bool Udp = false);
 
 public sealed record TailcatGenerateKeyRequest(
     string Name,
