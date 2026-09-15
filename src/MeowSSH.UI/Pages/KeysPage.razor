@@ -86,7 +86,14 @@
 
                             @if (!string.IsNullOrWhiteSpace(_publicKey))
                             {
-                                <PublicKeyField Value="_publicKey" />
+                                <label class="field">
+                                    <span class="field__label">Public key</span>
+                                    <textarea class="field__input field__input--code mono" rows="4"
+                                              data-testid="generated-public-key" readonly>@_publicKey</textarea>
+                                    <button type="button" class="btn btn--ghost"
+                                            data-testid="copy-generated-public-key"
+                                            @onclick="() => CopyPublicKeyAsync(_publicKey)">Copy public key</button>
+                                </label>
                             }
 
                             <label class="field">
@@ -275,12 +282,12 @@
 
     [Parameter] public EventCallback<string> OnTabSelected { get; set; }
 
-    private bool IsComplete => !string.IsNullOrWhiteSpace(_label) && _kind switch
+    private bool IsComplete => !string.IsNullOrWhiteSpace(_label) && (_kind switch
     {
         CredentialKind.PublicKey => !string.IsNullOrWhiteSpace(_publicKey),
         CredentialKind.HardwareKey => _pendingHardwareKey is not null,
         _ => _secret.Length > 0,
-    };
+    });
 
     protected override async Task OnInitializedAsync() => await ReloadAsync();
 
@@ -384,9 +391,6 @@
                     && !string.IsNullOrWhiteSpace(_publicKey) ? _publicKey.Trim() : null,
             });
 
-            // Ownership of a hardware key transfers to the saved credential only
-            // after the vault write succeeds. Before this line, Cancel/Dispose
-            // must remove it to avoid leaving an orphaned signing key behind.
             _pendingHardwareKey = null;
             _pendingHardwareCredentialId = null;
             FinishAdding();
@@ -468,22 +472,4 @@
     {
         if (_pendingHardwareKey is not null) await DeletePendingHardwareKeyAsync();
     }
-
-    private RenderFragment PublicKeyField(string Value) => builder =>
-    {
-        builder.OpenElement(0, "label");
-        builder.AddAttribute(1, "class", "field");
-        builder.OpenElement(2, "span");
-        builder.AddAttribute(3, "class", "field__label");
-        builder.AddContent(4, "Public key");
-        builder.CloseElement();
-        builder.OpenElement(5, "textarea");
-        builder.AddAttribute(6, "class", "field__input field__input--code mono");
-        builder.AddAttribute(7, "rows", "4");
-        builder.AddAttribute(8, "data-testid", "generated-public-key");
-        builder.AddAttribute(9, "readonly", true);
-        builder.AddContent(10, Value);
-        builder.CloseElement();
-        builder.CloseElement();
-    };
 }
