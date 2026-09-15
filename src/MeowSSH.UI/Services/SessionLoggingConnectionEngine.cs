@@ -159,48 +159,38 @@ public sealed class SessionLoggingConnectionEngine(
                 cancellationToken);
     }
 
-    private class LoggingTerminalSession(
-        ITerminalSession terminal,
-        ISessionLogCapture capture) : ITerminalSession
+    private class LoggingTerminalSession : ITerminalSession
     {
+        private readonly ITerminalSession _terminal;
+        private readonly ISessionLogCapture _capture;
         private bool _disposed;
 
-        protected ITerminalSession Terminal { get; } = terminal;
-        protected ISessionLogCapture Capture { get; } = capture;
+        public LoggingTerminalSession(ITerminalSession terminal, ISessionLogCapture capture)
+        {
+            _terminal = terminal;
+            _capture = capture;
+            _terminal.OutputReceived += OnOutputReceived;
+            _terminal.Exited += OnExited;
+        }
 
         public event EventHandler<ReadOnlyMemory<byte>>? OutputReceived;
         public event EventHandler<int>? Exited;
 
-        protected void Attach()
-        {
-            Terminal.OutputReceived += OnOutputReceived;
-            Terminal.Exited += OnExited;
-        }
-
-        protected LoggingTerminalSession(
-            ITerminalSession terminal,
-            ISessionLogCapture capture,
-            bool attach)
-            : this(terminal, capture)
-        {
-            if (attach) Attach();
-        }
-
         public Task WriteAsync(ReadOnlyMemory<byte> data, CancellationToken cancellationToken = default) =>
-            Terminal.WriteAsync(data, cancellationToken);
+            _terminal.WriteAsync(data, cancellationToken);
 
         public Task ResizeAsync(int columns, int rows, CancellationToken cancellationToken = default) =>
-            Terminal.ResizeAsync(columns, rows, cancellationToken);
+            _terminal.ResizeAsync(columns, rows, cancellationToken);
 
         private void OnOutputReceived(object? sender, ReadOnlyMemory<byte> output)
         {
-            Capture.TryAppend(output);
+            _capture.TryAppend(output);
             OutputReceived?.Invoke(this, output);
         }
 
         private void OnExited(object? sender, int exitCode)
         {
-            _ = Capture.CompleteAsync(
+            _ = _capture.CompleteAsync(
                 exitCode,
                 exitCode == 0 ? "Terminal exited." : $"Terminal exited with status {exitCode}.",
                 CancellationToken.None);
@@ -211,18 +201,13 @@ public sealed class SessionLoggingConnectionEngine(
         {
             if (_disposed) return;
             _disposed = true;
-            Terminal.OutputReceived -= OnOutputReceived;
-            Terminal.Exited -= OnExited;
-            await Capture.CompleteAsync(endReason: "Session closed.", cancellationToken: CancellationToken.None).ConfigureAwait(false);
-            await Terminal.DisposeAsync().ConfigureAwait(false);
+            _terminal.OutputReceived -= OnOutputReceived;
+            _terminal.Exited -= OnExited;
+            await _capture.CompleteAsync(endReason: "Session closed.", cancellationToken: CancellationToken.None).ConfigureAwait(false);
+            await _terminal.DisposeAsync().ConfigureAwait(false);
         }
     }
 
-    private sealed class LoggingSshShell : LoggingTerminalSession, ISshShell
-    {
-        public LoggingSshShell(ISshShell shell, ISessionLogCapture capture)
-            : base(shell, capture, attach: true)
-        {
-        }
-    }
+    private sealed class LoggingSshShell(ISshShell shell, ISessionLogCapture capture)
+        : LoggingTerminalSession(shell, capture), ISshShell;
 }
