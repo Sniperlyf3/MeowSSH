@@ -10,9 +10,9 @@
     {
         <article class="tailcat-card" data-testid="tailcat-server-running">
             <h2>This phone is shared</h2>
-            <label class="field"><span class="field__label">Tailcat address</span><input class="field__input mono" readonly value="@server.Address" data-testid="tailcat-server-address" /></label>
+            <label class="field"><span class="field__label">Tailcat address</span><textarea class="field__input mono" rows="4" readonly data-testid="tailcat-server-address">@server.Address</textarea></label>
             <p>@(server.ExitNodeEnabled ? "Exit node · " : "")@(server.AllowsAnyClient ? "INSECURE: any Tailcat client · " : "")@(server.ShellEnabled ? (server.UseTailcatCredentialForShell ? "Shell (Tailcat credential only) · " : "Shell · ") : "")@(server.FilesEnabled ? $"Files ({server.FileMode})" : "")</p>
-            <p class="field__hint">Expires @server.ExpiresAt.ToLocalTime().ToString("g").</p>
+            <p class="field__hint">Expires @server.ExpiresAt.ToLocalTime().ToString("g"). Treat the address as a secret credential.</p>
             <button class="btn btn--danger btn--block" disabled="@_busy" data-testid="stop-tailcat-server" @onclick="StopAsync">Stop sharing</button>
         </article>
     }
@@ -75,6 +75,16 @@
                 <label class="field"><span class="field__label">Folder path</span><input class="field__input mono" data-testid="tailcat-share-path" @bind="_folder" @bind:event="oninput" /></label>
                 <label class="field"><span class="field__label">Access</span><select class="field__input" data-testid="tailcat-file-mode" @bind="_fileMode"><option value="ro">Read only</option><option value="rw">Read / write</option><option value="wo">Upload only</option><option value="wo+">Upload + directories</option></select></label>
             }
+
+            <details class="tailcat-advanced" data-testid="tailcat-server-address-options">
+                <summary>Address and DERP options</summary>
+                <div class="tailcat-stack">
+                    <label class="forward-option"><input type="checkbox" data-testid="tailcat-full-address" @bind="_fullAddress" /><span><strong>Embed DERP details in address</strong><small>Publish a self-contained/full Tailcat address so clients do not need to fetch a DERP map.</small></span></label>
+                    <label class="forward-option"><input type="checkbox" data-testid="tailcat-use-psk" @bind="_usePresharedKey" /><span><strong>Embed WireGuard pre-shared key</strong><small>Recommended. Adds a PSK to the Tailcat address in addition to WireGuard public-key authentication.</small></span></label>
+                    <label class="field"><span class="field__label">Custom DERP map URL</span><input class="field__input mono" data-testid="tailcat-server-derpmap" placeholder="https://…/derpmap/default" @bind="_derpMapUrl" @bind:event="oninput" /><span class="field__hint">Optional. Leave blank for Tailcat's default DERP map.</span></label>
+                </div>
+            </details>
+
             @if (_exitNode) { <p class="note"><Icon Name="alert" /> Only authorize client keys you trust.</p> }
             <button class="btn btn--primary btn--block" disabled="@(_busy || !CanStart)" data-testid="start-tailcat-server" @onclick="StartAsync">Start sharing</button>
         </article>
@@ -96,6 +106,9 @@
     private bool _files;
     private string _folder = "";
     private string _fileMode = "ro";
+    private bool _fullAddress;
+    private bool _usePresharedKey = true;
+    private string _derpMapUrl = "";
     private bool _busy;
     private string? _error;
     private string? _notice;
@@ -146,7 +159,23 @@
         try
         {
             if (!wasActive) await SessionLifetime.StartAsync();
-            try { await Hub.StartServerAsync(new TailcatServeRequest(TimeSpan.FromHours(_hours), _allowedClients, _shell, AuthorizedSshKeys(), _files, _folder, _fileMode, _exitNode, _allowAnyClient, _useTailcatCredentialForShell)); }
+            try
+            {
+                await Hub.StartServerAsync(new TailcatServeRequest(
+                    TimeSpan.FromHours(_hours),
+                    _allowedClients,
+                    _shell,
+                    AuthorizedSshKeys(),
+                    _files,
+                    _folder,
+                    _fileMode,
+                    _exitNode,
+                    AllowAnyClient: _allowAnyClient,
+                    UseTailcatCredentialForShell: _useTailcatCredentialForShell,
+                    FullAddress: _fullAddress,
+                    UsePresharedKey: _usePresharedKey,
+                    DerpMapUrl: Empty(_derpMapUrl)));
+            }
             catch { if (!wasActive) await SessionLifetime.StopAsync(); throw; }
             _notice = "Tailcat sharing started.";
         }
@@ -161,4 +190,6 @@
         catch (Exception ex) { _error = ex.Message; }
         finally { _busy = false; }
     }
+
+    private static string? Empty(string value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }
