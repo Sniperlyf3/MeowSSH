@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using MeowSSH.Core.Licensing;
 
 namespace MeowSSH.App.Services;
@@ -6,7 +7,6 @@ namespace MeowSSH.App.Services;
 public sealed class SecureStorageEntitlementCache : IEntitlementCache
 {
     private const string CacheKey = "meowssh.entitlement.verified.v1";
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     public async Task<EntitlementSnapshot?> LoadAsync(CancellationToken cancellationToken = default)
     {
@@ -16,7 +16,7 @@ public sealed class SecureStorageEntitlementCache : IEntitlementCache
 
         try
         {
-            return JsonSerializer.Deserialize<EntitlementSnapshot>(json, JsonOptions);
+            return JsonSerializer.Deserialize(json, EntitlementJsonContext.Default.EntitlementSnapshot);
         }
         catch (JsonException)
         {
@@ -29,7 +29,7 @@ public sealed class SecureStorageEntitlementCache : IEntitlementCache
     {
         ArgumentNullException.ThrowIfNull(entitlement);
         cancellationToken.ThrowIfCancellationRequested();
-        var json = JsonSerializer.Serialize(entitlement, JsonOptions);
+        var json = JsonSerializer.Serialize(entitlement, EntitlementJsonContext.Default.EntitlementSnapshot);
         return SecureStorage.Default.SetAsync(CacheKey, json);
     }
 
@@ -40,6 +40,10 @@ public sealed class SecureStorageEntitlementCache : IEntitlementCache
         return Task.CompletedTask;
     }
 }
+
+[JsonSourceGenerationOptions(JsonSerializerDefaults.Web)]
+[JsonSerializable(typeof(EntitlementSnapshot))]
+internal partial class EntitlementJsonContext : JsonSerializerContext;
 
 /// <summary>
 /// Fail-closed provider used until the Play/backend verifier is configured.
