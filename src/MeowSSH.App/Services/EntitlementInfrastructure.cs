@@ -43,7 +43,7 @@ public sealed class SecureStorageEntitlementCache : IEntitlementCache
 
 [JsonSourceGenerationOptions(JsonSerializerDefaults.Web)]
 [JsonSerializable(typeof(EntitlementSnapshot))]
-internal partial class EntitlementJsonContext : JsonSerializerContext
+internal sealed partial class EntitlementJsonContext : JsonSerializerContext
 {
 }
 
