@@ -46,6 +46,26 @@ public class HostEditorTests(TestHostFixture fixture)
     }
 
     [Fact]
+    public async Task OrganizationFieldsPersistAndDriveTheHostList()
+    {
+        var page = await fixture.NewPageAsync("/?newhost");
+        await page.GetByTestId("host-label").FillAsync("organized-host");
+        await page.GetByTestId("host-address").FillAsync("10.8.8.8");
+        await page.GetByTestId("host-group").FillAsync("Operations");
+        await page.GetByTestId("host-tags").FillAsync("prod, eu-west, PROD");
+        await page.GetByTestId("host-favorite").CheckAsync();
+
+        await page.GetByTestId("save-host").ClickAsync();
+
+        await Assertions.Expect(page.Locator(".section-label").Filter(new() { HasText = "Favorites" })).ToBeVisibleAsync();
+        var wrap = page.Locator(".host-wrap").Filter(new() { HasText = "organized-host" });
+        await wrap.GetByTestId("edit-host").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("host-group")).ToHaveValueAsync("Operations");
+        await Assertions.Expect(page.GetByTestId("host-tags")).ToHaveValueAsync("prod, eu-west");
+        await Assertions.Expect(page.GetByTestId("host-favorite")).ToBeCheckedAsync();
+    }
+
+    [Fact]
     public async Task EditingAHostArrivesWithItsFieldsFilledIn()
     {
         var page = await fixture.NewPageAsync("/");
