@@ -21,6 +21,7 @@ builder.Services.AddScoped<IConnectionEngine, ProxyJumpConnector>();
 builder.Services.AddScoped<ICredentialResolver, FakeCredentialResolver>();
 builder.Services.AddScoped<ISerialDeviceService, UnsupportedSerialDeviceService>();
 builder.Services.AddScoped<ITailcatHubService, FakeTailcatHubService>();
+builder.Services.AddScoped<ITailcatIdentityStore, FakeTailcatIdentityStore>();
 builder.Services.AddScoped(_ => new FakeVaultSession(
     VaultState.Locked,
     recoveryCode: MeowSSH.TestHost.TestHostDefaults.RecoveryCode));
