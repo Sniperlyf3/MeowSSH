@@ -45,6 +45,24 @@ public sealed class FakeSshEngine : ISshEngine
             return Task.FromResult(shell);
         }
 
+        public Task<SshCommandResult> RunCommandAsync(
+            string command,
+            TimeSpan? timeout = null,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (string.IsNullOrWhiteSpace(command))
+                throw new ArgumentException("Command must not be empty.", nameof(command));
+            if (timeout is { } commandTimeout && commandTimeout <= TimeSpan.Zero)
+                throw new ArgumentOutOfRangeException(nameof(timeout));
+
+            var failed = command.Contains("fail", StringComparison.OrdinalIgnoreCase);
+            return Task.FromResult(failed
+                ? new SshCommandResult(1, string.Empty, $"fake failure on {HostId}")
+                : new SshCommandResult(0, $"{command} on {HostId}", string.Empty));
+        }
+
         public Task<ISftpSession> OpenSftpAsync(CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();

@@ -22,9 +22,9 @@
                     @foreach (var product in _products)
                     {
                         <button type="button" class="setting-card"
-                                data-testid="purchase-@product.ProductId"
+                                data-testid="purchase-@PurchaseTestId(product)"
                                 disabled="@_premiumBusy"
-                                @onclick="() => PurchaseAsync(product.ProductId)">
+                                @onclick="() => PurchaseAsync(product)">
                             <span class="setting-card__copy">
                                 <span class="setting-card__title">@ProductName(product)</span>
                                 <span class="setting-card__body">Purchased through Google Play. Paid access is enabled only after server verification.</span>
@@ -223,14 +223,14 @@
         }
     }
 
-    private async Task PurchaseAsync(string productId)
+    private async Task PurchaseAsync(StoreProduct product)
     {
         if (_premiumBusy) return;
         _premiumBusy = true;
         _premiumMessage = null;
         try
         {
-            var purchase = await Store.PurchaseAsync(productId);
+            var purchase = await Store.PurchaseAsync(product.ProductId, product.BasePlanId);
             if (purchase is null)
             {
                 _premiumMessage = "The Google Play purchase was not completed.";
@@ -303,6 +303,11 @@
 
     private static string ProductName(StoreProduct product) =>
         string.IsNullOrWhiteSpace(product.DisplayName) ? product.ProductId : product.DisplayName;
+
+    private static string PurchaseTestId(StoreProduct product) =>
+        string.IsNullOrWhiteSpace(product.BasePlanId)
+            ? product.ProductId
+            : $"{product.ProductId}-{product.BasePlanId}";
 
     private void OnEntitlementChanged(object? sender, EventArgs e) => _ = InvokeAsync(StateHasChanged);
 

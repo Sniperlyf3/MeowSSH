@@ -1,13 +1,17 @@
 <div class="app">
     <header class="topbar">
-        <h1 class="topbar__title">@(_showTailcat ? "Tailcat" : Title)</h1>
-        <div class="topbar__actions">@(_showTailcat ? null : Actions)</div>
+        <h1 class="topbar__title">@CurrentTitle</h1>
+        <div class="topbar__actions">@((_showTailcat || _showActions) ? null : Actions)</div>
     </header>
 
     <main class="app__body" data-testid="app-body">
         @if (_showTailcat)
         {
             <TailcatHubPanel />
+        }
+        else if (_showActions)
+        {
+            <ActionsPage />
         }
         else
         {
@@ -39,17 +43,27 @@
     [Parameter] public EventCallback<string> OnTabSelected { get; set; }
 
     private bool _showTailcat;
-    private string CurrentTab => _showTailcat ? "tailcat" : ActiveTab;
+    private bool _showActions;
+    private string CurrentTitle => _showTailcat ? "Tailcat" : _showActions ? "Actions" : Title;
+    private string CurrentTab => _showTailcat ? "tailcat" : _showActions ? "actions" : ActiveTab;
 
     private async Task SelectTabAsync(string tab)
     {
         if (tab == "tailcat")
         {
             _showTailcat = true;
+            _showActions = false;
+            return;
+        }
+        if (tab == "actions")
+        {
+            _showActions = true;
+            _showTailcat = false;
             return;
         }
 
         _showTailcat = false;
+        _showActions = false;
         await OnTabSelected.InvokeAsync(tab);
     }
 
@@ -59,6 +73,7 @@
     [
         new("hosts", "Hosts", "terminal"),
         new("files", "Files", "folder"),
+        new("actions", "Actions", "terminal"),
         new("tailcat", "Tailcat", "network"),
         new("keys", "Keys", "key"),
         new("settings", "Settings", "settings"),

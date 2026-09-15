@@ -134,7 +134,10 @@ public sealed class LicensingApiGrantProviderTests
             ]);
         }
 
-        public Task<StorePurchase?> PurchaseAsync(string productId, CancellationToken cancellationToken = default) =>
+        public Task<StorePurchase?> PurchaseAsync(
+            string productId,
+            string? basePlanId = null,
+            CancellationToken cancellationToken = default) =>
             Task.FromResult<StorePurchase?>(null);
     }
 
