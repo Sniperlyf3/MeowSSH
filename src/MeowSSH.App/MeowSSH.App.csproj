@@ -8,6 +8,7 @@
     <SingleProject>true</SingleProject>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 
     <ApplicationTitle>MeowSSH</ApplicationTitle>
     <ApplicationId>dev.sniperlyf3.meowssh</ApplicationId>
