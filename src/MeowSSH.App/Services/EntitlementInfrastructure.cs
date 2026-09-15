@@ -43,7 +43,9 @@ public sealed class SecureStorageEntitlementCache : IEntitlementCache
 
 [JsonSourceGenerationOptions(JsonSerializerDefaults.Web)]
 [JsonSerializable(typeof(EntitlementSnapshot))]
-internal partial class EntitlementJsonContext : JsonSerializerContext;
+internal partial class EntitlementJsonContext : JsonSerializerContext
+{
+}
 
 /// <summary>
 /// Fail-closed provider used until the Play/backend verifier is configured.
