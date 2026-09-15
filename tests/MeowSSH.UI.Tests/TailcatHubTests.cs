@@ -18,7 +18,7 @@ public class TailcatHubTests(TestHostFixture fixture)
     {
         var page = await OpenTailcatAsync();
 
-        foreach (var section in new[] { "phone", "connect", "transfers", "keys", "diagnostics" })
+        foreach (var section in new[] { "phone", "connect", "transfers", "address", "keys", "diagnostics" })
             await Assertions.Expect(page.GetByTestId($"tailcat-section-{section}")).ToBeVisibleAsync();
     }
 
@@ -34,6 +34,18 @@ public class TailcatHubTests(TestHostFixture fixture)
         await Assertions.Expect(page.GetByTestId("tailcat-server-address")).ToHaveValueAsync("tc-test-address");
         await page.GetByTestId("stop-tailcat-server").ClickAsync();
         await Assertions.Expect(page.GetByTestId("start-tailcat-server")).ToBeVisibleAsync();
+    }
+
+    [Fact]
+    public async Task ServerCanPublishASelfContainedAddress()
+    {
+        var page = await OpenTailcatAsync();
+        await page.GetByTestId("tailcat-allowed-clients").FillAsync("nodekey:test-client");
+        await page.GetByTestId("tailcat-server-address-options").ClickAsync();
+        await page.GetByTestId("tailcat-full-address").CheckAsync();
+        await page.GetByTestId("start-tailcat-server").ClickAsync();
+
+        await Assertions.Expect(page.GetByTestId("tailcat-server-address")).ToHaveValueAsync("tc-test-full-address");
     }
 
     [Fact]
@@ -102,6 +114,32 @@ public class TailcatHubTests(TestHostFixture fixture)
 
         await Assertions.Expect(page.GetByTestId("tailcat-file-row")).ToHaveCountAsync(2);
         await Assertions.Expect(page.GetByTestId("tailcat-file-row").Last).ToContainTextAsync("hello.txt");
+    }
+
+    [Fact]
+    public async Task AddressBuilderResolvesAndInspectsTailcatAddresses()
+    {
+        var page = await OpenTailcatAsync();
+        await page.GetByTestId("tailcat-section-address").ClickAsync();
+        await page.GetByTestId("tailcat-address-input").FillAsync("tc-short-address");
+        await page.GetByTestId("tailcat-resolve-address").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("tailcat-resolved-address")).ToHaveValueAsync("tc-test-resolved-full-address");
+
+        await page.GetByTestId("tailcat-inspect-address").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("tailcat-address-details")).ToContainTextAsync("nodekey:test-server");
+        await Assertions.Expect(page.GetByTestId("tailcat-address-region")).ToContainTextAsync("Test DERP");
+        await Assertions.Expect(page.GetByTestId("tailcat-address-node")).ToContainTextAsync("derp.example.test");
+    }
+
+    [Fact]
+    public async Task SavedTailcatHostsAreReusableAsPeers()
+    {
+        var page = await OpenTailcatAsync();
+        await page.GetByTestId("tailcat-section-address").ClickAsync();
+
+        await Assertions.Expect(page.GetByTestId("tailcat-address-saved-peer")).ToContainTextAsync("home-nas");
+        await page.GetByTestId("tailcat-address-saved-peer").SelectOptionAsync(new SelectOptionValue { Label = "home-nas" });
+        await Assertions.Expect(page.GetByTestId("tailcat-address-input")).Not.ToHaveValueAsync("");
     }
 
     [Fact]
