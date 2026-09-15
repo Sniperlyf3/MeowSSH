@@ -42,12 +42,14 @@ public sealed class LicensingApiGrantProviderTests
     }
 
     [Fact]
-    public async Task UnconfiguredProviderFailsClosedWithoutCallingStore()
+    public async Task UnconfiguredProviderFailsClosedWithoutCallingStoreOrIntegrity()
     {
         var store = new FakeStore(throwIfCalled: true);
+        var integrity = new FakeIntegrity(throwIfCalled: true);
         using var http = new HttpClient(new StaticHandler(new HttpResponseMessage(HttpStatusCode.InternalServerError)));
         var provider = new LicensingApiGrantProvider(
             store,
+            integrity,
             http,
             new LicensingApiOptions(null, string.Empty, "dev.sniperlyf3.meowssh"));
 
@@ -56,11 +58,52 @@ public sealed class LicensingApiGrantProviderTests
         Assert.Equal(EntitlementTier.Free, entitlement.Tier);
     }
 
+    [Fact]
+    public async Task MissingIntegrityTokenFailsClosedBeforeCallingBackend()
+    {
+        using var signer = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var now = DateTimeOffset.UtcNow;
+        using var http = new HttpClient(new ThrowingHandler());
+        var publicKey = Convert.ToBase64String(signer.ExportSubjectPublicKeyInfo());
+        var provider = new LicensingApiGrantProvider(
+            new FakeStore(),
+            new FakeIntegrity(token: null),
+            http,
+            new LicensingApiOptions(new Uri("https://licensing.example/"), publicKey, "dev.sniperlyf3.meowssh"),
+            new FixedTimeProvider(now));
+
+        var entitlement = await provider.RefreshAsync();
+
+        Assert.Equal(EntitlementTier.Free, entitlement.Tier);
+    }
+
+    [Fact]
+    public void IntegrityNonceIsStableAcrossPurchaseOrderingAndChangesWhenRequestChanges()
+    {
+        var first = new[]
+        {
+            new LicensingVerificationPurchase("b", "token-2"),
+            new LicensingVerificationPurchase("a", "token-1"),
+        };
+        var reversed = first.Reverse();
+
+        var nonce1 = LicensingApiGrantProvider.CreateIntegrityNonce("dev.sniperlyf3.meowssh", first, "request-1");
+        var nonce2 = LicensingApiGrantProvider.CreateIntegrityNonce("dev.sniperlyf3.meowssh", reversed, "request-1");
+        var nonce3 = LicensingApiGrantProvider.CreateIntegrityNonce("dev.sniperlyf3.meowssh", first, "request-2");
+
+        Assert.Equal(nonce1, nonce2);
+        Assert.NotEqual(nonce1, nonce3);
+        Assert.DoesNotContain('+', nonce1, StringComparison.Ordinal);
+        Assert.DoesNotContain('/', nonce1, StringComparison.Ordinal);
+        Assert.DoesNotContain('=', nonce1, StringComparison.Ordinal);
+    }
+
     private static LicensingApiGrantProvider CreateProvider(ECDsa signer, HttpClient http, DateTimeOffset now)
     {
         var publicKey = Convert.ToBase64String(signer.ExportSubjectPublicKeyInfo());
         return new LicensingApiGrantProvider(
             new FakeStore(),
+            new FakeIntegrity(),
             http,
             new LicensingApiOptions(new Uri("https://licensing.example/"), publicKey, "dev.sniperlyf3.meowssh"),
             new FixedTimeProvider(now));
@@ -95,10 +138,26 @@ public sealed class LicensingApiGrantProviderTests
             Task.FromResult<StorePurchase?>(null);
     }
 
+    private sealed class FakeIntegrity(string? token = "integrity-token", bool throwIfCalled = false) : IPlayIntegrityService
+    {
+        public Task<string?> RequestTokenAsync(string nonce, CancellationToken cancellationToken = default)
+        {
+            if (throwIfCalled) throw new InvalidOperationException("Integrity should not be called.");
+            Assert.False(string.IsNullOrWhiteSpace(nonce));
+            return Task.FromResult(token);
+        }
+    }
+
     private sealed class StaticHandler(HttpResponseMessage response) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
             Task.FromResult(response);
+    }
+
+    private sealed class ThrowingHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Backend should not be called.");
     }
 
     private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
