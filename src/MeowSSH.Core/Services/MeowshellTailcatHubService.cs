@@ -61,6 +61,7 @@ public sealed class MeowshellTailcatHubService : ITailcatHubService
                 ? $"{request.SharedFolder!.Trim()}:{request.FileMode}"
                 : null;
             var privateKeyJson = string.IsNullOrWhiteSpace(request.PrivateKeyJson) ? null : request.PrivateKeyJson;
+            var serveTargets = NormalizeServeTargets(request.ServeTargets);
             var options = new MeowshellOptions
             {
                 BinaryDirectory = _runtime.BinaryDirectory,
@@ -77,6 +78,7 @@ public sealed class MeowshellTailcatHubService : ITailcatHubService
                 Psk = request.UsePresharedKey,
                 PrivateKeyJson = privateKeyJson,
                 EphemeralKey = privateKeyJson is null,
+                ServeTargets = serveTargets,
             };
 
             var server = await MeowshellServer.StartAsync(options, cancellationToken, AddLog).ConfigureAwait(false);
@@ -90,7 +92,8 @@ public sealed class MeowshellTailcatHubService : ITailcatHubService
                 request.AllowAnyClient,
                 request.UseTailcatCredentialForShell,
                 request.EnableFiles ? request.SharedFolder!.Trim() : null,
-                request.FileMode);
+                request.FileMode,
+                serveTargets);
             server.Log += AddLog;
             _ = ObserveServerAsync(server);
         }
@@ -198,13 +201,15 @@ public sealed class MeowshellTailcatHubService : ITailcatHubService
                 Mappings = [.. request.Mappings.Select(mapping => mapping.Trim())],
                 Bind = NullIfWhiteSpace(request.BindAddress),
                 ClientKey = NullIfWhiteSpace(request.ClientKey),
+                Udp = request.Udp,
             }, AddLog, cancellationToken).ConfigureAwait(false);
             native.Log += AddLog;
             var snapshot = new TailcatForwardSnapshot(
                 Guid.NewGuid(), request.Address.Trim(),
                 [.. request.Mappings.Select(mapping => mapping.Trim())],
                 native.BoundAddresses,
-                NullIfWhiteSpace(request.ClientKey));
+                NullIfWhiteSpace(request.ClientKey),
+                request.Udp);
             lock (_stateGate) _forwards.Add(new RunningForward(snapshot.Id, snapshot, native));
             _ = ObserveForwardAsync(snapshot.Id, native);
             RaiseChanged();
@@ -404,11 +409,18 @@ public sealed class MeowshellTailcatHubService : ITailcatHubService
         if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException("A local path is required.", nameof(path));
     }
 
+    private static IReadOnlyList<string> NormalizeServeTargets(IReadOnlyList<string>? targets) =>
+        targets is null
+            ? Array.Empty<string>()
+            : [.. targets.Select(target => target?.Trim() ?? string.Empty).Where(target => target.Length > 0).Distinct(StringComparer.Ordinal)];
+
     private static void ValidateServerRequest(TailcatServeRequest request)
     {
         if (request.Lifetime <= TimeSpan.Zero || request.Lifetime > TimeSpan.FromHours(24))
             throw new ArgumentOutOfRangeException(nameof(request), "Tailcat sharing lifetime must be between 1 second and 24 hours.");
-        if (!request.EnableShell && !request.EnableFiles && !request.EnableExitNode)
+        if (request.ServeTargets?.Any(string.IsNullOrWhiteSpace) is true)
+            throw new ArgumentException("Serve targets cannot contain blank entries.", nameof(request));
+        if (!request.EnableShell && !request.EnableFiles && !request.EnableExitNode && NormalizeServeTargets(request.ServeTargets).Count == 0)
             throw new ArgumentException("Enable at least one Tailcat service.", nameof(request));
         if (request.AllowAnyClient && !request.EnableExitNode)
             throw new ArgumentException("Insecure Tailcat client mode is only available when exit-node mode is enabled.", nameof(request));
