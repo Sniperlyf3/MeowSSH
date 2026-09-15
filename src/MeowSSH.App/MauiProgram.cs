@@ -61,7 +61,10 @@ public static class MauiProgram
             nativeDirectory,
             Path.Combine(FileSystem.AppDataDirectory, "tailcat-home"),
             Path.Combine(FileSystem.CacheDirectory, "tailcat-work")));
-        builder.Services.AddSingleton<ITailcatHubService, MeowshellTailcatHubService>();
+        builder.Services.AddSingleton<MeowshellTailcatHubService>();
+        builder.Services.AddSingleton<ITailcatHubService>(sp => new EntitlementTailcatHubService(
+            sp.GetRequiredService<MeowshellTailcatHubService>(),
+            sp.GetRequiredService<IEntitlementService>()));
         builder.Services.AddSingleton<ITailcatIdentityStore, TailcatIdentityStore>();
         builder.Services.AddSingleton<ITailcatWorkspaceStore>(_ => new FileTailcatWorkspaceStore(
             Path.Combine(FileSystem.AppDataDirectory, "tailcat-workspaces.json")));
