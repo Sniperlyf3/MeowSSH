@@ -38,6 +38,7 @@ builder.Services.AddScoped<ISessionLogService>(sp => new FileSessionLogService(
     Path.Combine(Path.GetTempPath(), "meowssh-testhost-session-logs", Guid.NewGuid().ToString("N")),
     sp.GetRequiredService<IEntitlementService>()));
 builder.Services.AddScoped<IAdvancedSftpService, AdvancedSftpService>();
+builder.Services.AddScoped<IEncryptedVaultBackupService, FakeEncryptedVaultBackupService>();
 builder.Services.AddScoped<ProxyJumpConnector>();
 builder.Services.AddScoped<IConnectionEngine>(sp => new SessionLoggingConnectionEngine(
     sp.GetRequiredService<ProxyJumpConnector>(),
