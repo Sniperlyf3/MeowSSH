@@ -44,6 +44,7 @@
     <PackageReference Include="UsbSerialForAndroid" Version="2.0.1" />
     <PackageReference Include="ZXing.Net.Maui.Controls" Version="0.10.4" />
     <PackageReference Include="Xamarin.Android.Google.BillingClient" Version="9.1.0.2" />
+    <PackageReference Include="Xamarin.Google.Android.Play.Integrity" Version="1.6.0.4" />
 
     <!-- Billing 9.1 pulls the current AndroidX Activity/Core generation.
          MAUI also references KTX packages with narrow ranges, so align those
