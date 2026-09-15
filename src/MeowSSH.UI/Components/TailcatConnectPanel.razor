@@ -30,14 +30,15 @@
         }
         <label class="field"><span class="field__label">Tailcat server</span><input class="field__input mono" data-testid="tailcat-forward-address" placeholder="tc…" @bind="_address" @bind:event="oninput" /></label>
         <label class="field"><span class="field__label">Mappings</span><textarea class="field__input mono" rows="3" data-testid="tailcat-forward-mappings" placeholder="8080:80&#10;8443:192.168.1.10:443" @bind="_mappings" @bind:event="oninput"></textarea><span class="field__hint">One per line: port, local:remote, or local:remote-host:remote-port. Remote LAN destinations require an exit-node server.</span></label>
+        <label class="forward-option"><input type="checkbox" data-testid="tailcat-forward-udp" @bind="_udp" /><span><strong>UDP forwarding</strong><small>Preserve UDP datagrams instead of opening TCP streams. All mappings in this forward use the selected protocol.</small></span></label>
         <label class="field"><span class="field__label">Bind address</span><input class="field__input mono" data-testid="tailcat-forward-bind" @bind="_bind" @bind:event="oninput" /></label>
         <label class="field"><span class="field__label">Custom DERP map URL</span><input class="field__input mono" data-testid="tailcat-forward-derpmap" placeholder="https://…/derpmap/default" @bind="_derpMapUrl" @bind:event="oninput" /></label>
-        <button class="btn btn--primary btn--block" disabled="@(_busy || string.IsNullOrWhiteSpace(_address) || MappingList.Count == 0)" data-testid="start-tailcat-forward" @onclick="StartForwardAsync">Start forward</button>
+        <button class="btn btn--primary btn--block" disabled="@(_busy || string.IsNullOrWhiteSpace(_address) || MappingList.Count == 0)" data-testid="start-tailcat-forward" @onclick="StartForwardAsync">Start @(_udp ? "UDP" : "TCP") forward</button>
         <button class="btn btn--ghost btn--block" disabled="@(_busy || string.IsNullOrWhiteSpace(_address))" data-testid="tailcat-browse" @onclick="BrowseAsync">Open web service (port 80)</button>
         @foreach (var forward in Hub.Snapshot.Forwards)
         {
             <div class="tailcat-running-row" data-testid="tailcat-forward-row">
-                <span><strong class="mono">@string.Join(", ", forward.BoundAddresses)</strong><small>@forward.Address · @string.Join(", ", forward.Mappings)</small></span>
+                <span><strong class="mono">@(forward.Udp ? "UDP" : "TCP") · @string.Join(", ", forward.BoundAddresses)</strong><small>@forward.Address · @string.Join(", ", forward.Mappings)</small></span>
                 <button class="btn btn--icon" aria-label="Stop forward" @onclick="() => StopForwardAsync(forward.Id)"><Icon Name="close" /></button>
             </div>
         }
@@ -52,6 +53,7 @@
     private string _mappings = "";
     private string _bind = "127.0.0.1";
     private string _derpMapUrl = "";
+    private bool _udp;
     private bool _busy;
     private string? _error;
 
@@ -74,7 +76,7 @@
     }
 
     private async Task StartSocksAsync() => await RunStartAsync(() => Hub.StartSocksAsync(new TailcatSocksRequest(_socksListen, Empty(_clientKey), Empty(_derpMapUrl))));
-    private async Task StartForwardAsync() => await RunStartAsync(() => Hub.StartForwardAsync(new TailcatForwardRequest(_address, MappingList, _bind, Empty(_clientKey), Empty(_derpMapUrl))));
+    private async Task StartForwardAsync() => await RunStartAsync(() => Hub.StartForwardAsync(new TailcatForwardRequest(_address, MappingList, _bind, Empty(_clientKey), Empty(_derpMapUrl), Udp: _udp)));
 
     private async Task BrowseAsync()
     {
@@ -85,7 +87,7 @@
         try
         {
             if (!wasActive) await SessionLifetime.StartAsync();
-            forward = await Hub.StartForwardAsync(new TailcatForwardRequest(_address, ["0:80"], "127.0.0.1", Empty(_clientKey), Empty(_derpMapUrl)));
+            forward = await Hub.StartForwardAsync(new TailcatForwardRequest(_address, ["0:80"], "127.0.0.1", Empty(_clientKey), Empty(_derpMapUrl), Udp: false));
             var bound = forward.BoundAddresses.FirstOrDefault()
                 ?? throw new InvalidOperationException("Tailcat did not report the browser forward's local address.");
             if (!await UriLauncher.OpenAsync(new Uri($"http://{bound}/", UriKind.Absolute)))
