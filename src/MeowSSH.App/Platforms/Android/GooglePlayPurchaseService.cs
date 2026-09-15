@@ -72,10 +72,10 @@ public sealed class GooglePlayPurchaseService : Java.Lang.Object, IStorePurchase
         if (productType == ProductType.Subs)
         {
             if (string.IsNullOrWhiteSpace(basePlanId))
-                throw new InvalidOperationException("A subscription base plan must be selected.");
+                throw new InvalidOperationException("A subscription base plan must be selected before purchase.");
 
             var offer = PreferredOffer(details, basePlanId)
-                ?? throw new InvalidOperationException($"Google Play did not return an eligible '{basePlanId}' offer.");
+                ?? throw new InvalidOperationException($"Google Play did not return an eligible offer for base plan '{basePlanId}'.");
             detailsBuilder.SetOfferToken(offer.OfferToken);
         }
 
@@ -161,7 +161,6 @@ public sealed class GooglePlayPurchaseService : Java.Lang.Object, IStorePurchase
             .ToArray();
         var result = await _client.QueryProductDetailsAsync(
             QueryProductDetailsParams.NewBuilder().SetProductList(requestProducts).Build()).ConfigureAwait(false);
-        EnsureOk(result.Result, "query product details");
 
         if (productType == ProductType.Inapp)
         {
@@ -187,7 +186,7 @@ public sealed class GooglePlayPurchaseService : Java.Lang.Object, IStorePurchase
         ProductDetails details,
         string basePlanId,
         string label,
-        ICollection<StoreProduct> products)
+        List<StoreProduct> products)
     {
         var offer = PreferredOffer(details, basePlanId);
         if (offer is null) return;
