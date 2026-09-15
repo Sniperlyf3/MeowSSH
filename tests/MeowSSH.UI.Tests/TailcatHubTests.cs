@@ -105,6 +105,18 @@ public class TailcatHubTests(TestHostFixture fixture)
     }
 
     [Fact]
+    public async Task BrowseShortcutCreatesALocalWebForward()
+    {
+        var page = await OpenTailcatAsync();
+        await page.GetByTestId("tailcat-section-connect").ClickAsync();
+        await page.GetByTestId("tailcat-forward-address").FillAsync("tc-test-address");
+
+        await page.GetByTestId("tailcat-browse").ClickAsync();
+
+        await Assertions.Expect(page.GetByTestId("tailcat-forward-row")).ToContainTextAsync("0:80");
+    }
+
+    [Fact]
     public async Task TransfersBrowseRemoteFiles()
     {
         var page = await OpenTailcatAsync();
@@ -132,6 +144,20 @@ public class TailcatHubTests(TestHostFixture fixture)
     }
 
     [Fact]
+    public async Task TailcatAddressCanBeShownAsAnOfflineQrCode()
+    {
+        var page = await OpenTailcatAsync();
+        await page.GetByTestId("tailcat-section-address").ClickAsync();
+        await page.GetByTestId("tailcat-address-input").FillAsync("tc-test-address");
+
+        await page.GetByTestId("tailcat-show-address-qr").ClickAsync();
+
+        await Assertions.Expect(page.GetByTestId("tailcat-address-qr")).ToBeVisibleAsync();
+        await Assertions.Expect(page.GetByTestId("tailcat-address-qr").Locator("svg")).ToHaveCountAsync(1);
+        await Assertions.Expect(page.GetByTestId("tailcat-address-qr")).ToContainTextAsync("Keep this QR private");
+    }
+
+    [Fact]
     public async Task SavedTailcatHostsAreReusableAsPeers()
     {
         var page = await OpenTailcatAsync();
@@ -152,6 +178,18 @@ public class TailcatHubTests(TestHostFixture fixture)
         await page.GetByTestId("tailcat-generate-key").ClickAsync();
 
         await Assertions.Expect(page.GetByTestId("tailcat-generated-key")).ToContainTextAsync("nodekey:test-client");
+    }
+
+    [Fact]
+    public async Task PrivateTailcatIdentityCanBeRevealedForBackup()
+    {
+        var page = await OpenTailcatAsync();
+        await page.GetByTestId("tailcat-section-keys").ClickAsync();
+
+        await page.GetByTestId("tailcat-export-key").First.ClickAsync();
+
+        await Assertions.Expect(page.GetByTestId("tailcat-export-json")).ToHaveValueAsync(new System.Text.RegularExpressions.Regex("privkey:test"));
+        await Assertions.Expect(page.GetByTestId("tailcat-identity-portability")).ToContainTextAsync("Private identity backup");
     }
 
     [Fact]
