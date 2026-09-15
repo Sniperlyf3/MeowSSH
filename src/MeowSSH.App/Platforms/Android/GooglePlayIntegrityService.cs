@@ -7,7 +7,8 @@ namespace MeowSSH.App;
 
 public sealed class GooglePlayIntegrityService : Java.Lang.Object, IPlayIntegrityService
 {
-    private readonly IIntegrityManager _manager = IntegrityManagerFactory.Create(global::Android.App.Application.Context);
+    private readonly IIntegrityManager _manager = IntegrityManagerFactory.Create(global::Android.App.Application.Context)
+        ?? throw new InvalidOperationException("Google Play Integrity manager is unavailable.");
 
     public async Task<string?> RequestTokenAsync(string nonce, System.Threading.CancellationToken cancellationToken = default)
     {
@@ -17,16 +18,20 @@ public sealed class GooglePlayIntegrityService : Java.Lang.Object, IPlayIntegrit
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        var request = IntegrityTokenRequest.InvokeBuilder()
-            .SetNonce(nonce)
-            .Build();
+        var builder = IntegrityTokenRequest.InvokeBuilder()
+            ?? throw new InvalidOperationException("Google Play Integrity request builder is unavailable.");
+        builder.SetNonce(nonce);
+        var request = builder.Build()
+            ?? throw new InvalidOperationException("Google Play Integrity request could not be created.");
+
         var completion = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
         using var cancellation = cancellationToken.Register(() => completion.TrySetCanceled(cancellationToken));
         var listener = new IntegrityTaskListener(completion);
 
-        _manager.RequestIntegrityToken(request)
-            .AddOnSuccessListener(listener)
-            .AddOnFailureListener(listener);
+        var requestTask = _manager.RequestIntegrityToken(request)
+            ?? throw new InvalidOperationException("Google Play Integrity request could not be started.");
+        requestTask.AddOnSuccessListener(listener);
+        requestTask.AddOnFailureListener(listener);
 
         return await completion.Task.ConfigureAwait(false);
     }
