@@ -60,7 +60,7 @@ public sealed class AndroidQrScanner : IQrScanner
 
             reader.BarcodesDetected += (_, args) =>
             {
-                var value = args.Results.Count > 0 ? args.Results[0].Value?.Trim() : null;
+                var value = args.Results.Length > 0 ? args.Results[0].Value?.Trim() : null;
                 if (!string.IsNullOrWhiteSpace(value)) MainThread.BeginInvokeOnMainThread(() => _ = CompleteAsync(value));
             };
             cancel.Clicked += (_, _) => _ = CompleteAsync(null);
