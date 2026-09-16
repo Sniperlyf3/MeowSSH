@@ -223,7 +223,7 @@ jobs:
       - name: Authenticate to Google Play with Workload Identity
         id: play-auth
         if: ${{ inputs.publish_internal }}
-        uses: google-github-actions/auth@v3
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_PLAY_PUBLISH_SERVICE_ACCOUNT }}
