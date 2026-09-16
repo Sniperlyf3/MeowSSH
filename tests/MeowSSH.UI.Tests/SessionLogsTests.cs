@@ -11,6 +11,8 @@ public sealed class SessionLogsTests(TestHostFixture fixture)
         var page = await fixture.NewPageAsync();
         await page.GetByTestId("tab-settings").ClickAsync();
         await Assertions.Expect(page.GetByTestId("settings-page")).ToBeVisibleAsync();
+        await page.GetByTestId("open-session-log-settings").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("session-log-settings")).ToBeVisibleAsync();
 
         await page.GetByTestId("session-log-auto-record").CheckAsync();
         await Assertions.Expect(page.GetByTestId("session-log-settings-message"))
@@ -21,9 +23,12 @@ public sealed class SessionLogsTests(TestHostFixture fixture)
         await Assertions.Expect(page.GetByTestId("session-logs-empty")).ToBeVisibleAsync();
 
         await page.GetByTestId("session-logs-back").ClickAsync();
-        await Assertions.Expect(page.GetByTestId("settings-page")).ToBeVisibleAsync();
+        await Assertions.Expect(page.GetByTestId("session-log-settings")).ToBeVisibleAsync();
         await page.GetByTestId("session-log-auto-record").UncheckAsync();
         await Assertions.Expect(page.GetByTestId("session-log-settings-message"))
             .ToContainTextAsync("recording is off");
+
+        await page.GetByTestId("session-log-settings-back").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("settings-page")).ToBeVisibleAsync();
     }
 }
