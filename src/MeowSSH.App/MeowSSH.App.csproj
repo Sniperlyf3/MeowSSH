@@ -25,6 +25,7 @@
     <LicensingPublicKeySubjectPublicKeyInfoBase64 Condition="'$(LicensingPublicKeySubjectPublicKeyInfoBase64)' == ''"></LicensingPublicKeySubjectPublicKeyInfoBase64>
     <PrivacyPolicyUrl Condition="'$(PrivacyPolicyUrl)' == ''"></PrivacyPolicyUrl>
     <SupportUrl Condition="'$(SupportUrl)' == ''"></SupportUrl>
+    <TermsOfServiceUrl Condition="'$(TermsOfServiceUrl)' == ''"></TermsOfServiceUrl>
     <!-- Match the reviewed upstream Tailcat revision explicitly instead of
          inheriting a native binary default that could change on upgrade. -->
     <TailcatDerpMapUrl Condition="'$(TailcatDerpMapUrl)' == ''">https://tailcat.dev/derpmap.json</TailcatDerpMapUrl>
@@ -39,6 +40,7 @@
     <AssemblyMetadata Include="MeowSSH.Licensing.PublicKeySubjectPublicKeyInfoBase64" Value="$(LicensingPublicKeySubjectPublicKeyInfoBase64)" />
     <AssemblyMetadata Include="MeowSSH.Launch.PrivacyPolicyUrl" Value="$(PrivacyPolicyUrl)" />
     <AssemblyMetadata Include="MeowSSH.Launch.SupportUrl" Value="$(SupportUrl)" />
+    <AssemblyMetadata Include="MeowSSH.Launch.TermsOfServiceUrl" Value="$(TermsOfServiceUrl)" />
     <AssemblyMetadata Include="MeowSSH.Commercial.ProCloudSalesEnabled" Value="$(EnableProCloudSales)" />
     <AssemblyMetadata Include="MeowSSH.Tailcat.DerpMapUrl" Value="$(TailcatDerpMapUrl)" />
   </ItemGroup>
