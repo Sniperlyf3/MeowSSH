@@ -17,6 +17,7 @@ public sealed class AndroidTailcatVpnController : ITailcatVpnController, IDispos
         TailcatVpnService.StateChanged += OnServiceStateChanged;
     }
 
+    public bool IsAvailable => true;
     public TailcatVpnSnapshot Snapshot { get { lock (_gate) return _snapshot; } }
     public event EventHandler? Changed;
 
