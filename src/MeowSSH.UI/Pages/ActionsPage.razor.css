@@ -57,6 +57,55 @@
     margin-top: .9rem;
 }
 
+.action-card__manage {
+    margin-top: .75rem;
+    border-top: 1px solid var(--border);
+}
+
+.action-card__manage > summary {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+    padding-top: .7rem;
+    cursor: pointer;
+    list-style: none;
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+    font-weight: 600;
+}
+
+.action-card__manage > summary::-webkit-details-marker {
+    display: none;
+}
+
+.action-card__manage > summary span {
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+}
+
+.action-card__manage > summary > .icon {
+    transition: transform 140ms ease;
+}
+
+.action-card__manage[open] > summary > .icon {
+    transform: rotate(90deg);
+}
+
+.action-card__manage-body {
+    display: grid;
+    gap: .75rem;
+    padding-top: .5rem;
+}
+
+.action-card__management-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+}
+
 .action-editor {
     display: grid;
     gap: 1rem;
@@ -184,5 +233,6 @@
     .actions-page { padding: .75rem; }
     .action-card__buttons .btn,
     .action-editor__buttons .btn { flex: 1 1 auto; }
+    .action-card__management-buttons { display: grid; }
     .action-results__header { align-items: flex-start; }
 }
