@@ -24,7 +24,7 @@
                     var selected = string.Equals(_theme, option.Id, StringComparison.Ordinal);
                     <button type="button"
                             class="theme-card @(selected ? "is-selected" : "")"
-                            role="radio" aria-checked="@selected"
+                            role="radio" aria-checked="@(selected ? "true" : "false")"
                             data-testid="theme-@option.Id"
                             @onclick="() => SelectThemeAsync(option.Id)">
                         <span class="theme-preview" style="background:@option.Background;color:@option.Foreground">
