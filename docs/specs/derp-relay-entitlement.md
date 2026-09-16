@@ -316,14 +316,15 @@ fail-open means an outage briefly leaves the relay usable by anyone who both
 knows the hostname and happens to hit that window. The second failure is far
 cheaper than the first. Alert on every fail-open event.
 
-**Decide quota semantics deliberately.** `DERPAdmitClientResponse` carries only
-`Allow` — upstream's own comment reads `// TODO(bradfitz,maisem): bandwidth
-limits, etc?` — so there is no "allow but throttle". Refusing admission once a
-user is over quota blocks *new connections only*; existing sessions continue
-until they drop. Recommended policy: do not refuse on quota at launch. Warn in
-the app, and hold the refusal in reserve for abuse, because a user cut off
-mid-workflow with no in-band explanation (DERP has no channel to say *why*) is a
-support incident and a one-star review.
+**Admission alone cannot stop a session in flight.** `DERPAdmitClientResponse`
+carries only `Allow` — upstream's own comment reads `// TODO(bradfitz,maisem):
+bandwidth limits, etc?` — so there is no "allow but throttle", and refusing
+admission blocks *new* connections only. Established sessions continue until
+they drop. Part E is how a runaway is actually stopped; admission is one half of
+that loop, not a policy on its own.
+
+When a user is over quota, answer `Allow: false` **and** invalidate their cached
+entries (see Part E for why the ordering matters).
 
 ## B4. Usage ingest
 
@@ -362,8 +363,30 @@ derper \
   --hostname=derp-eu.meowssh.dev \
   --certmode=letsencrypt \
   --verify-client-url=https://api.meowssh.dev/v1/derp/admit/<secret> \
-  --verify-client-url-fail-open
+  --verify-client-url-fail-open \
+  --mesh-psk-file=/etc/derper/mesh.psk \
+  --rate-config=/etc/derper/rates.json
 ```
+
+`--mesh-psk-file` is what makes Part E's eviction possible: it must hold 64
+lowercase hex characters, identical across all three relays and the evictor.
+
+`--rate-config` is a JSON file, reloaded on SIGHUP, giving every non-mesh client
+a receive ceiling:
+
+```json
+{ "PerClientRateLimitBytesPerSec": 2097152, "PerClientRateBurstBytes": 4194304 }
+```
+
+The ceiling is global — the same for every client, not per user — so it is not a
+tier mechanism. Its job is to bound how much bandwidth any single client can
+burn inside the window between crossing a limit and being stopped.
+
+> **The mesh PSK is the most powerful credential in this system.** A mesh peer
+> bypasses the admission controller, is exempt from rate limiting, and can close
+> any client on the relay. It is strictly more dangerous than the admission URL
+> secret. Keep it on the relays and the evictor only, never in the app, and
+> rotate it on its own schedule.
 
 Operational notes, from `cmd/derper/README.md`:
 
@@ -445,17 +468,111 @@ happened to punch through.
 
 ---
 
+# Part E — Stopping a runaway
+
+Metering that only reports is a bill, not a limit. This is how a user who has
+reached their allowance is actually stopped, and how far past the line they can
+get before it happens.
+
+Both mechanisms are stock upstream. Still no fork.
+
+## E1. Evicting an established client
+
+`derper` implements a privileged DERP frame for exactly this, and the Go client
+library exposes it:
+
+```go
+// derp/derp_client.go:381
+// ClosePeer asks the server to close target's TCP connection.
+func (c *Client) ClosePeer(target key.NodePublic) error
+```
+
+Server side (`derp/derpserver/derpserver.go:1234`), `handleFrameClosePeer`
+refuses unless `c.canMesh`, which `isMeshPeer` grants on a constant-time
+comparison of the client's mesh key against the server's. Given permission it
+closes every connection held for that node key:
+
+```go
+set.ForeachClient(func(target *sclient) {
+    go target.nc.Close()
+})
+```
+
+So the evictor is a small service that holds the mesh PSK, maintains a mesh
+connection to each of the three relays, and calls `ClosePeer` on demand. Mesh
+peers skip admission (`verifyClient` returns early for them), so the evictor
+needs no registration.
+
+## E2. The loop
+
+Eviction on its own accomplishes nothing — the client reconnects within
+seconds. It only works paired with admission, **in this order**:
+
+1. A usage flush crosses the allowance. Mark the user over-quota.
+2. **Invalidate the admission cache for every node key they own.** Skipping this
+   leaves up to a full TTL during which reconnects are still admitted, which
+   turns eviction into a free session refresh.
+3. The admission controller now answers `Allow: false` for those keys.
+4. The evictor sends `ClosePeer` for each key, on all three relays.
+5. Reconnect attempts bounce off admission.
+
+Evict both ends — client key and server key. Closing either stops the flow,
+since a relay only relays between two connected peers, but leaving one half
+connected wastes a slot and confuses the metrics.
+
+## E3. How far over they can get
+
+The overage ceiling is:
+
+```
+(flush interval + cache invalidation + eviction latency) × per-client rate cap
+```
+
+With a 60-second flush and the 2 MB/s cap from Part C, worst case is roughly
+120 MB past the line. Shorten the flush interval as the limit approaches — every
+10 seconds above 90% of the allowance — and it drops to about 20 MB.
+
+That is the answer to "prevent them going far over": the rate cap bounds the
+blast radius, and the eviction closes it. Neither does the job alone.
+
+## E4. Ask before you take
+
+**DERP has no channel to explain a disconnection.** An evicted client sees a
+dropped connection, indistinguishable from a tunnel failure, with no reason
+attached. If eviction is the primary mechanism, every over-quota user gets a
+mystery outage and files a bug.
+
+So the client is given the chance to comply first:
+
+1. App warns at 80%, in the session UI and in Settings.
+2. The flush response already returns `periodBytes` and `allowanceBytes`, so the
+   app learns it is over on its next flush — no extra round trip.
+3. **The app closes the session itself**, showing why, and offers the upgrade.
+4. The evictor fires only if the client is still connected ~30 seconds later.
+
+Honest clients get a clear message and a clean shutdown. Modified clients get
+closed anyway. Eviction is the backstop, not the front line — and because it
+only runs against clients that ignored a graceful request, an eviction in the
+logs is itself a useful abuse signal.
+
+---
+
 # Rollout
 
 1. **Relays up, admission fail-open, nothing enforced.** Registration live,
-   admission returning `Allow: true` for every registered key. Watch that
-   admission latency and registration coverage look sane.
+   admission returning `Allow: true` for every registered key. Set the Part C
+   rate cap from day one — it costs nothing when nobody is near a limit, and it
+   is the only thing standing between a bug and a bandwidth bill.
 2. **Observe-only metering.** A5 without the UI. Collect a month of over-counted
    data and learn the real relay rate.
 3. **Part D lands in Meowshell.** Metering becomes accurate; A4's badges go live.
 4. **Allowances published.** Sized from step 2's data, not from a guess, with the
    meter visible before any limit is enforced.
-5. **Enforcement, if ever.** Warnings first. Admission refusal held in reserve.
+5. **Graceful enforcement.** E4's first three steps only: warn, then have the app
+   close its own session with an explanation. No eviction yet.
+6. **Eviction armed.** E1–E3. Deploy the evictor, and only then turn on
+   admission refusal — in that order, or a refused reconnect is the first thing
+   an over-quota user meets, with no explanation attached.
 
 ## Decisions still open
 
