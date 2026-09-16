@@ -24,7 +24,7 @@ public interface ITerminalBroadcastService
 /// </summary>
 public sealed class TerminalBroadcastService(IEntitlementService entitlements) : ITerminalBroadcastService
 {
-    internal const int MaxTargets = 8;
+    public const int MaxTargets = 8;
 
     public async Task<TerminalBroadcastResult> WriteAsync(
         IReadOnlyList<TerminalBroadcastTarget> targets,
