@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace MeowSSH.Core.Diagnostics;
 
@@ -10,8 +11,6 @@ public sealed class FilePendingDiagnosticReportStore : IPendingDiagnosticReportS
 {
     public const int MaxStoredBytes = 128 * 1024;
     public const string FileName = "pending-diagnostic-report.json";
-
-    private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
 
     private readonly string _path;
 
@@ -28,7 +27,9 @@ public sealed class FilePendingDiagnosticReportStore : IPendingDiagnosticReportS
         ArgumentNullException.ThrowIfNull(report);
         Validate(report);
 
-        var bytes = JsonSerializer.SerializeToUtf8Bytes(report, SerializerOptions);
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(
+            report,
+            DiagnosticJsonContext.Default.DiagnosticReportSnapshot);
         if (bytes.Length > MaxStoredBytes)
             throw new InvalidDataException($"Diagnostic report exceeds the {MaxStoredBytes}-byte local storage limit.");
 
@@ -65,9 +66,9 @@ public sealed class FilePendingDiagnosticReportStore : IPendingDiagnosticReportS
                 bufferSize: 16 * 1024,
                 useAsync: true);
 
-            var report = await JsonSerializer.DeserializeAsync<DiagnosticReportSnapshot>(
+            var report = await JsonSerializer.DeserializeAsync(
                 stream,
-                SerializerOptions,
+                DiagnosticJsonContext.Default.DiagnosticReportSnapshot,
                 cancellationToken);
             if (report is null)
                 throw new InvalidDataException("Pending diagnostic report is empty.");
@@ -115,3 +116,7 @@ public sealed class FilePendingDiagnosticReportStore : IPendingDiagnosticReportS
         }
     }
 }
+
+[JsonSourceGenerationOptions(JsonSerializerDefaults.Web)]
+[JsonSerializable(typeof(DiagnosticReportSnapshot))]
+internal partial class DiagnosticJsonContext : JsonSerializerContext;

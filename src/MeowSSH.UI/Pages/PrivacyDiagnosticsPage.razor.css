@@ -1,0 +1,65 @@
+.diagnostic-extra {
+    display: block;
+    padding: 0;
+    overflow: hidden;
+}
+
+.diagnostic-extra > summary {
+    min-height: 52px;
+    display: flex;
+    align-items: center;
+    padding: .85rem 1rem;
+    cursor: pointer;
+    list-style: none;
+    font-weight: 600;
+}
+
+.diagnostic-extra > summary::-webkit-details-marker {
+    display: none;
+}
+
+.diagnostic-extra__body {
+    display: grid;
+    gap: 1rem;
+    padding: 0 1rem 1rem;
+}
+
+.diagnostic-review__metadata {
+    display: grid;
+    gap: .5rem;
+    margin: 0;
+}
+
+.diagnostic-review__metadata > div {
+    display: grid;
+    grid-template-columns: minmax(5rem, auto) 1fr;
+    gap: .75rem;
+}
+
+.diagnostic-review__metadata dt {
+    color: var(--text-muted);
+}
+
+.diagnostic-review__metadata dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.diagnostic-review__exception {
+    display: grid;
+    gap: .5rem;
+    min-width: 0;
+}
+
+.diagnostic-review__exception pre {
+    margin: 0;
+    max-height: 14rem;
+    overflow: auto;
+    padding: .75rem;
+    border-radius: var(--radius-md);
+    background: var(--surface-sunken);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+}

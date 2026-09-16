@@ -36,6 +36,7 @@ public sealed class LaunchSettingsTests(TestHostFixture fixture)
         await Assertions.Expect(page.GetByTestId("open-plan-settings")).ToBeVisibleAsync();
         await Assertions.Expect(page.GetByTestId("open-appearance-settings")).ToBeVisibleAsync();
         await Assertions.Expect(page.GetByTestId("open-session-log-settings")).ToBeVisibleAsync();
+        await Assertions.Expect(page.GetByTestId("open-privacy-diagnostics")).ToBeVisibleAsync();
         await Assertions.Expect(page.GetByTestId("open-about-settings")).ToBeVisibleAsync();
         await Assertions.Expect(page.GetByTestId("refresh-entitlement")).ToHaveCountAsync(0);
         await Assertions.Expect(page.GetByTestId("session-log-auto-record")).ToHaveCountAsync(0);

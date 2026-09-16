@@ -1,3 +1,4 @@
+using MeowSSH.Core.Diagnostics;
 using MeowSSH.Core.Licensing;
 using MeowSSH.Core.Security;
 using MeowSSH.Core.Services;
@@ -66,6 +67,8 @@ builder.Services.AddScoped<IActiveSessionLifetime, NoOpActiveSessionLifetime>();
 builder.Services.AddScoped<ILocalFileTransferService, LocalFileTransferService>();
 builder.Services.AddScoped<IExternalUriLauncher, NoOpExternalUriLauncher>();
 builder.Services.AddScoped<IThirdPartyNoticeProvider, FakeThirdPartyNoticeProvider>();
+builder.Services.AddScoped<IPendingDiagnosticReportStore>(_ => new FilePendingDiagnosticReportStore(
+    Path.Combine(Path.GetTempPath(), "meowssh-testhost-diagnostics", Guid.NewGuid().ToString("N"))));
 builder.Services.AddScoped(_ => new AppExternalLinks(
     new Uri("https://example.test/privacy"),
     new Uri("https://example.test/support"),
