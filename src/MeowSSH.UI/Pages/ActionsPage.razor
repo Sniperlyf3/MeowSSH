@@ -145,12 +145,23 @@
                                     disabled="@(_runningActionId is not null)"
                                     @onclick="() => RunAsync(action)">Run</button>
                         }
-                        <button type="button" class="btn btn--ghost" disabled="@(_runningActionId is not null)"
-                                data-testid="edit-action-@action.Id" @onclick="() => Edit(action)">Edit</button>
-                        <button type="button" class="btn btn--ghost" disabled="@(_runningActionId is not null)"
-                                data-testid="delete-action-@action.Id" @onclick="() => DeleteAsync(action.Id)">Delete</button>
                     </div>
-                    <ActionSequenceControl Action="action" />
+
+                    <details class="action-card__manage" data-testid="manage-action-@action.Id">
+                        <summary>
+                            <span><Icon Name="more" /> Manage</span>
+                            <Icon Name="chevron" />
+                        </summary>
+                        <div class="action-card__manage-body">
+                            <div class="action-card__management-buttons">
+                                <button type="button" class="btn btn--ghost" disabled="@(_runningActionId is not null)"
+                                        data-testid="edit-action-@action.Id" @onclick="() => Edit(action)">Edit Action</button>
+                                <button type="button" class="btn btn--danger" disabled="@(_runningActionId is not null)"
+                                        data-testid="delete-action-@action.Id" @onclick="() => DeleteAsync(action.Id)">Delete Action</button>
+                            </div>
+                            <ActionSequenceControl Action="action" />
+                        </div>
+                    </details>
                 </article>
             }
         </div>
