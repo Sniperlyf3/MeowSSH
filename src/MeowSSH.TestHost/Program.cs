@@ -54,6 +54,7 @@ builder.Services.AddScoped<IVaultSession>(sp => sp.GetRequiredService<FakeVaultS
 builder.Services.AddScoped<IActiveSessionLifetime, NoOpActiveSessionLifetime>();
 builder.Services.AddScoped<ILocalFileTransferService, LocalFileTransferService>();
 builder.Services.AddScoped<IExternalUriLauncher, NoOpExternalUriLauncher>();
+builder.Services.AddScoped<IThirdPartyNoticeProvider, FakeThirdPartyNoticeProvider>();
 builder.Services.AddScoped(_ => new AppExternalLinks(
     new Uri("https://example.test/privacy"),
     new Uri("https://example.test/support")));
