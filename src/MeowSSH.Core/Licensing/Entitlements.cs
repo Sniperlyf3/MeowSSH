@@ -20,6 +20,7 @@ public enum PremiumFeature
     CommandMonitoring,
     SessionLogs,
     PremiumCustomization,
+    EncryptedLocalBackup,
     CloudBackup,
     CloudSync,
     PushMonitoring,
@@ -79,9 +80,11 @@ public static class EntitlementPolicy
 
 public static class MeowSshProducts
 {
-    // Keep store identifiers centralized. These names can be created verbatim
-    // in Play Console or changed here before launch without touching feature UI.
+    // Create these identifiers verbatim in Play Console before launch.
+    // Pro Cloud is one subscription product with two base plans, matching
+    // Google Play's current subscription model.
     public const string ProLifetime = "meowssh_pro_lifetime";
-    public const string ProCloudMonthly = "meowssh_pro_cloud_monthly";
-    public const string ProCloudYearly = "meowssh_pro_cloud_yearly";
+    public const string ProCloud = "meowssh_pro_cloud";
+    public const string ProCloudMonthlyBasePlan = "monthly";
+    public const string ProCloudYearlyBasePlan = "yearly";
 }

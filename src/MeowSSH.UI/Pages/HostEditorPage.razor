@@ -20,6 +20,30 @@
                 <span class="field__hint">What you will call this connection in the list.</span>
             </label>
 
+            <label class="field">
+                <span class="field__label">Group</span>
+                <input class="field__input" type="text" data-testid="host-group"
+                       placeholder="Production" autocomplete="off" spellcheck="false"
+                       @bind="_group" @bind:event="oninput" />
+                <span class="field__hint">Optional. Hosts in the same group are kept together in the host list.</span>
+            </label>
+
+            <label class="field">
+                <span class="field__label">Tags</span>
+                <input class="field__input" type="text" data-testid="host-tags"
+                       placeholder="prod, eu-west, database" autocomplete="off" spellcheck="false"
+                       @bind="_tags" @bind:event="oninput" />
+                <span class="field__hint">Comma-separated tags are searchable from the Hosts screen.</span>
+            </label>
+
+            <label class="forward-option">
+                <input type="checkbox" data-testid="host-favorite" @bind="_isFavorite" />
+                <span>
+                    <strong>Favorite</strong>
+                    <small>Keep this host in a Favorites section near the top of the list.</small>
+                </span>
+            </label>
+
             <fieldset class="field">
                 <legend class="field__label">Protocol</legend>
                 <div class="segmented" role="radiogroup" aria-label="Protocol">
@@ -256,6 +280,9 @@
 
 @code {
     private string _label = "";
+    private string _group = "";
+    private string _tags = "";
+    private bool _isFavorite;
     private string _address = "";
     private string _username = "";
     private int _port = 22;
@@ -359,6 +386,9 @@
         if (Host is { } host)
         {
             _label = host.Label;
+            _group = host.Group ?? "";
+            _tags = string.Join(", ", host.Tags);
+            _isFavorite = host.IsFavorite;
             _address = host.Address;
             _username = host.Username ?? "";
             _port = host.Port;
@@ -435,6 +465,11 @@
         catch { _serialDevices = []; }
     }
 
+    private IReadOnlyList<string> ParsedTags =>
+        [.. _tags
+            .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Distinct(StringComparer.OrdinalIgnoreCase)];
+
     private async Task SaveAsync()
     {
         _busy = true;
@@ -445,6 +480,8 @@
             {
                 Id = Host?.Id ?? Guid.NewGuid(),
                 Label = _label.Trim(),
+                Group = string.IsNullOrWhiteSpace(_group) ? null : _group.Trim(),
+                IsFavorite = _isFavorite,
                 Address = _protocol == HostProtocol.Local ? "" : _address.Trim(),
                 Port = _port,
                 Username = string.IsNullOrWhiteSpace(_username) ? null : _username.Trim(),
@@ -457,7 +494,7 @@
                 SerialDataBits = _serialDataBits,
                 SerialParity = _serialParity,
                 SerialStopBits = _serialStopBits,
-                Tags = Host?.Tags ?? [],
+                Tags = ParsedTags,
                 JumpHostId = _protocol == HostProtocol.Ssh && Guid.TryParse(_jumpHostId, out var jumpId) ? jumpId : null,
                 CredentialId = UsesSshCredentials && Guid.TryParse(_credentialId, out var id) ? id : null,
                 LastConnectedAt = Host?.LastConnectedAt,

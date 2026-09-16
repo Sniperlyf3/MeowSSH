@@ -14,7 +14,11 @@
         }
     </div>
 
-    @if (_section == "phone")
+    @if (_section == "workspaces")
+    {
+        <TailcatWorkspacesPanel />
+    }
+    else if (_section == "phone")
     {
         <TailcatPhonePanel />
     }
@@ -55,8 +59,8 @@
 @code {
     private static readonly (string Id, string Label)[] Sections =
     [
-        ("phone", "This phone"), ("connect", "Connect"), ("vpn", "VPN"), ("transfers", "Transfers"),
-        ("address", "Address"), ("keys", "Keys"), ("diagnostics", "Diagnostics"),
+        ("workspaces", "Workspaces"), ("phone", "This phone"), ("connect", "Connect"), ("vpn", "VPN"),
+        ("transfers", "Transfers"), ("address", "Address"), ("keys", "Keys"), ("diagnostics", "Diagnostics"),
     ];
     private string _section = "phone";
     private TailcatHubSnapshot _snapshot = new(null, null, [], []);

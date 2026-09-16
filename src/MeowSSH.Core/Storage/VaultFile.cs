@@ -154,6 +154,8 @@ public static class VaultFile
         writer.WriteInt32((int)host.SerialParity);
         writer.WriteNullableString(host.ProxyUrl);
         writer.WriteBoolean(host.ForwardAgent);
+        writer.WriteNullableString(host.Group);
+        writer.WriteBoolean(host.IsFavorite);
     }
 
     private static HostRecord ReadHost(ref VaultReader reader, int schemaVersion)
@@ -201,6 +203,14 @@ public static class VaultFile
             forwardAgent = reader.ReadBoolean();
         }
 
+        string? group = null;
+        var isFavorite = false;
+        if (schemaVersion >= 4)
+        {
+            group = reader.ReadNullableString();
+            isFavorite = reader.ReadBoolean();
+        }
+
         return new HostRecord
         {
             Id = id,
@@ -213,6 +223,8 @@ public static class VaultFile
             AutoReconnect = autoReconnect,
             ProxyUrl = proxyUrl,
             ForwardAgent = forwardAgent,
+            Group = group,
+            IsFavorite = isFavorite,
             SerialBaudRate = serialBaudRate,
             SerialDataBits = serialDataBits,
             SerialStopBits = serialStopBits,

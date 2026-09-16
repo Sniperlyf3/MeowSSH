@@ -202,6 +202,9 @@ public sealed class ProxyJumpConnector(
         public bool IsConnected => !_disposed && _connections.All(connection => connection.IsConnected);
         public event EventHandler<SshConnectionLost>? ConnectionLost;
 
+        public Task<SshCommandResult> RunCommandAsync(string command, TimeSpan? timeout = null, CancellationToken cancellationToken = default) =>
+            _final.RunCommandAsync(command, timeout, cancellationToken);
+
         public Task<ISshShell> OpenShellAsync(int columns, int rows, CancellationToken cancellationToken = default) =>
             _final.OpenShellAsync(columns, rows, cancellationToken);
 

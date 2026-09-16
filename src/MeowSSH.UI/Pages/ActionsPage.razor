@@ -1,0 +1,371 @@
+@implements IDisposable
+@inject ICommandActionService Actions
+@inject IHostDirectory Directory
+
+<section class="actions-page" data-testid="actions-page">
+    @if (!_editing)
+    {
+        <div class="actions-page__toolbar">
+            <button type="button" class="btn btn--primary" data-testid="add-action" @onclick="NewAction">
+                <Icon Name="plus" /> New Action
+            </button>
+        </div>
+    }
+
+    @if (_editing)
+    {
+        <div class="action-editor" data-testid="action-editor">
+            <div class="action-editor__header">
+                <div>
+                    <h2>@(_editingId is null ? "New Action" : "Edit Action")</h2>
+                    <p>Save a command once, then run it against one or more SSH hosts.</p>
+                </div>
+            </div>
+
+            <label class="field">
+                <span class="field__label">Name</span>
+                <input class="field__input" data-testid="action-name" maxlength="80"
+                       placeholder="Restart web service" @bind="_name" />
+            </label>
+
+            <label class="field">
+                <span class="field__label">Command</span>
+                <textarea class="field__input action-editor__command" data-testid="action-command"
+                          rows="5" maxlength="16384" spellcheck="false"
+                          placeholder="sudo systemctl restart nginx" @bind="_command"></textarea>
+            </label>
+
+            <label class="field action-editor__timeout">
+                <span class="field__label">Timeout (seconds)</span>
+                <input class="field__input" data-testid="action-timeout" type="number"
+                       min="1" max="3600" @bind="_timeoutSeconds" />
+            </label>
+
+            <fieldset class="action-hosts">
+                <legend class="section-label">Hosts</legend>
+                @if (_hosts.Count == 0)
+                {
+                    <p class="action-muted">No saved SSH hosts are available.</p>
+                }
+                else
+                {
+                    @foreach (var host in _hosts)
+                    {
+                        <label class="action-host" data-testid="action-host-@host.Id">
+                            <input type="checkbox"
+                                   checked="@_selectedHosts.Contains(host.Id)"
+                                   @onchange="args => ToggleHost(host.Id, args)" />
+                            <span>
+                                <span class="action-host__name">@host.Label</span>
+                                <span class="action-host__address">@host.DisplayAddress</span>
+                            </span>
+                        </label>
+                    }
+                }
+            </fieldset>
+
+            @if (_selectedHosts.Count > 1)
+            {
+                <div class="action-pro-note" data-testid="multi-host-pro-note">
+                    <span class="action-pro-badge">PRO</span>
+                    Multi-host execution runs these targets in parallel and requires MeowSSH Pro.
+                </div>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(_message))
+            {
+                <p class="action-message" role="alert" data-testid="action-message">@_message</p>
+            }
+
+            <div class="action-editor__buttons">
+                <button type="button" class="btn btn--ghost" data-testid="cancel-action"
+                        @onclick="CancelEdit">Cancel</button>
+                <button type="button" class="btn btn--primary" data-testid="save-action"
+                        disabled="@_saving" @onclick="SaveAsync">Save Action</button>
+            </div>
+        </div>
+    }
+    else if (_actions is null)
+    {
+        <p class="visually-hidden" role="status">Loading Actions</p>
+    }
+    else if (_actions.Count == 0)
+    {
+        <div class="empty" data-testid="actions-empty">
+            <span class="empty__glyph"><Icon Name="terminal" /></span>
+            <p class="empty__title">No Actions yet</p>
+            <p class="empty__body">Save a command for one host for free, or use Pro to run it across several hosts at once.</p>
+            <button type="button" class="btn btn--primary" data-testid="add-first-action" @onclick="NewAction">
+                <Icon Name="plus" /> Create an Action
+            </button>
+        </div>
+    }
+    else
+    {
+        <div class="action-list" data-testid="action-list">
+            @foreach (var action in _actions)
+            {
+                var isRunning = _runningActionId == action.Id;
+                <article class="action-card" data-testid="action-card-@action.Id">
+                    <div class="action-card__header">
+                        <div class="action-card__copy">
+                            <div class="action-card__title-row">
+                                <h2>@action.Name</h2>
+                                @if (action.HostIds.Count > 1)
+                                {
+                                    <span class="action-pro-badge">PRO</span>
+                                }
+                            </div>
+                            <code class="action-card__command">@action.Command</code>
+                            <p class="action-muted">@HostSummary(action) · @action.TimeoutSeconds s timeout</p>
+                        </div>
+                    </div>
+
+                    <div class="action-card__buttons">
+                        @if (isRunning)
+                        {
+                            <button type="button" class="btn btn--ghost" data-testid="cancel-run"
+                                    @onclick="CancelRun">Cancel</button>
+                        }
+                        else
+                        {
+                            <button type="button" class="btn btn--primary"
+                                    data-testid="run-action-@action.Id"
+                                    disabled="@(_runningActionId is not null)"
+                                    @onclick="() => RunAsync(action)">Run</button>
+                        }
+                        <button type="button" class="btn btn--ghost" disabled="@(_runningActionId is not null)"
+                                data-testid="edit-action-@action.Id" @onclick="() => Edit(action)">Edit</button>
+                        <button type="button" class="btn btn--ghost" disabled="@(_runningActionId is not null)"
+                                data-testid="delete-action-@action.Id" @onclick="() => DeleteAsync(action.Id)">Delete</button>
+                    </div>
+                </article>
+            }
+        </div>
+    }
+
+    @if (_lastRun is not null)
+    {
+        <section class="action-results" data-testid="action-results">
+            <div class="action-results__header">
+                <div>
+                    <h2>@_lastRun.ActionName</h2>
+                    <p class="action-muted">@(_lastRun.Succeeded ? "Completed successfully" : "Completed with failures") · @_lastRun.Duration.TotalSeconds:F1 s</p>
+                </div>
+                <button type="button" class="btn btn--ghost" data-testid="dismiss-results"
+                        @onclick="() => _lastRun = null">Dismiss</button>
+            </div>
+
+            @foreach (var result in _lastRun.Hosts)
+            {
+                <article class="action-result @(result.State == CommandActionHostState.Succeeded ? "is-success" : "is-failure")"
+                         data-testid="action-result-@result.HostId">
+                    <div class="action-result__headline">
+                        <strong>@result.HostLabel</strong>
+                        <span>@ResultLabel(result)</span>
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(result.Message))
+                    {
+                        <p class="action-muted">@result.Message</p>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(result.StandardOutput))
+                    {
+                        <div class="action-output">
+                            <span>stdout</span>
+                            <pre>@result.StandardOutput</pre>
+                        </div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(result.StandardError))
+                    {
+                        <div class="action-output">
+                            <span>stderr</span>
+                            <pre>@result.StandardError</pre>
+                        </div>
+                    }
+                </article>
+            }
+        </section>
+    }
+
+    @if (!_editing && !string.IsNullOrWhiteSpace(_message))
+    {
+        <p class="action-message" role="alert" data-testid="action-message">@_message</p>
+    }
+</section>
+
+@code {
+    private IReadOnlyList<CommandAction>? _actions;
+    private IReadOnlyList<HostRecord> _hosts = [];
+    private readonly HashSet<Guid> _selectedHosts = [];
+    private bool _editing;
+    private Guid? _editingId;
+    private string _name = string.Empty;
+    private string _command = string.Empty;
+    private int _timeoutSeconds = 30;
+    private bool _saving;
+    private string? _message;
+    private Guid? _runningActionId;
+    private CancellationTokenSource? _runCancellation;
+    private CommandActionRun? _lastRun;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Actions.Changed += OnActionsChanged;
+        Directory.Changed += OnDirectoryChanged;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _actions = await Actions.GetAllAsync();
+        _hosts = (await Directory.GetHostsAsync())
+            .Select(static status => status.Host)
+            .Where(static host => host.Protocol == HostProtocol.Ssh && !host.IsDeleted)
+            .OrderBy(static host => host.Label, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private void NewAction()
+    {
+        _editing = true;
+        _editingId = null;
+        _name = string.Empty;
+        _command = string.Empty;
+        _timeoutSeconds = 30;
+        _selectedHosts.Clear();
+        _message = null;
+    }
+
+    private void Edit(CommandAction action)
+    {
+        _editing = true;
+        _editingId = action.Id;
+        _name = action.Name;
+        _command = action.Command;
+        _timeoutSeconds = action.TimeoutSeconds;
+        _selectedHosts.Clear();
+        foreach (var id in action.HostIds) _selectedHosts.Add(id);
+        _message = null;
+    }
+
+    private void CancelEdit()
+    {
+        _editing = false;
+        _editingId = null;
+        _message = null;
+    }
+
+    private void ToggleHost(Guid hostId, ChangeEventArgs args)
+    {
+        var selected = args.Value is bool value && value;
+        if (selected) _selectedHosts.Add(hostId);
+        else _selectedHosts.Remove(hostId);
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_saving) return;
+        _saving = true;
+        _message = null;
+        try
+        {
+            var action = new CommandAction(
+                _editingId ?? Guid.NewGuid(),
+                _name,
+                _command,
+                [.. _selectedHosts],
+                _timeoutSeconds);
+            await Actions.SaveAsync(action);
+            _editing = false;
+            _editingId = null;
+            await LoadAsync();
+        }
+        catch (ArgumentException exception)
+        {
+            _message = exception.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task DeleteAsync(Guid id)
+    {
+        _message = null;
+        try
+        {
+            await Actions.DeleteAsync(id);
+            if (_lastRun?.ActionId == id) _lastRun = null;
+            await LoadAsync();
+        }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
+        {
+            _message = exception.Message;
+        }
+    }
+
+    private async Task RunAsync(CommandAction action)
+    {
+        if (_runningActionId is not null) return;
+        _runningActionId = action.Id;
+        _lastRun = null;
+        _message = null;
+        _runCancellation = new CancellationTokenSource();
+        try
+        {
+            _lastRun = await Actions.RunAsync(action.Id, _runCancellation.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            _message = "Action cancelled.";
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or KeyNotFoundException)
+        {
+            _message = exception.Message;
+        }
+        finally
+        {
+            _runCancellation.Dispose();
+            _runCancellation = null;
+            _runningActionId = null;
+        }
+    }
+
+    private void CancelRun() => _runCancellation?.Cancel();
+
+    private string HostSummary(CommandAction action)
+    {
+        var names = action.HostIds
+            .Select(id => _hosts.FirstOrDefault(host => host.Id == id)?.Label ?? "Deleted host")
+            .ToArray();
+        return names.Length switch
+        {
+            0 => "No hosts",
+            1 => names[0],
+            <= 3 => string.Join(", ", names),
+            _ => $"{names[0]}, {names[1]} + {names.Length - 2} more",
+        };
+    }
+
+    private static string ResultLabel(CommandActionHostResult result) => result.State switch
+    {
+        CommandActionHostState.Succeeded => $"exit {result.ExitCode ?? 0} · {result.Duration.TotalSeconds:F1}s",
+        CommandActionHostState.Failed => $"exit {result.ExitCode?.ToString() ?? "?"} · {result.Duration.TotalSeconds:F1}s",
+        _ => $"connection failed · {result.Duration.TotalSeconds:F1}s",
+    };
+
+    private void OnActionsChanged(object? sender, EventArgs e) =>
+        _ = InvokeAsync(async () => { await LoadAsync(); StateHasChanged(); });
+
+    private void OnDirectoryChanged(object? sender, EventArgs e) =>
+        _ = InvokeAsync(async () => { await LoadAsync(); StateHasChanged(); });
+
+    public void Dispose()
+    {
+        Actions.Changed -= OnActionsChanged;
+        Directory.Changed -= OnDirectoryChanged;
+        _runCancellation?.Cancel();
+        _runCancellation?.Dispose();
+    }
+}
