@@ -91,7 +91,7 @@ public class KeysTests(TestHostFixture fixture)
         await Assertions.Expect(page.GetByTestId("save-credential")).ToBeEnabledAsync();
 
         await page.GetByTestId("save-credential").ClickAsync();
-        await Assertions.Expect(page.GetByTestId("show-public-key")).ToHaveCountAsync(0);
+        await Assertions.Expect(page.GetByTestId("show-public-key")).Not.ToBeVisibleAsync();
         await page.GetByTestId("manage-credential").Locator("summary").ClickAsync();
         await Assertions.Expect(page.GetByTestId("show-public-key")).ToBeVisibleAsync();
 
