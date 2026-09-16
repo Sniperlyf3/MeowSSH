@@ -7,8 +7,7 @@
     <section class="tools-hub__section" aria-labelledby="tools-operations-title">
         <h3 class="section-label" id="tools-operations-title">Automation & operations</h3>
         <div class="tools-hub__list">
-            <button type="button" class="setting-card" data-testid="open-tool-actions"
-                    @onclick="() => OnSelected.InvokeAsync("actions")">
+            <button type="button" class="setting-card" data-testid="open-tool-actions" @onclick="OpenActions">
                 <span class="setting-card__copy">
                     <span class="setting-card__title">Actions</span>
                     <span class="setting-card__body">Save commands and run them against one or more SSH hosts.</span>
@@ -16,8 +15,7 @@
                 <span class="setting-card__value">Open</span>
             </button>
 
-            <button type="button" class="setting-card" data-testid="open-tool-monitoring"
-                    @onclick="() => OnSelected.InvokeAsync("monitoring")">
+            <button type="button" class="setting-card" data-testid="open-tool-monitoring" @onclick="OpenMonitoring">
                 <span class="setting-card__copy">
                     <span class="setting-card__title">Monitoring</span>
                     <span class="setting-card__body">Watch command checks and surface operational changes.</span>
@@ -25,8 +23,7 @@
                 <span class="setting-card__value">Open</span>
             </button>
 
-            <button type="button" class="setting-card" data-testid="open-tool-health"
-                    @onclick="() => OnSelected.InvokeAsync("health")">
+            <button type="button" class="setting-card" data-testid="open-tool-health" @onclick="OpenHealth">
                 <span class="setting-card__copy">
                     <span class="setting-card__title">Host health</span>
                     <span class="setting-card__body">Review saved-host health and status in one place.</span>
@@ -39,8 +36,7 @@
     <section class="tools-hub__section" aria-labelledby="tools-network-title">
         <h3 class="section-label" id="tools-network-title">Network & data</h3>
         <div class="tools-hub__list">
-            <button type="button" class="setting-card" data-testid="open-tool-tailcat"
-                    @onclick="() => OnSelected.InvokeAsync("tailcat")">
+            <button type="button" class="setting-card" data-testid="open-tool-tailcat" @onclick="OpenTailcat">
                 <span class="setting-card__copy">
                     <span class="setting-card__title">Tailcat</span>
                     <span class="setting-card__body">Private networking, devices, keys, transfers and diagnostics.</span>
@@ -48,8 +44,7 @@
                 <span class="setting-card__value">Open</span>
             </button>
 
-            <button type="button" class="setting-card" data-testid="open-tool-backup"
-                    @onclick="() => OnSelected.InvokeAsync("backup")">
+            <button type="button" class="setting-card" data-testid="open-tool-backup" @onclick="OpenBackup">
                 <span class="setting-card__copy">
                     <span class="setting-card__title">Encrypted backup</span>
                     <span class="setting-card__body">Export or restore encrypted MeowSSH data.</span>
@@ -62,4 +57,10 @@
 
 @code {
     [Parameter] public EventCallback<string> OnSelected { get; set; }
+
+    private Task OpenActions() => OnSelected.InvokeAsync("actions");
+    private Task OpenMonitoring() => OnSelected.InvokeAsync("monitoring");
+    private Task OpenHealth() => OnSelected.InvokeAsync("health");
+    private Task OpenTailcat() => OnSelected.InvokeAsync("tailcat");
+    private Task OpenBackup() => OnSelected.InvokeAsync("backup");
 }
