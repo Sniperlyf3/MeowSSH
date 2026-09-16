@@ -196,6 +196,18 @@ else
                     </button>
                 }
 
+                @if (ExternalLinks.TermsOfService is { } termsOfService)
+                {
+                    <button type="button" class="setting-card" data-testid="terms-of-service"
+                            @onclick="() => OpenExternalAsync(termsOfService)">
+                        <span class="setting-card__copy">
+                            <span class="setting-card__title">Terms of Service</span>
+                            <span class="setting-card__body">Review the terms governing MeowSSH use and paid features.</span>
+                        </span>
+                        <span class="setting-card__value">Open</span>
+                    </button>
+                }
+
                 @if (ExternalLinks.Support is { } support)
                 {
                     <button type="button" class="setting-card" data-testid="support-link"
