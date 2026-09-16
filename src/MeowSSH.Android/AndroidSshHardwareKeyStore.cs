@@ -133,6 +133,8 @@ public sealed class AndroidSshHardwareKeyStore : ISshHardwareKeyStore
 
         var certificate = store.GetCertificate(alias)
             ?? throw new InvalidOperationException("The selected AndroidKeyStore entry has no public certificate.");
+        var certificateDer = certificate.GetEncoded()
+            ?? throw new InvalidOperationException("Android returned no encoded certificate for the SSH key.");
 
         var privateKey = store.GetKey(alias, null);
         if (privateKey is not IPrivateKey typedPrivateKey)
@@ -141,7 +143,7 @@ public sealed class AndroidSshHardwareKeyStore : ISshHardwareKeyStore
         var (hardwareBacked, strongBoxBacked) = GetBacking(typedPrivateKey);
         return new SshHardwareKeyInfo(
             keyId,
-            ToOpenSshPublicKey(certificate.GetEncoded(), keyId),
+            ToOpenSshPublicKey(certificateDer, keyId),
             hardwareBacked,
             strongBoxBacked);
     }
