@@ -3,7 +3,7 @@
 }
 
 .host-editor__section {
-    border: 1px solid var(--border-subtle);
+    border: 1px solid var(--border);
     border-radius: 16px;
     background: var(--surface-raised);
     overflow: hidden;
