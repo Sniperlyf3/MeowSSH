@@ -10,7 +10,8 @@ public sealed class HostHealthDashboardTests(TestHostFixture fixture)
     {
         var page = await fixture.NewPageAsync();
 
-        await page.GetByTestId("tab-health").ClickAsync();
+        await page.GetByTestId("tab-tools").ClickAsync();
+        await page.GetByTestId("open-tool-health").ClickAsync();
         await Assertions.Expect(page.GetByTestId("host-health-dashboard")).ToBeVisibleAsync();
         await Assertions.Expect(page.GetByTestId("host-health-results")).ToHaveCountAsync(0);
 
