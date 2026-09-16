@@ -5,6 +5,8 @@ namespace MeowSSH.UI.Tests;
 [Collection(nameof(TestHostCollection))]
 public class MultiSessionTests(TestHostFixture fixture)
 {
+    private static readonly string[] SessionViewOptions = ["Terminal", "Files", "Forwards"];
+
     private async Task<IPage> OpenMultiAsync()
     {
         var page = await fixture.NewPageAsync("/?multi");
@@ -82,7 +84,7 @@ public class MultiSessionTests(TestHostFixture fixture)
 
         await Assertions.Expect(selector).ToHaveCountAsync(1);
         await Assertions.Expect(selector).ToHaveValueAsync("Terminal");
-        Assert.Equal(new[] { "Terminal", "Files", "Forwards" }, await selector.Locator("option").AllTextContentsAsync());
+        Assert.Equal(SessionViewOptions, await selector.Locator("option").AllTextContentsAsync());
         await Assertions.Expect(workspace.GetByTestId("toggle-session-view")).ToHaveCountAsync(0);
         await Assertions.Expect(workspace.GetByTestId("open-forwards")).ToHaveCountAsync(0);
 
