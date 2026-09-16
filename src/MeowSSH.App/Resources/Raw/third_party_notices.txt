@@ -3,6 +3,8 @@ MeowSSH Third-Party Notices
 
 This distribution includes open-source software. The notices below apply to the listed components and are reproduced with the application.
 
+MeowSSH is an independent application. It is not affiliated with, sponsored by, or endorsed by Tailscale Inc. References to Tailcat and Tailscale identify the upstream open-source components and technology used by MeowSSH.
+
 -------------------------------------------------------------------------------
 Tailcat / Tailscale data-plane components
 -------------------------------------------------------------------------------
