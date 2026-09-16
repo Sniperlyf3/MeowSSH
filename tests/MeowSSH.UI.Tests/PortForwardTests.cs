@@ -10,7 +10,7 @@ public class PortForwardTests(TestHostFixture fixture)
         var page = await fixture.NewPageAsync("/?multi");
         await page.GetByTestId("host-row").Filter(new() { HasText = "prod-web-01" }).ClickAsync();
         var workspace = page.Locator(".session-workspace.is-active");
-        await workspace.GetByTestId("open-forwards").ClickAsync();
+        await workspace.GetByTestId("session-view-selector").SelectOptionAsync("Forwards");
         await Assertions.Expect(workspace.GetByTestId("forwards-page")).ToBeVisibleAsync();
         return page;
     }
