@@ -89,9 +89,11 @@ jobs:
           LICENSING_PUBLIC_KEY: ${{ vars.LICENSING_PUBLIC_KEY_SUBJECT_PUBLIC_KEY_INFO_BASE64 }}
         run: |
           set -euo pipefail
+          # Do not pin RuntimeIdentifier here. .NET for Android's current
+          # 64-bit defaults package android-arm64 and android-x64 into the app
+          # bundle, and Play serves the matching split to each device.
           dotnet publish src/MeowSSH.App/MeowSSH.App.csproj \
             -c Release -f net10.0-android36.0 \
-            -p:RuntimeIdentifier=android-arm64 \
             -p:AndroidPackageFormat=aab \
             -p:AndroidKeyStore=true \
             "-p:AndroidSigningKeyStore=$KEYSTORE" \
@@ -113,11 +115,16 @@ jobs:
           AAB=$(find src/MeowSSH.App/bin/Release -name "*.aab" | head -1)
           test -n "$AAB"
           unzip -t "$AAB" >/dev/null
-          unzip -l "$AAB" | grep -q "base/lib/arm64-v8a/libmeowshell.so"
-          unzip -l "$AAB" | grep -q "base/lib/arm64-v8a/libtailcat.so"
+
+          for abi in arm64-v8a x86_64; do
+            unzip -l "$AAB" | grep -q "base/lib/$abi/libmeowshell.so"
+            unzip -l "$AAB" | grep -q "base/lib/$abi/libtailcat.so"
+          done
 
           if [[ "${{ inputs.include_tailcat_vpn }}" == "true" ]]; then
-            unzip -l "$AAB" | grep -q "base/lib/arm64-v8a/libhev-socks5-tunnel.so"
+            for abi in arm64-v8a x86_64; do
+              unzip -l "$AAB" | grep -q "base/lib/$abi/libhev-socks5-tunnel.so"
+            done
             echo "Tailcat VPN: included" >> "$GITHUB_STEP_SUMMARY"
           else
             if unzip -l "$AAB" | grep -q "libhev-socks5-tunnel.so"; then
@@ -128,6 +135,7 @@ jobs:
           fi
 
           echo "AAB=$AAB" >> "$GITHUB_ENV"
+          echo "Play ABIs: arm64-v8a, x86_64" >> "$GITHUB_STEP_SUMMARY"
           echo "Play bundle: $AAB ($(du -h "$AAB" | cut -f1))" >> "$GITHUB_STEP_SUMMARY"
           echo "Version: ${{ inputs.version_name }} (${{ inputs.version_code }})" >> "$GITHUB_STEP_SUMMARY"
           echo "Commit: ${{ github.sha }}" >> "$GITHUB_STEP_SUMMARY"
