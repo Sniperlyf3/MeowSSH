@@ -13,14 +13,14 @@ public sealed class SftpTests(UiFixture fixture)
         await page.GetByTestId("host-row").First.ClickAsync();
         await page.GetByTestId("open-files").ClickAsync();
 
-        await Assertions.Expect(page.Locator("[data-testid='file-entry'][data-file-name='notes.txt']")).ToBeVisibleAsync();
-        await page.Locator("[data-testid='file-actions'][data-file-name='notes.txt']").ClickAsync();
+        await Assertions.Expect(page.Locator("[data-testid='file-entry'][data-file-name='start.sh']")).ToBeVisibleAsync();
+        await page.Locator("[data-testid='file-actions'][data-file-name='start.sh']").ClickAsync();
         await page.GetByTestId("rename-file").ClickAsync();
-        await page.GetByTestId("rename-name").FillAsync("renamed.txt");
+        await page.GetByTestId("rename-name").FillAsync("renamed.sh");
         await page.GetByTestId("confirm-rename").ClickAsync();
 
-        await Assertions.Expect(page.Locator("[data-testid='file-entry'][data-file-name='renamed.txt']")).ToBeVisibleAsync();
-        await Assertions.Expect(page.Locator("[data-testid='file-entry'][data-file-name='notes.txt']")).ToHaveCountAsync(0);
+        await Assertions.Expect(page.Locator("[data-testid='file-entry'][data-file-name='renamed.sh']")).ToBeVisibleAsync();
+        await Assertions.Expect(page.Locator("[data-testid='file-entry'][data-file-name='start.sh']")).ToHaveCountAsync(0);
     }
 
     [Fact]
@@ -31,9 +31,9 @@ public sealed class SftpTests(UiFixture fixture)
         await page.GetByTestId("host-row").First.ClickAsync();
         await page.GetByTestId("open-files").ClickAsync();
 
-        await page.Locator("[data-testid='file-actions'][data-file-name='notes.txt']").ClickAsync();
+        await page.Locator("[data-testid='file-actions'][data-file-name='start.sh']").ClickAsync();
         await page.GetByTestId("rename-file").ClickAsync();
-        await page.GetByTestId("rename-name").FillAsync("../escape.txt");
+        await page.GetByTestId("rename-name").FillAsync("../escape.sh");
         await page.GetByTestId("confirm-rename").ClickAsync();
 
         await Assertions.Expect(page.GetByTestId("rename-error"))
