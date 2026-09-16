@@ -18,10 +18,19 @@
     <AndroidExtractNativeLibraries>true</AndroidExtractNativeLibraries>
     <SupportedOSPlatformVersion>28.0</SupportedOSPlatformVersion>
 
+    <!-- Local/dev/CI builds keep VPN enabled so the implementation remains
+         continuously covered. The production release workflow explicitly
+         chooses whether the capability is packaged. -->
+    <EnableTailcatVpn Condition="'$(EnableTailcatVpn)' == ''">true</EnableTailcatVpn>
+
     <!-- Public deployment configuration injected by MSBuild/CI. Empty values
          deliberately leave licensing fail-closed for local/dev builds. -->
     <LicensingApiBaseUrl Condition="'$(LicensingApiBaseUrl)' == ''"></LicensingApiBaseUrl>
     <LicensingPublicKeySubjectPublicKeyInfoBase64 Condition="'$(LicensingPublicKeySubjectPublicKeyInfoBase64)' == ''"></LicensingPublicKeySubjectPublicKeyInfoBase64>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(EnableTailcatVpn)' == 'true'">
+    <DefineConstants>$(DefineConstants);TAILCAT_VPN</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
@@ -84,11 +93,17 @@
     <PackageReference Include="Xamarin.AndroidX.Tracing.Tracing.Ktx" Version="2.0.0" />
   </ItemGroup>
 
-  <!-- Native TCP+UDP TUN-to-SOCKS bridge used by Android VpnService. The AAR is
-       pinned on Maven Central and is included for its native libraries only;
-       MeowSSH calls the stable hev C ABI directly. -->
-  <ItemGroup>
+  <!-- Native TCP+UDP TUN-to-SOCKS bridge used only by Android VpnService. -->
+  <ItemGroup Condition="'$(EnableTailcatVpn)' == 'true'">
     <AndroidMavenLibrary Include="com.wgtunnel:hevtunnel" Version="1.0.4" Bind="false" VerifyDependencies="false" />
+  </ItemGroup>
+
+  <!-- A build with VPN disabled must not contain the VpnService implementation
+       or native tunnel entry point at all. -->
+  <ItemGroup Condition="'$(EnableTailcatVpn)' != 'true'">
+    <Compile Remove="Platforms\Android\AndroidTailcatVpnController.cs" />
+    <Compile Remove="Platforms\Android\TailcatVpnService.cs" />
+    <Compile Remove="Platforms\Android\HevSocks5TunnelNative.cs" />
   </ItemGroup>
 
   <ItemGroup>
