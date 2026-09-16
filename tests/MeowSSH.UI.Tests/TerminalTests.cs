@@ -158,9 +158,6 @@ public class TerminalTests(TestHostFixture fixture)
         await Assertions.Expect(page.Locator(".xterm-rows"))
             .ToContainTextAsync("tput cols", new() { Timeout = 10_000 });
 
-        // The echoed command proves that input reached the PTY, but its output is a
-        // separate asynchronous terminal update. Wait for the numeric response itself
-        // so slow CI runners cannot race the assertion between those two updates.
         await page.WaitForFunctionAsync(
             "() => /(?:^|\\n)\\s*\\d{2,3}\\s*(?:\\n|$)/.test(document.querySelector('.xterm-rows')?.innerText ?? '')",
             null,
@@ -219,6 +216,8 @@ public class TerminalTests(TestHostFixture fixture)
         var page = await fixture.NewPageAsync("/");
         await page.GetByTestId("tab-settings").ClickAsync();
         await Assertions.Expect(page.GetByTestId("settings-page")).ToBeVisibleAsync();
+        await page.GetByTestId("open-appearance-settings").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("appearance-settings-page")).ToBeVisibleAsync();
 
         var slider = page.GetByTestId("terminal-zoom");
         await slider.EvaluateAsync(
@@ -233,6 +232,7 @@ public class TerminalTests(TestHostFixture fixture)
 
         await page.ReloadAsync();
         await page.GetByTestId("tab-settings").ClickAsync();
+        await page.GetByTestId("open-appearance-settings").ClickAsync();
         await Assertions.Expect(page.GetByTestId("terminal-zoom-value")).ToHaveTextAsync("140%");
     }
 
