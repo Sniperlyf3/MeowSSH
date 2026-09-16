@@ -14,6 +14,7 @@ public sealed record TailcatVpnSnapshot(
 
 public interface ITailcatVpnController
 {
+    bool IsAvailable { get; }
     TailcatVpnSnapshot Snapshot { get; }
     event EventHandler? Changed;
     Task StartAsync(TailcatVpnRequest request, CancellationToken cancellationToken = default);
