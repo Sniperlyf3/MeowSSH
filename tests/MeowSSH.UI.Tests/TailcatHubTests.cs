@@ -155,7 +155,7 @@ public class TailcatHubTests(TestHostFixture fixture)
     }
 
     [Fact]
-    public async Task AddressBuilderResolvesAndInspectsTailcatAddresses()
+    public async Task AddressBuilderResolvesInspectsAndClassifiesTailcatAddresses()
     {
         var page = await OpenTailcatAsync();
         await page.GetByTestId("tailcat-section-address").ClickAsync();
@@ -163,10 +163,16 @@ public class TailcatHubTests(TestHostFixture fixture)
         await page.GetByTestId("tailcat-resolve-address").ClickAsync();
         await Assertions.Expect(page.GetByTestId("tailcat-resolved-address")).ToHaveValueAsync("tc-test-resolved-full-address");
 
-        await page.GetByTestId("tailcat-inspect-address").ClickAsync();
         await Assertions.Expect(page.GetByTestId("tailcat-address-details")).ToContainTextAsync("nodekey:test-server");
         await Assertions.Expect(page.GetByTestId("tailcat-address-region")).ToContainTextAsync("Test DERP");
         await Assertions.Expect(page.GetByTestId("tailcat-address-node")).ToContainTextAsync("derp.example.test");
+        await Assertions.Expect(page.GetByTestId("tailcat-relay-class")).ToHaveTextAsync("Unknown");
+        await Assertions.Expect(page.GetByTestId("tailcat-unknown-relay-note")).ToBeVisibleAsync();
+
+        await page.GetByTestId("tailcat-address-derpmap").FillAsync("https://relay.example.test/derpmap.json");
+        await page.GetByTestId("tailcat-inspect-address").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("tailcat-relay-class")).ToHaveTextAsync("Your relay");
+        await Assertions.Expect(page.GetByTestId("tailcat-user-relay-note")).ToBeVisibleAsync();
     }
 
     [Fact]
