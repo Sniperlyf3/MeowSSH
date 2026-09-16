@@ -19,6 +19,9 @@
     <SupportedOSPlatformVersion>28.0</SupportedOSPlatformVersion>
 
     <EnableTailcatVpn Condition="'$(EnableTailcatVpn)' == ''">true</EnableTailcatVpn>
+    <!-- Deliberately fail closed. Do not expose subscription sales until the
+         corresponding cloud sync/backup service is actually shipping. -->
+    <EnableProCloudSales Condition="'$(EnableProCloudSales)' == ''">false</EnableProCloudSales>
 
     <LicensingApiBaseUrl Condition="'$(LicensingApiBaseUrl)' == ''"></LicensingApiBaseUrl>
     <LicensingPublicKeySubjectPublicKeyInfoBase64 Condition="'$(LicensingPublicKeySubjectPublicKeyInfoBase64)' == ''"></LicensingPublicKeySubjectPublicKeyInfoBase64>
@@ -35,6 +38,7 @@
     <AssemblyMetadata Include="MeowSSH.Licensing.PublicKeySubjectPublicKeyInfoBase64" Value="$(LicensingPublicKeySubjectPublicKeyInfoBase64)" />
     <AssemblyMetadata Include="MeowSSH.Launch.PrivacyPolicyUrl" Value="$(PrivacyPolicyUrl)" />
     <AssemblyMetadata Include="MeowSSH.Launch.SupportUrl" Value="$(SupportUrl)" />
+    <AssemblyMetadata Include="MeowSSH.Commercial.ProCloudSalesEnabled" Value="$(EnableProCloudSales)" />
   </ItemGroup>
 
   <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
