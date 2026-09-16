@@ -52,6 +52,28 @@ public sealed class TailcatRelayClassifierTests
     }
 
     [Fact]
+    public void ExplicitPublicMapProvenanceClassifiesNewUpstreamHostAsPublicDefault()
+    {
+        var result = TailcatRelayClassifier.Classify(
+            Details(302, "new-public-relay.example"),
+            TailcatRelayClassifierOptions.TailcatDefaultDerpMapUrl,
+            Options);
+
+        Assert.Equal(TailcatRelayClass.PublicDefault, result.RelayClass);
+    }
+
+    [Fact]
+    public void ExplicitPublicMapCannotRelabelKnownMeowSshHost()
+    {
+        var result = TailcatRelayClassifier.Classify(
+            Details(302, "derp1.meowssh.app", "new-public-relay.example"),
+            TailcatRelayClassifierOptions.TailcatDefaultDerpMapUrl,
+            Options);
+
+        Assert.Equal(TailcatRelayClass.Unknown, result.RelayClass);
+    }
+
+    [Fact]
     public void ExplicitThirdPartyMapClassifiesAsUserOwned()
     {
         var result = TailcatRelayClassifier.Classify(
