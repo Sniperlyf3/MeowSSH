@@ -26,6 +26,7 @@ builder.Services.AddScoped<ITailcatWorkspaceStore, MemoryTailcatWorkspaceStore>(
 builder.Services.AddScoped<ITailcatWorkspaceService, TailcatWorkspaceService>();
 builder.Services.AddScoped<ICommandActionStore, MemoryCommandActionStore>();
 builder.Services.AddScoped<ICommandActionService, CommandActionService>();
+builder.Services.AddScoped<IHostHealthDashboardService, HostHealthDashboardService>();
 builder.Services.AddScoped<ICommandMonitorStore, MemoryCommandMonitorStore>();
 builder.Services.AddScoped<ICommandMonitorAlertSink, NoOpCommandMonitorAlertSink>();
 builder.Services.AddScoped<CommandMonitoringService>();

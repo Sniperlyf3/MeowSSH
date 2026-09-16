@@ -57,6 +57,18 @@ public sealed class FakeSshEngine : ISshEngine
             if (timeout is { } commandTimeout && commandTimeout <= TimeSpan.Zero)
                 throw new ArgumentOutOfRangeException(nameof(timeout));
 
+            if (command.Contains("meowssh_uptime=", StringComparison.Ordinal))
+            {
+                return Task.FromResult(new SshCommandResult(
+                    0,
+                    "meowssh_os=Linux\n" +
+                    "meowssh_uptime=up 2 hours\n" +
+                    "meowssh_load=0.10 0.20 0.30\n" +
+                    "meowssh_disk=42%\n" +
+                    "meowssh_memory=37%\n",
+                    string.Empty));
+            }
+
             var failed = command.Contains("fail", StringComparison.OrdinalIgnoreCase);
             return Task.FromResult(failed
                 ? new SshCommandResult(1, string.Empty, $"fake failure on {HostId}")

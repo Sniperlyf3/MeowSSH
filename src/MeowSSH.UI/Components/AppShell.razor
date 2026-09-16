@@ -3,7 +3,7 @@
 <div class="app">
     <header class="topbar">
         <h1 class="topbar__title">@CurrentTitle</h1>
-        <div class="topbar__actions">@((_showTailcat || _showActions || _showMonitoring || _showBackup) ? null : Actions)</div>
+        <div class="topbar__actions">@((_showTailcat || _showActions || _showMonitoring || _showHealth || _showBackup) ? null : Actions)</div>
     </header>
 
     <main class="app__body" data-testid="app-body">
@@ -18,6 +18,10 @@
         else if (_showMonitoring)
         {
             <CommandMonitoringPage />
+        }
+        else if (_showHealth)
+        {
+            <HostHealthDashboardPage />
         }
         else if (_showBackup)
         {
@@ -55,9 +59,10 @@
     private bool _showTailcat;
     private bool _showActions;
     private bool _showMonitoring;
+    private bool _showHealth;
     private bool _showBackup;
-    private string CurrentTitle => _showTailcat ? "Tailcat" : _showActions ? "Actions" : _showMonitoring ? "Monitoring" : _showBackup ? "Backup" : Title;
-    private string CurrentTab => _showTailcat ? "tailcat" : _showActions ? "actions" : _showMonitoring ? "monitoring" : _showBackup ? "backup" : ActiveTab;
+    private string CurrentTitle => _showTailcat ? "Tailcat" : _showActions ? "Actions" : _showMonitoring ? "Monitoring" : _showHealth ? "Host Health" : _showBackup ? "Backup" : Title;
+    private string CurrentTab => _showTailcat ? "tailcat" : _showActions ? "actions" : _showMonitoring ? "monitoring" : _showHealth ? "health" : _showBackup ? "backup" : ActiveTab;
 
     protected override Task OnInitializedAsync() => Monitoring.InitializeAsync();
 
@@ -65,42 +70,46 @@
     {
         if (tab == "tailcat")
         {
-            _showTailcat = true;
-            _showActions = false;
-            _showMonitoring = false;
-            _showBackup = false;
+            ShowInternal(tailcat: true);
             return;
         }
         if (tab == "actions")
         {
-            _showActions = true;
-            _showTailcat = false;
-            _showMonitoring = false;
-            _showBackup = false;
+            ShowInternal(actions: true);
             return;
         }
         if (tab == "monitoring")
         {
-            _showMonitoring = true;
-            _showActions = false;
-            _showTailcat = false;
-            _showBackup = false;
+            ShowInternal(monitoring: true);
+            return;
+        }
+        if (tab == "health")
+        {
+            ShowInternal(health: true);
             return;
         }
         if (tab == "backup")
         {
-            _showBackup = true;
-            _showMonitoring = false;
-            _showActions = false;
-            _showTailcat = false;
+            ShowInternal(backup: true);
             return;
         }
 
-        _showTailcat = false;
-        _showActions = false;
-        _showMonitoring = false;
-        _showBackup = false;
+        ShowInternal();
         await OnTabSelected.InvokeAsync(tab);
+    }
+
+    private void ShowInternal(
+        bool tailcat = false,
+        bool actions = false,
+        bool monitoring = false,
+        bool health = false,
+        bool backup = false)
+    {
+        _showTailcat = tailcat;
+        _showActions = actions;
+        _showMonitoring = monitoring;
+        _showHealth = health;
+        _showBackup = backup;
     }
 
     private sealed record Tab(string Id, string Label, string Icon);
@@ -111,6 +120,7 @@
         new("files", "Files", "folder"),
         new("actions", "Actions", "terminal"),
         new("monitoring", "Monitor", "alert"),
+        new("health", "Health", "alert"),
         new("tailcat", "Tailcat", "network"),
         new("backup", "Backup", "shield"),
         new("keys", "Keys", "key"),
