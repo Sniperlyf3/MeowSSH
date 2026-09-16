@@ -1,0 +1,37 @@
+.tools-hub {
+    display: grid;
+    gap: var(--space-6);
+    width: min(100%, 52rem);
+    margin: 0 auto;
+    padding: var(--space-4);
+}
+
+.tools-hub__intro {
+    display: grid;
+    gap: var(--space-2);
+}
+
+.tools-hub__intro h2,
+.tools-hub__intro p {
+    margin: 0;
+}
+
+.tools-hub__intro p {
+    color: var(--text-muted);
+    line-height: 1.45;
+}
+
+.tools-hub__section {
+    display: grid;
+    gap: var(--space-2);
+}
+
+.tools-hub__list {
+    display: grid;
+    gap: var(--space-2);
+}
+
+.tools-hub .setting-card {
+    width: 100%;
+    text-align: left;
+}
