@@ -55,7 +55,8 @@ The release owner must confirm, from the exact production AAB:
 - which Tailcat coordination/relay providers process connection metadata;
 - retention/deletion behavior for MeowSSHAPI logs and infrastructure logs;
 - support/privacy contact address;
-- public privacy-policy URL.
+- public privacy-policy URL;
+- public Terms-of-Service URL and completion of the legal-review placeholders in `TERMS.md`.
 
 If any answer changes after the form is submitted, update the Play declaration before releasing the build that changes it.
 
@@ -86,21 +87,23 @@ Before release:
 - verify notification behavior meets current Android/Play requirements;
 - retain the CI evidence showing the permission, service type and subtype property survived manifest merging.
 
-## Privacy-policy publication checklist
+## Privacy, Terms and support publication checklist
 
 Before production rollout:
 
 - replace the placeholder contact in `PRIVACY.md`;
-- publish the policy at a stable HTTPS URL accessible without login;
-- set repository/environment variable `PRIVACY_POLICY_URL` to that exact public URL;
+- complete legal review of `TERMS.md` and replace the legal entity, warranty/liability, governing-law/venue, and public-contact placeholders;
+- publish the privacy policy and Terms of Service at stable HTTPS URLs accessible without login;
+- set repository/environment variable `PRIVACY_POLICY_URL` to the exact public privacy-policy URL;
+- set repository/environment variable `TERMS_OF_SERVICE_URL` to the exact public Terms URL;
 - set repository/environment variable `SUPPORT_URL` to a stable public HTTPS support destination;
 - link the privacy-policy URL in Play Console;
-- keep the in-app Settings links pointed at the same destinations;
+- keep the in-app Settings links pointed at the same Privacy, Terms, and Support destinations;
 - ensure statements about Tailcat relays match the infrastructure actually used at launch;
 - ensure statements about telemetry match the production build;
 - ensure cloud language matches which tiers/features are actually for sale.
 
-The production workflow refuses to build a release when either public URL is missing or non-HTTPS.
+The production workflow refuses to build a release when any required public URL is missing, non-HTTPS, or unreachable, when the privacy contact placeholder remains, or when any production legal placeholder remains in `TERMS.md`.
 
 ## Internal-track publication handoff
 
@@ -110,8 +113,8 @@ For an internal-track publication, confirm all of the following first:
 
 - `ANDROID_KEYSTORE_BASE64`, alias and signing passwords are configured for the persistent upload key;
 - `LICENSING_API_BASE_URL` and `LICENSING_PUBLIC_KEY_SUBJECT_PUBLIC_KEY_INFO_BASE64` point at the deployed production licensing service;
-- `PRIVACY_POLICY_URL` and `SUPPORT_URL` are the public launch destinations;
-- `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` belongs to a Play Console service account with only the app/release permissions needed for this upload path;
+- `PRIVACY_POLICY_URL`, `TERMS_OF_SERVICE_URL`, and `SUPPORT_URL` are the public launch destinations;
+- `GCP_WORKLOAD_IDENTITY_PROVIDER` and `GCP_PLAY_PUBLISH_SERVICE_ACCOUNT` are configured for a least-privilege Play publishing service account;
 - Play App Signing is configured and the backend trusts the **app signing** certificate, not merely the local upload certificate;
 - the production backend is configured with the Play Console SHA-256 app-signing fingerprint. The backend accepts the human-readable hexadecimal fingerprint and normalizes it to the URL-safe Base64 digest returned by Play Integrity;
 - `include_tailcat_vpn=false` unless the VPN policy gate above has been intentionally cleared;
@@ -130,6 +133,7 @@ For each production candidate retain:
 - Data safety answers used for that release;
 - VPN and foreground-service declaration answers;
 - published privacy-policy revision/date;
+- published Terms-of-Service revision/date;
 - Play app-signing certificate fingerprint(s);
 - production licensing endpoint and public entitlement-key fingerprint;
 - internal-track upload result and version code when publication was requested.
