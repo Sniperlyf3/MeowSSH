@@ -7,7 +7,6 @@ namespace MeowSSH.Core.Services;
 
 public sealed record PortForwardProfile(
     Guid Id,
-    Guid HostId,
     string Label,
     SshForwardKind Kind,
     string ListenAddress,
@@ -27,7 +26,7 @@ public interface IPortForwardProfileStore
 
 public interface IPortForwardProfileService
 {
-    Task<IReadOnlyList<PortForwardProfile>> GetForHostAsync(Guid hostId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<PortForwardProfile>> GetAllAsync(CancellationToken cancellationToken = default);
     Task<PortForwardProfile> SaveAsync(PortForwardProfile profile, CancellationToken cancellationToken = default);
     Task DeleteAsync(Guid id, CancellationToken cancellationToken = default);
 }
@@ -39,12 +38,10 @@ public sealed class PortForwardProfileService(
 {
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
 
-    public async Task<IReadOnlyList<PortForwardProfile>> GetForHostAsync(Guid hostId, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<PortForwardProfile>> GetAllAsync(CancellationToken cancellationToken = default)
     {
         EnsureEntitled();
-        if (hostId == Guid.Empty) throw new ArgumentException("A host ID is required.", nameof(hostId));
         return [.. (await store.GetAllAsync(cancellationToken).ConfigureAwait(false))
-            .Where(profile => profile.HostId == hostId)
             .OrderBy(profile => profile.Label, StringComparer.OrdinalIgnoreCase)];
     }
 
@@ -80,7 +77,6 @@ public sealed class PortForwardProfileService(
 
     private static void Validate(PortForwardProfile profile)
     {
-        if (profile.HostId == Guid.Empty) throw new ArgumentException("A host ID is required.", nameof(profile));
         if (string.IsNullOrWhiteSpace(profile.Label) || profile.Label.Trim().Length > 80)
             throw new ArgumentException("Profile labels must be between 1 and 80 characters.", nameof(profile));
         if (string.IsNullOrWhiteSpace(profile.ListenAddress) || profile.ListenAddress.Trim().Length > 4096)
@@ -155,7 +151,7 @@ public sealed class FilePortForwardProfileStore(string path) : IPortForwardProfi
         var directory = Path.GetDirectoryName(_path);
         if (!string.IsNullOrWhiteSpace(directory)) Directory.CreateDirectory(directory);
         var json = JsonSerializer.Serialize(
-            new PortForwardProfileDocument([.. profiles.OrderBy(profile => profile.HostId).ThenBy(profile => profile.Label, StringComparer.OrdinalIgnoreCase)]),
+            new PortForwardProfileDocument([.. profiles.OrderBy(profile => profile.Label, StringComparer.OrdinalIgnoreCase)]),
             PortForwardProfileJsonContext.Default.PortForwardProfileDocument);
         var temporary = _path + ".tmp";
         File.WriteAllText(temporary, json);
