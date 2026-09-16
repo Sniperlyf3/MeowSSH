@@ -5,13 +5,20 @@ namespace MeowSSH.UI.Tests;
 [Collection(nameof(TestHostCollection))]
 public sealed class EncryptedBackupTests(TestHostFixture fixture)
 {
+    private async Task<IPage> OpenBackupAsync()
+    {
+        var page = await fixture.NewPageAsync();
+        await page.GetByTestId("tab-tools").ClickAsync();
+        await page.GetByTestId("open-tool-backup").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("encrypted-backup-page")).ToBeVisibleAsync();
+        return page;
+    }
+
     [Fact]
     public async Task BackupTabExplainsEncryptionAndExportsThroughLocalFileBridge()
     {
-        var page = await fixture.NewPageAsync();
+        var page = await OpenBackupAsync();
 
-        await page.GetByTestId("tab-backup").ClickAsync();
-        await Assertions.Expect(page.GetByTestId("encrypted-backup-page")).ToBeVisibleAsync();
         await Assertions.Expect(page.GetByTestId("encrypted-backup-page"))
             .ToContainTextAsync("never written as plaintext");
 
@@ -24,8 +31,7 @@ public sealed class EncryptedBackupTests(TestHostFixture fixture)
     [Fact]
     public async Task ImportCancellationDoesNotShowDestructiveRestoreForm()
     {
-        var page = await fixture.NewPageAsync();
-        await page.GetByTestId("tab-backup").ClickAsync();
+        var page = await OpenBackupAsync();
 
         await page.GetByTestId("backup-import").ClickAsync();
 
