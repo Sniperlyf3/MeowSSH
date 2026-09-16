@@ -17,10 +17,11 @@ public sealed class DiagnosticReportPromptTests(TestHostFixture fixture)
     {
         var page = await OpenPromptAsync();
 
-        await Assertions.Expect(page.GetByTestId("send-diagnostic-report")).ToBeVisibleAsync();
-        await Assertions.Expect(page.GetByTestId("dismiss-diagnostic-report")).ToBeVisibleAsync();
-        await Assertions.Expect(page.GetByTestId("discard-diagnostic-report")).Not.ToBeVisibleAsync();
+        await Assertions.Expect(page.GetByTestId("save-diagnostic-report")).ToBeVisibleAsync();
+        await Assertions.Expect(page.GetByTestId("discard-diagnostic-report")).ToBeVisibleAsync();
         await Assertions.Expect(page.GetByTestId("diagnostic-exception-summary")).Not.ToBeVisibleAsync();
+        await Assertions.Expect(page.GetByTestId("diagnostic-report-prompt"))
+            .ToContainTextAsync("Nothing was uploaded");
     }
 
     [Fact]
@@ -28,39 +29,27 @@ public sealed class DiagnosticReportPromptTests(TestHostFixture fixture)
     {
         var page = await OpenPromptAsync();
 
-        await page.GetByText("Review what’s included", new() { Exact = true }).ClickAsync();
+        await page.GetByText("Review saved report", new() { Exact = true }).ClickAsync();
 
         await Assertions.Expect(page.GetByTestId("diagnostic-exception-summary")).ToBeVisibleAsync();
         await Assertions.Expect(page.GetByTestId("diagnostic-report-prompt"))
             .ToContainTextAsync("Not included: terminal contents, commands, host names, addresses, usernames, file names, passwords, keys, or account identifiers.");
-        await Assertions.Expect(page.GetByTestId("discard-diagnostic-report")).ToBeVisibleAsync();
     }
 
     [Fact]
-    public async Task PrimarySendPathTakesOneTap()
+    public async Task PrimarySavePathTakesOneTap()
     {
         var page = await OpenPromptAsync();
 
-        await page.GetByTestId("send-diagnostic-report").ClickAsync();
+        await page.GetByTestId("save-diagnostic-report").ClickAsync();
 
-        await Assertions.Expect(page.GetByTestId("diagnostic-result")).ToContainTextAsync("Send requested");
+        await Assertions.Expect(page.GetByTestId("diagnostic-result")).ToContainTextAsync("Save requested");
     }
 
     [Fact]
-    public async Task NotNowTakesOneTapAndDoesNotRequireReviewingDetails()
+    public async Task DiscardTakesOneTapWithoutRequiringReview()
     {
         var page = await OpenPromptAsync();
-
-        await page.GetByTestId("dismiss-diagnostic-report").ClickAsync();
-
-        await Assertions.Expect(page.GetByTestId("diagnostic-result")).ToContainTextAsync("Deferred");
-    }
-
-    [Fact]
-    public async Task DestructiveDiscardIsAvailableOnlyInsideTheReviewDisclosure()
-    {
-        var page = await OpenPromptAsync();
-        await page.GetByText("Review what’s included", new() { Exact = true }).ClickAsync();
 
         await page.GetByTestId("discard-diagnostic-report").ClickAsync();
 
@@ -71,7 +60,7 @@ public sealed class DiagnosticReportPromptTests(TestHostFixture fixture)
     public async Task PromptDoesNotCreateHorizontalOverflowAtPhoneWidth()
     {
         var page = await OpenPromptAsync();
-        await page.GetByText("Review what’s included", new() { Exact = true }).ClickAsync();
+        await page.GetByText("Review saved report", new() { Exact = true }).ClickAsync();
 
         var overflows = await page.EvaluateAsync<bool>(
             "() => document.documentElement.scrollWidth > document.documentElement.clientWidth");

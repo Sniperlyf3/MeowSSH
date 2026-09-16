@@ -3,21 +3,10 @@
 @using MeowSSH.UI.Pages
 @using MeowSSH.Core.Diagnostics
 @using MeowSSH.Core.Ssh
-@* Without an explicit render mode the page is statically rendered: it looks
-   right but no button does anything, so every interaction test fails. *@
 @rendermode InteractiveServer
-
-@*
-    The Linux-runnable face of the app. It mounts the same components the Android
-    build does, against fakes, so Playwright can drive real flows in CI without an
-    emulator. Query parameters pick the scenario, which keeps each test a plain
-    navigation rather than a setup script.
-*@
 
 @if (RendererInfo.IsInteractive)
 {
-    @* Marks the circuit as live. Until this appears the markup is server-rendered
-       only: it looks finished but no handler is wired, so a click does nothing. *@
     <span data-testid="interactive" hidden></span>
 }
 
@@ -27,8 +16,7 @@
         <p class="visually-hidden">Diagnostic prompt playground</p>
     </div>
     <DiagnosticReportPrompt Report="_diagnosticReport"
-                            OnSend="SendDiagnosticReport"
-                            OnDismiss="DismissDiagnosticReport"
+                            OnSave="SaveDiagnosticReport"
                             OnDiscard="DiscardDiagnosticReport" />
 }
 else if (_diagnosticResult is not null)
@@ -97,7 +85,6 @@ else
     private string? _diagnosticResult;
 
     private sealed record SessionState(HostRecord Host, FakeSshShell Shell);
-
     private sealed record FilesState(HostRecord Host, FakeSftpSession Sftp);
 
     protected override void OnInitialized()
@@ -105,8 +92,6 @@ else
         var query = new Uri(Navigation.Uri).Query;
         _multi = query.Contains("multi", StringComparison.OrdinalIgnoreCase);
         _setup = !_multi && query.Contains("setup", StringComparison.OrdinalIgnoreCase);
-        // AppRoot owns the vault UI in the multi-session scenario, but starts
-        // unlocked so these tests can focus on session behavior rather than auth.
         Vault.Reset(_multi ? VaultState.Unlocked : _setup ? VaultState.NotCreated : VaultState.Locked);
         _unlocked = _multi || (!_setup && !query.Contains("locked", StringComparison.OrdinalIgnoreCase));
         if (query.Contains("keys", StringComparison.OrdinalIgnoreCase)) _tab = "keys";
@@ -125,12 +110,8 @@ else
         _sessionStarted = false;
     }
 
-    private void OpenFiles(HostRecord host) =>
-        _files = new FilesState(host, new FakeSftpSession());
+    private void OpenFiles(HostRecord host) => _files = new FilesState(host, new FakeSftpSession());
 
-    // The shell is started after a render, so TerminalView has been initialised
-    // and is subscribed. Starting it inline would emit the banner into a session
-    // nothing is listening to yet.
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (_multi || _session is null || _sessionStarted) return;
@@ -152,16 +133,10 @@ else
         _editTarget = null;
     }
 
-    private void SendDiagnosticReport()
+    private void SaveDiagnosticReport()
     {
         _diagnosticReport = null;
-        _diagnosticResult = "Send requested";
-    }
-
-    private void DismissDiagnosticReport()
-    {
-        _diagnosticReport = null;
-        _diagnosticResult = "Deferred";
+        _diagnosticResult = "Save requested";
     }
 
     private void DiscardDiagnosticReport()
@@ -183,7 +158,6 @@ else
             DateTimeOffset.UtcNow);
     }
 
-    /// <summary>The host the file browser opens against when driven by URL.</summary>
     private static HostRecord SampleHost => new()
     {
         Id = Guid.NewGuid(),

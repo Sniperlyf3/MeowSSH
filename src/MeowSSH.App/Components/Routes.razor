@@ -1,5 +1,8 @@
 @using MeowSSH.UI.Components
 
 @* The app is one screen deep at a time and navigates by state rather than URL,
-   so there is no router: AppRoot decides what is showing. *@
+   so there is no router: AppRoot decides what is showing. CrashReportGate is
+   rendered alongside it so a persisted local report can be offered on the next
+   safe launch without blocking vault/session initialization. *@
 <AppRoot />
+<CrashReportGate />
