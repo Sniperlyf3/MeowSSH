@@ -83,6 +83,15 @@ jobs:
             fi
           done
 
+          if grep -Fq 'A public support/privacy contact must be inserted here before the Play Store production listing is submitted.' PRIVACY.md; then
+            echo "::error::PRIVACY.md still contains the unresolved public support/privacy contact placeholder."
+            exit 1
+          fi
+          if grep -Fq 'The exact infrastructure model must be finalized before public launch' PRIVACY.md; then
+            echo "::error::PRIVACY.md still marks the Tailcat coordination/relay infrastructure model as unresolved."
+            exit 1
+          fi
+
           if ! [[ "${{ inputs.version_code }}" =~ ^[1-9][0-9]*$ ]]; then
             echo "::error::version_code must be a positive integer."
             exit 1
@@ -124,6 +133,7 @@ jobs:
             "-p:ApplicationDisplayVersion=${{ inputs.version_name }}" \
             "-p:ApplicationVersion=${{ inputs.version_code }}" \
             "-p:EnableTailcatVpn=${{ inputs.include_tailcat_vpn }}" \
+            -p:EnableProCloudSales=false \
             "-p:LicensingApiBaseUrl=$LICENSING_API_BASE_URL" \
             "-p:LicensingPublicKeySubjectPublicKeyInfoBase64=$LICENSING_PUBLIC_KEY" \
             "-p:PrivacyPolicyUrl=$PRIVACY_POLICY_URL" \
@@ -157,6 +167,7 @@ jobs:
 
           echo "AAB=$AAB" >> "$GITHUB_ENV"
           echo "Play ABIs: arm64-v8a, x86_64" >> "$GITHUB_STEP_SUMMARY"
+          echo "Pro Cloud sales: disabled" >> "$GITHUB_STEP_SUMMARY"
           echo "Privacy/support links: configured" >> "$GITHUB_STEP_SUMMARY"
           echo "Play bundle: $AAB ($(du -h "$AAB" | cut -f1))" >> "$GITHUB_STEP_SUMMARY"
           echo "Version: ${{ inputs.version_name }} (${{ inputs.version_code }})" >> "$GITHUB_STEP_SUMMARY"
