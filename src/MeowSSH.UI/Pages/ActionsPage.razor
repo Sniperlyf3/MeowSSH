@@ -150,6 +150,7 @@
                         <button type="button" class="btn btn--ghost" disabled="@(_runningActionId is not null)"
                                 data-testid="delete-action-@action.Id" @onclick="() => DeleteAsync(action.Id)">Delete</button>
                     </div>
+                    <ActionSequenceControl Action="action" />
                 </article>
             }
         </div>
