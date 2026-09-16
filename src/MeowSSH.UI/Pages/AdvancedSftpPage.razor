@@ -37,7 +37,7 @@
             </div>
         </div>
 
-        <SftpRemoteSearchPanel Sftp="Sftp" RootPath="_path" OnNavigate="NavigateAsync" />
+        <SftpRemoteSearchPanel Sftp="Sftp" RootPath="@_path" OnNavigate="NavigateAsync" />
 
         @if (_error is not null)
         {
