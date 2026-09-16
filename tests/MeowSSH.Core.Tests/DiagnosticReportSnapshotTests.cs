@@ -47,7 +47,7 @@ public sealed class DiagnosticReportSnapshotTests
     public void CaptureClampsLargeTextFields()
     {
         var huge = new string('x', DiagnosticReportSnapshotBuilder.MaxStackTraceLength * 2);
-        var exception = new Exception(huge);
+        var exception = new InvalidOperationException(huge);
 
         var report = DiagnosticReportSnapshotBuilder.Capture(
             exception,
@@ -70,7 +70,7 @@ public sealed class DiagnosticReportSnapshotTests
             breadcrumbs.Add(DiagnosticBreadcrumbKind.OpenedSettings, start.AddSeconds(i));
 
         var report = DiagnosticReportSnapshotBuilder.Capture(
-            new Exception("boom"),
+            new InvalidOperationException("boom"),
             breadcrumbs,
             "1.2.3",
             "Android",
@@ -86,7 +86,7 @@ public sealed class DiagnosticReportSnapshotTests
     {
         var capturedAt = new DateTimeOffset(2026, 9, 16, 13, 30, 0, TimeSpan.Zero);
         var report = DiagnosticReportSnapshotBuilder.Capture(
-            new Exception("boom"),
+            new InvalidOperationException("boom"),
             new DiagnosticBreadcrumbBuffer(),
             "2.0.0",
             "Android",
