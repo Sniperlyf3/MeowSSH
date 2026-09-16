@@ -6,7 +6,7 @@ namespace MeowSSH.UI.Tests;
 public sealed class LaunchSettingsTests(TestHostFixture fixture)
 {
     [Fact]
-    public async Task SettingsExposeBuildPrivacyAndSupportDestinations()
+    public async Task SettingsExposeBuildPrivacyTermsAndSupportDestinations()
     {
         var page = await fixture.NewPageAsync();
 
@@ -15,6 +15,7 @@ public sealed class LaunchSettingsTests(TestHostFixture fixture)
         await Assertions.Expect(page.GetByTestId("about-support-settings")).ToBeVisibleAsync();
         await Assertions.Expect(page.GetByTestId("build-version")).Not.ToBeEmptyAsync();
         await Assertions.Expect(page.GetByTestId("privacy-policy")).ToBeVisibleAsync();
+        await Assertions.Expect(page.GetByTestId("terms-of-service")).ToBeVisibleAsync();
         await Assertions.Expect(page.GetByTestId("support-link")).ToBeVisibleAsync();
     }
 }
