@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Security.Cryptography.X509Certificates;
 using Android.Security.Keystore;
 using Java.Security;
 using Java.Security.Interfaces;
@@ -130,9 +131,8 @@ public sealed class AndroidSshHardwareKeyStore : ISshHardwareKeyStore
         var alias = Alias(keyId);
         if (!store.ContainsAlias(alias)) return null;
 
-        var certificate = store.GetCertificate(alias);
-        if (certificate?.PublicKey is not IECPublicKey publicKey)
-            throw new InvalidOperationException("The selected AndroidKeyStore entry is not a P-256 EC key.");
+        var certificate = store.GetCertificate(alias)
+            ?? throw new InvalidOperationException("The selected AndroidKeyStore entry has no public certificate.");
 
         var privateKey = store.GetKey(alias, null);
         if (privateKey is not IPrivateKey typedPrivateKey)
@@ -141,7 +141,7 @@ public sealed class AndroidSshHardwareKeyStore : ISshHardwareKeyStore
         var (hardwareBacked, strongBoxBacked) = GetBacking(typedPrivateKey);
         return new SshHardwareKeyInfo(
             keyId,
-            ToOpenSshPublicKey(publicKey, keyId),
+            ToOpenSshPublicKey(certificate.GetEncoded(), keyId),
             hardwareBacked,
             strongBoxBacked);
     }
@@ -173,11 +173,19 @@ public sealed class AndroidSshHardwareKeyStore : ISshHardwareKeyStore
         }
     }
 
-    private static string ToOpenSshPublicKey(IECPublicKey publicKey, string keyId)
+    private static string ToOpenSshPublicKey(byte[] certificateDer, string keyId)
     {
-        var point = publicKey.GetW() ?? throw new InvalidOperationException("Android returned an EC key with no public point.");
-        var x = FixedUnsigned(point.AffineX?.ToByteArray(), CoordinateBytes);
-        var y = FixedUnsigned(point.AffineY?.ToByteArray(), CoordinateBytes);
+        // Android's Java binding does not consistently expose the certificate's
+        // EC public key as IECPublicKey on every runtime. Decode the standard
+        // X.509 SubjectPublicKeyInfo through .NET instead; this exports public
+        // coordinates only and never touches the AndroidKeyStore private key.
+        using var certificate = X509CertificateLoader.LoadCertificate(certificateDer);
+        using var publicKey = certificate.GetECDsaPublicKey()
+            ?? throw new InvalidOperationException("The selected AndroidKeyStore entry is not an EC key.");
+        var parameters = publicKey.ExportParameters(includePrivateParameters: false);
+        var x = FixedCoordinate(parameters.Q.X);
+        var y = FixedCoordinate(parameters.Q.Y);
+
         var q = new byte[1 + CoordinateBytes * 2];
         q[0] = 0x04;
         x.CopyTo(q, 1);
@@ -201,18 +209,14 @@ public sealed class AndroidSshHardwareKeyStore : ISshHardwareKeyStore
         return 4 + value.Length;
     }
 
-    private static byte[] FixedUnsigned(byte[]? signedBigEndian, int width)
+    private static byte[] FixedCoordinate(byte[]? coordinate)
     {
-        if (signedBigEndian is null || signedBigEndian.Length == 0)
-            throw new InvalidOperationException("Android returned an invalid EC public coordinate.");
+        if (coordinate is null || coordinate.Length == 0 || coordinate.Length > CoordinateBytes)
+            throw new InvalidOperationException("Android returned an invalid P-256 public coordinate.");
 
-        var source = signedBigEndian.AsSpan();
-        while (source.Length > 1 && source[0] == 0) source = source[1..];
-        if (source.Length > width)
-            throw new InvalidOperationException("Android returned an EC public coordinate wider than P-256.");
-
-        var output = new byte[width];
-        source.CopyTo(output.AsSpan(width - source.Length));
+        if (coordinate.Length == CoordinateBytes) return coordinate;
+        var output = new byte[CoordinateBytes];
+        coordinate.CopyTo(output, CoordinateBytes - coordinate.Length);
         return output;
     }
 
