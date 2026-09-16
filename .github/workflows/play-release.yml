@@ -16,6 +16,11 @@ on:
         required: true
         default: false
         type: boolean
+      publish_internal:
+        description: Publish the verified bundle to the Google Play internal testing track
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -51,6 +56,7 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
           LICENSING_API_BASE_URL: ${{ vars.LICENSING_API_BASE_URL }}
           LICENSING_PUBLIC_KEY: ${{ vars.LICENSING_PUBLIC_KEY_SUBJECT_PUBLIC_KEY_INFO_BASE64 }}
           PRIVACY_POLICY_URL: ${{ vars.PRIVACY_POLICY_URL }}
@@ -64,6 +70,11 @@ jobs:
               exit 1
             fi
           done
+
+          if [[ "${{ inputs.publish_internal }}" == "true" && -z "$GOOGLE_PLAY_SERVICE_ACCOUNT_JSON" ]]; then
+            echo "::error::GOOGLE_PLAY_SERVICE_ACCOUNT_JSON is required when publishing to the Play internal track."
+            exit 1
+          fi
 
           for name in PRIVACY_POLICY_URL SUPPORT_URL; do
             if [[ "${!name}" != https://* ]]; then
@@ -151,10 +162,28 @@ jobs:
           echo "Version: ${{ inputs.version_name }} (${{ inputs.version_code }})" >> "$GITHUB_STEP_SUMMARY"
           echo "Commit: ${{ github.sha }}" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload Play bundle
+      - name: Upload Play bundle artifact
         uses: actions/upload-artifact@v7
         with:
           name: meowssh-play-${{ inputs.version_name }}-${{ inputs.version_code }}
           path: ${{ env.AAB }}
           if-no-files-found: error
           retention-days: 30
+
+      # Pinned to upload-google-play v1.1.5 rather than a mutable tag.
+      - name: Publish to Google Play internal testing
+        if: ${{ inputs.publish_internal }}
+        uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: dev.sniperlyf3.meowssh
+          releaseFiles: ${{ env.AAB }}
+          tracks: internal
+          status: completed
+
+      - name: Summarize Play publication
+        if: ${{ inputs.publish_internal }}
+        shell: bash
+        run: |
+          echo "Google Play track: internal" >> "$GITHUB_STEP_SUMMARY"
+          echo "Publication: requested and committed through the Android Publisher API" >> "$GITHUB_STEP_SUMMARY"
