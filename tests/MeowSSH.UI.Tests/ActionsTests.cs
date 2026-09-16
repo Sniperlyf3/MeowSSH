@@ -64,6 +64,32 @@ public sealed class ActionsTests(TestHostFixture fixture)
         await Assertions.Expect(page.Locator("[data-testid^='action-result-']")).ToHaveCountAsync(2);
     }
 
+    [Fact]
+    public async Task ProParameterizedActionPromptsForEphemeralValues()
+    {
+        var page = await OpenActionsAsync();
+
+        await page.GetByTestId("add-action").ClickAsync();
+        await page.GetByTestId("action-name").FillAsync("Deploy environment");
+        await page.GetByTestId("action-command").FillAsync("echo {{environment}}");
+        await SelectHostAsync(page, "prod-web-01");
+        await page.GetByTestId("save-action").ClickAsync();
+
+        var card = page.Locator("[data-testid^='action-card-']").Filter(new LocatorFilterOptions { HasTextString = "Deploy environment" });
+        await Assertions.Expect(card).ToContainTextAsync("{{environment}}");
+        await Assertions.Expect(card.GetByTestId("action-variable-summary")).ToContainTextAsync("environment");
+        await Assertions.Expect(card.Locator("[data-testid^='run-action-']")).ToHaveCountAsync(0);
+
+        await card.Locator("[data-testid^='run-parameterized-action-']").ClickAsync();
+        await page.GetByTestId("action-variable-environment").FillAsync("production west");
+        await page.GetByTestId("confirm-parameterized-action").ClickAsync();
+
+        var results = card.GetByTestId("parameterized-action-results");
+        await Assertions.Expect(results).ToContainTextAsync("Completed successfully");
+        await Assertions.Expect(results).ToContainTextAsync("echo 'production west' on");
+        await Assertions.Expect(card).ToContainTextAsync("{{environment}}");
+    }
+
     private static async Task SelectHostAsync(IPage page, string label)
     {
         var host = page.Locator("label.action-host").Filter(new LocatorFilterOptions { HasTextString = label });

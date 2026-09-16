@@ -1,0 +1,127 @@
+@inject IParameterizedCommandActionRunner Runner
+
+<div class="parameterized-action" data-testid="parameterized-action-@Action.Id">
+    @if (!_editing)
+    {
+        <button type="button" class="btn btn--primary"
+                data-testid="run-parameterized-action-@Action.Id"
+                disabled="@Disabled" @onclick="Open">
+            Run with values
+        </button>
+    }
+    else
+    {
+        <div class="sheet" role="dialog" aria-label="Action values" data-testid="action-values-dialog">
+            <p class="sheet__title">@Action.Name</p>
+            <p class="sheet__body">Values apply to this run only and are not saved.</p>
+            <div class="stack">
+                @foreach (var variable in _variables)
+                {
+                    <label class="field">
+                        <span class="field__label">@variable</span>
+                        <input class="field__input mono"
+                               data-testid="action-variable-@variable"
+                               autocomplete="off" autocapitalize="none" spellcheck="false"
+                               value="@_values[variable]"
+                               @oninput="args => SetValue(variable, args.Value?.ToString() ?? string.Empty)" />
+                    </label>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(_message))
+                {
+                    <p class="action-message" role="alert" data-testid="action-variable-message">@_message</p>
+                }
+
+                <button type="button" class="btn btn--primary btn--block"
+                        data-testid="confirm-parameterized-action"
+                        disabled="@_running" @onclick="RunAsync">
+                    @(_running ? "Running…" : "Run Action")
+                </button>
+                <button type="button" class="btn btn--ghost btn--block"
+                        disabled="@_running" @onclick="Cancel">Cancel</button>
+            </div>
+        </div>
+    }
+
+    @if (_lastRun is not null)
+    {
+        <div class="action-results" data-testid="parameterized-action-results">
+            <p class="action-muted">@(_lastRun.Succeeded ? "Completed successfully" : "Completed with failures")</p>
+            @foreach (var result in _lastRun.Hosts)
+            {
+                <article class="action-result @(result.State == CommandActionHostState.Succeeded ? "is-success" : "is-failure")">
+                    <div class="action-result__headline">
+                        <strong>@result.HostLabel</strong>
+                        <span>@(result.State == CommandActionHostState.Succeeded ? $"exit {result.ExitCode ?? 0}" : result.Message ?? "failed")</span>
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(result.StandardOutput))
+                    {
+                        <div class="action-output"><span>stdout</span><pre>@result.StandardOutput</pre></div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(result.StandardError))
+                    {
+                        <div class="action-output"><span>stderr</span><pre>@result.StandardError</pre></div>
+                    }
+                </article>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public CommandAction Action { get; set; } = null!;
+    [Parameter] public bool Disabled { get; set; }
+
+    private IReadOnlyList<string> _variables = [];
+    private readonly Dictionary<string, string> _values = new(StringComparer.Ordinal);
+    private bool _editing;
+    private bool _running;
+    private string? _message;
+    private CommandActionRun? _lastRun;
+
+    private void Open()
+    {
+        _variables = CommandActionTemplate.GetVariables(Action.Command);
+        _values.Clear();
+        foreach (var variable in _variables) _values[variable] = string.Empty;
+        _message = null;
+        _editing = true;
+    }
+
+    private void SetValue(string variable, string value) => _values[variable] = value;
+
+    private async Task RunAsync()
+    {
+        if (_running) return;
+        _running = true;
+        _message = null;
+        _lastRun = null;
+        try
+        {
+            _lastRun = await Runner.RunAsync(Action.Id, _values);
+            ClearInputs();
+            _editing = false;
+        }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or KeyNotFoundException)
+        {
+            _message = exception.Message;
+        }
+        finally
+        {
+            _running = false;
+        }
+    }
+
+    private void Cancel()
+    {
+        ClearInputs();
+        _message = null;
+        _editing = false;
+    }
+
+    private void ClearInputs()
+    {
+        foreach (var key in _values.Keys.ToArray()) _values[key] = string.Empty;
+        _values.Clear();
+    }
+}
