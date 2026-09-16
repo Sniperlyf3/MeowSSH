@@ -38,6 +38,7 @@ builder.Services.AddScoped<ISessionLogService>(sp => new FileSessionLogService(
     Path.Combine(Path.GetTempPath(), "meowssh-testhost-session-logs", Guid.NewGuid().ToString("N")),
     sp.GetRequiredService<IEntitlementService>()));
 builder.Services.AddScoped<IAdvancedSftpService, AdvancedSftpService>();
+builder.Services.AddScoped<ISftpRemoteSearchService, SftpRemoteSearchService>();
 builder.Services.AddScoped<IEncryptedVaultBackupService, FakeEncryptedVaultBackupService>();
 builder.Services.AddScoped<FakeSshHardwareKeyStore>();
 builder.Services.AddScoped<ISshHardwareKeyStore>(sp => sp.GetRequiredService<FakeSshHardwareKeyStore>());
