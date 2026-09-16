@@ -39,6 +39,8 @@ builder.Services.AddScoped<ISessionLogService>(sp => new FileSessionLogService(
     sp.GetRequiredService<IEntitlementService>()));
 builder.Services.AddScoped<IAdvancedSftpService, AdvancedSftpService>();
 builder.Services.AddScoped<IEncryptedVaultBackupService, FakeEncryptedVaultBackupService>();
+builder.Services.AddScoped<IPortForwardProfileStore, MemoryPortForwardProfileStore>();
+builder.Services.AddScoped<IPortForwardProfileService, PortForwardProfileService>();
 builder.Services.AddScoped<FakeSshHardwareKeyStore>();
 builder.Services.AddScoped<ISshHardwareKeyStore>(sp => sp.GetRequiredService<FakeSshHardwareKeyStore>());
 builder.Services.AddScoped<ISshHardwareKeySigner>(sp => sp.GetRequiredService<FakeSshHardwareKeyStore>());
