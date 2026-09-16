@@ -17,6 +17,7 @@ public enum PremiumFeature
     TailcatAdvancedRouting,
     AdvancedSftp,
     MultiHostActions,
+    ActionVariables,
     CommandMonitoring,
     SessionLogs,
     PremiumCustomization,
