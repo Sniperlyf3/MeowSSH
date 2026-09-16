@@ -18,15 +18,12 @@
     <AndroidExtractNativeLibraries>true</AndroidExtractNativeLibraries>
     <SupportedOSPlatformVersion>28.0</SupportedOSPlatformVersion>
 
-    <!-- Local/dev/CI builds keep VPN enabled so the implementation remains
-         continuously covered. The production release workflow explicitly
-         chooses whether the capability is packaged. -->
     <EnableTailcatVpn Condition="'$(EnableTailcatVpn)' == ''">true</EnableTailcatVpn>
 
-    <!-- Public deployment configuration injected by MSBuild/CI. Empty values
-         deliberately leave licensing fail-closed for local/dev builds. -->
     <LicensingApiBaseUrl Condition="'$(LicensingApiBaseUrl)' == ''"></LicensingApiBaseUrl>
     <LicensingPublicKeySubjectPublicKeyInfoBase64 Condition="'$(LicensingPublicKeySubjectPublicKeyInfoBase64)' == ''"></LicensingPublicKeySubjectPublicKeyInfoBase64>
+    <PrivacyPolicyUrl Condition="'$(PrivacyPolicyUrl)' == ''"></PrivacyPolicyUrl>
+    <SupportUrl Condition="'$(SupportUrl)' == ''"></SupportUrl>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(EnableTailcatVpn)' == 'true'">
@@ -36,6 +33,8 @@
   <ItemGroup>
     <AssemblyMetadata Include="MeowSSH.Licensing.ApiBaseUrl" Value="$(LicensingApiBaseUrl)" />
     <AssemblyMetadata Include="MeowSSH.Licensing.PublicKeySubjectPublicKeyInfoBase64" Value="$(LicensingPublicKeySubjectPublicKeyInfoBase64)" />
+    <AssemblyMetadata Include="MeowSSH.Launch.PrivacyPolicyUrl" Value="$(PrivacyPolicyUrl)" />
+    <AssemblyMetadata Include="MeowSSH.Launch.SupportUrl" Value="$(SupportUrl)" />
   </ItemGroup>
 
   <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
@@ -46,17 +45,10 @@
 
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
     <AndroidPackageFormat>apk</AndroidPackageFormat>
-    <!-- Release builds are materially harder to inspect than the previous
-         interpreter/JIT-oriented package, while Debug remains fast for local
-         development and emulator testing. -->
     <RunAOTCompilation>true</RunAOTCompilation>
     <AndroidLinkMode>Full</AndroidLinkMode>
   </PropertyGroup>
 
-  <!-- Full linking remains enabled for MeowSSH itself. These assemblies use
-       reflection, Java export callbacks, or other runtime discovery that the
-       trimmer cannot prove safe statically, so preserve them as explicit
-       boundaries instead of disabling aggressive trimming globally. -->
   <ItemGroup Condition="'$(Configuration)' == 'Release'">
     <TrimmerRootAssembly Include="Meowshell" />
     <TrimmerRootAssembly Include="Microsoft.AspNetCore.Components" />
@@ -81,10 +73,6 @@
     <PackageReference Include="ZXing.Net.Maui.Controls" Version="0.10.4" />
     <PackageReference Include="Xamarin.Android.Google.BillingClient" Version="9.1.0.2" />
     <PackageReference Include="Xamarin.Google.Android.Play.Integrity" Version="1.6.0.4" />
-
-    <!-- Billing 9.1 pulls the current AndroidX Activity/Core generation.
-         MAUI also references KTX packages with narrow ranges, so align those
-         wrappers explicitly instead of allowing a mixed-generation graph. -->
     <PackageReference Include="Xamarin.AndroidX.Collection.Ktx" Version="1.6.0.1" />
     <PackageReference Include="Xamarin.AndroidX.Fragment.Ktx" Version="1.9.0" />
     <PackageReference Include="Xamarin.AndroidX.Lifecycle.LiveData" Version="2.11.0.1" />
@@ -93,13 +81,10 @@
     <PackageReference Include="Xamarin.AndroidX.Tracing.Tracing.Ktx" Version="2.0.0" />
   </ItemGroup>
 
-  <!-- Native TCP+UDP TUN-to-SOCKS bridge used only by Android VpnService. -->
   <ItemGroup Condition="'$(EnableTailcatVpn)' == 'true'">
     <AndroidMavenLibrary Include="com.wgtunnel:hevtunnel" Version="1.0.4" Bind="false" VerifyDependencies="false" />
   </ItemGroup>
 
-  <!-- A build with VPN disabled must not contain the VpnService implementation
-       or native tunnel entry point at all. -->
   <ItemGroup Condition="'$(EnableTailcatVpn)' != 'true'">
     <Compile Remove="Platforms\Android\AndroidTailcatVpnController.cs" />
     <Compile Remove="Platforms\Android\TailcatVpnService.cs" />
