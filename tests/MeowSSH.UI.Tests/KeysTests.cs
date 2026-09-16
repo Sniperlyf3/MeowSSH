@@ -46,8 +46,6 @@ public class KeysTests(TestHostFixture fixture)
         await page.GetByTestId("save-credential").ClickAsync();
 
         await Assertions.Expect(page.GetByTestId("credential-row")).ToHaveCountAsync(1);
-        // The list is built from summaries that have nowhere to put a secret.
-        // Proving the key body never reaches the page is the whole point.
         await Assertions.Expect(page.GetByText("BEGIN OPENSSH PRIVATE KEY")).ToHaveCountAsync(0);
     }
 
@@ -88,7 +86,9 @@ public class KeysTests(TestHostFixture fixture)
         await page.GetByTestId("credential-public-key").FillAsync("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITestKey ops@example");
         await page.GetByTestId("save-credential").ClickAsync();
 
-        await page.GetByTestId("tab-tailcat").ClickAsync();
+        await page.GetByTestId("tab-tools").ClickAsync();
+        await page.GetByTestId("open-tool-tailcat").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("tailcat-page")).ToBeVisibleAsync();
         await page.GetByTestId("tailcat-exit-node").UncheckAsync();
         await page.GetByTestId("tailcat-allowed-clients").FillAsync("nodekey:test-client");
         await page.GetByTestId("tailcat-shell").CheckAsync();
@@ -122,8 +122,6 @@ public class KeysTests(TestHostFixture fixture)
         var page = await fixture.NewPageAsync("/?keys");
         await page.GetByTestId("add-credential").ClickAsync();
 
-        // A key pasted into a one-line input is unreviewable, and the default
-        // kind is the one people paste keys into.
         var tag = await page.GetByTestId("credential-secret").EvaluateAsync<string>("el => el.tagName");
         Assert.Equal("TEXTAREA", tag);
     }
@@ -137,8 +135,6 @@ public class KeysTests(TestHostFixture fixture)
 
         await secret.FillAsync(SampleKey);
 
-        // Base64 is case-sensitive. Uppercasing it in CSS would leave a key
-        // that looks right on screen and is silently corrupt.
         var transform = await secret.EvaluateAsync<string>("el => getComputedStyle(el).textTransform");
         Assert.Equal("none", transform);
         await Assertions.Expect(secret).ToHaveValueAsync(SampleKey);
@@ -155,8 +151,6 @@ public class KeysTests(TestHostFixture fixture)
         await page.GetByTestId("cancel-credential").ClickAsync();
         await page.GetByTestId("add-credential").ClickAsync();
 
-        // A half-typed private key still sitting in the field on the next visit
-        // is a secret nobody meant to keep.
         await Assertions.Expect(page.GetByTestId("credential-secret")).ToHaveValueAsync("");
     }
 
@@ -186,8 +180,6 @@ public class KeysTests(TestHostFixture fixture)
         await page.GetByTestId("tab-hosts").ClickAsync();
         await page.GetByTestId("add-host").ClickAsync();
 
-        // The two screens are only useful together: a key nobody can point a
-        // host at is a key that does nothing.
         await Assertions.Expect(page.GetByTestId("host-credential")).ToContainTextAsync("deploy key");
     }
 }
