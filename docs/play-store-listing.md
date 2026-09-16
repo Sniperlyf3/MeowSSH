@@ -24,7 +24,7 @@ Official guidance used for this checklist:
 
 `SSH, SFTP, terminal, keys and secure remote tools for Android.`
 
-- 61 characters including punctuation/spaces; Play limit is 80.
+- 62 characters including punctuation/spaces; Play limit is 80.
 - Do not add `free`, discount language, rankings, competitor names or unsupported features.
 
 ### Full description
