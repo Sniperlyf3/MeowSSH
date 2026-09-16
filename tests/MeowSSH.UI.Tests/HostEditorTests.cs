@@ -18,6 +18,23 @@ public class HostEditorTests(TestHostFixture fixture)
     }
 
     [Fact]
+    public async Task CommonConnectionPathIsVisibleWithoutOptionalClutter()
+    {
+        var page = await fixture.NewPageAsync("/?newhost");
+
+        await Assertions.Expect(page.GetByTestId("host-label")).ToBeVisibleAsync();
+        await Assertions.Expect(page.GetByTestId("host-protocol")).ToBeVisibleAsync();
+        await Assertions.Expect(page.GetByTestId("host-transport")).ToBeVisibleAsync();
+        await Assertions.Expect(page.GetByTestId("host-address")).ToBeVisibleAsync();
+        await Assertions.Expect(page.GetByTestId("host-credential")).ToBeVisibleAsync();
+
+        await Assertions.Expect(page.GetByTestId("host-organisation")).Not.ToHaveAttributeAsync("open", "");
+        await Assertions.Expect(page.GetByTestId("host-advanced")).Not.ToHaveAttributeAsync("open", "");
+        await Assertions.Expect(page.GetByTestId("host-group")).Not.ToBeVisibleAsync();
+        await Assertions.Expect(page.GetByTestId("jump-host")).Not.ToBeVisibleAsync();
+    }
+
+    [Fact]
     public async Task SavingIsRefusedUntilTheHostCanActuallyBeReached()
     {
         var page = await fixture.NewPageAsync("/?newhost");
@@ -51,6 +68,7 @@ public class HostEditorTests(TestHostFixture fixture)
         var page = await fixture.NewPageAsync("/?newhost");
         await page.GetByTestId("host-label").FillAsync("organized-host");
         await page.GetByTestId("host-address").FillAsync("10.8.8.8");
+        await page.GetByTestId("host-organisation").Locator("summary").ClickAsync();
         await page.GetByTestId("host-group").FillAsync("Operations");
         await page.GetByTestId("host-tags").FillAsync("prod, eu-west, PROD");
         await page.GetByTestId("host-favorite").CheckAsync();
@@ -60,6 +78,7 @@ public class HostEditorTests(TestHostFixture fixture)
         await Assertions.Expect(page.Locator(".section-label").Filter(new() { HasText = "Favorites" })).ToBeVisibleAsync();
         var wrap = page.Locator(".host-wrap").Filter(new() { HasText = "organized-host" });
         await wrap.GetByTestId("edit-host").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("host-organisation")).ToHaveAttributeAsync("open", "");
         await Assertions.Expect(page.GetByTestId("host-group")).ToHaveValueAsync("Operations");
         await Assertions.Expect(page.GetByTestId("host-tags")).ToHaveValueAsync("prod, eu-west");
         await Assertions.Expect(page.GetByTestId("host-favorite")).ToBeCheckedAsync();
@@ -84,6 +103,7 @@ public class HostEditorTests(TestHostFixture fixture)
         var page = await fixture.NewPageAsync("/?newhost");
         await page.GetByTestId("host-label").FillAsync("proxied-host");
         await page.GetByTestId("host-address").FillAsync("server.internal");
+        await page.GetByTestId("host-advanced").Locator("summary").ClickAsync();
 
         var proxy = page.GetByTestId("ssh-proxy-url");
         await Assertions.Expect(proxy).ToBeVisibleAsync();
@@ -100,9 +120,10 @@ public class HostEditorTests(TestHostFixture fixture)
     public async Task NonTcpSshTransportHidesTheUpstreamProxy()
     {
         var page = await fixture.NewPageAsync("/?newhost");
+        await page.GetByTestId("host-advanced").Locator("summary").ClickAsync();
         await Assertions.Expect(page.GetByTestId("ssh-proxy-url")).ToBeVisibleAsync();
 
-        await page.GetByTestId("transport-Tailcat").ClickAsync();
+        await page.GetByTestId("host-transport").SelectOptionAsync("Tailcat");
         await Assertions.Expect(page.GetByTestId("ssh-proxy-url")).ToHaveCountAsync(0);
     }
 
@@ -111,7 +132,7 @@ public class HostEditorTests(TestHostFixture fixture)
     {
         var page = await fixture.NewPageAsync("/?newhost");
 
-        await page.GetByTestId("transport-Tailcat").ClickAsync();
+        await page.GetByTestId("host-transport").SelectOptionAsync("Tailcat");
 
         await Assertions.Expect(page.GetByTestId("host-username")).ToHaveCountAsync(0);
         await Assertions.Expect(page.GetByTestId("host-port")).ToHaveCountAsync(0);
@@ -122,21 +143,26 @@ public class HostEditorTests(TestHostFixture fixture)
     {
         var page = await fixture.NewPageAsync("/?newhost");
 
-        await page.GetByTestId("transport-TailscaleSsh").ClickAsync();
+        await page.GetByTestId("host-transport").SelectOptionAsync("TailscaleSsh");
 
         await Assertions.Expect(page.GetByTestId("tailscale-note")).ToBeVisibleAsync();
         await Assertions.Expect(page.GetByTestId("host-credential")).ToHaveCountAsync(0);
     }
 
     [Fact]
-    public async Task TheTransportChoiceIsAnnouncedToAssistiveTechnology()
+    public async Task ProtocolAndTransportUseStableNativeSelectors()
     {
         var page = await fixture.NewPageAsync("/?newhost");
 
-        await page.GetByTestId("transport-Tailcat").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("host-protocol")).ToHaveValueAsync("Ssh");
+        await Assertions.Expect(page.GetByTestId("host-transport")).ToHaveValueAsync("Tcp");
 
-        await Assertions.Expect(page.GetByTestId("transport-Tailcat")).ToHaveAttributeAsync("aria-checked", "true");
-        await Assertions.Expect(page.GetByTestId("transport-Tcp")).ToHaveAttributeAsync("aria-checked", "false");
+        await page.GetByTestId("host-transport").SelectOptionAsync("Tailcat");
+        await Assertions.Expect(page.GetByTestId("host-transport")).ToHaveValueAsync("Tailcat");
+
+        await page.GetByTestId("host-protocol").SelectOptionAsync("Telnet");
+        await Assertions.Expect(page.GetByTestId("host-protocol")).ToHaveValueAsync("Telnet");
+        await Assertions.Expect(page.GetByTestId("host-transport")).ToHaveCountAsync(0);
     }
 
     [Fact]
@@ -169,7 +195,6 @@ public class HostEditorTests(TestHostFixture fixture)
     {
         var page = await fixture.NewPageAsync("/?newhost");
         var address = page.GetByTestId("host-address");
-
         await address.FillAsync("Build.Example.COM");
 
         var transform = await address.EvaluateAsync<string>("el => getComputedStyle(el).textTransform");
