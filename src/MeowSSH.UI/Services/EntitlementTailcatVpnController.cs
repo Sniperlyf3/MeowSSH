@@ -12,6 +12,7 @@ public sealed class EntitlementTailcatVpnController(
     ITailcatVpnController inner,
     IEntitlementService entitlements) : ITailcatVpnController
 {
+    public bool IsAvailable => inner.IsAvailable;
     public TailcatVpnSnapshot Snapshot => inner.Snapshot;
 
     public event EventHandler? Changed
@@ -23,6 +24,8 @@ public sealed class EntitlementTailcatVpnController(
     public Task StartAsync(TailcatVpnRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        if (!inner.IsAvailable)
+            throw new InvalidOperationException("Tailcat full-device VPN is not included in this MeowSSH build.");
         if (!entitlements.Has(PremiumFeature.TailcatFullDeviceVpn))
             throw new InvalidOperationException("MeowSSH Pro is required for Tailcat full-device VPN routing.");
 
