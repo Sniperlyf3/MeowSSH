@@ -82,6 +82,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<ICommandActionStore>(_ => new FileCommandActionStore(
             Path.Combine(FileSystem.AppDataDirectory, "actions.json")));
         builder.Services.AddSingleton<ICommandActionService, CommandActionService>();
+        builder.Services.AddSingleton<IParameterizedCommandActionRunner, ParameterizedCommandActionRunner>();
         builder.Services.AddSingleton<ICommandMonitorStore>(_ => new FileCommandMonitorStore(
             Path.Combine(FileSystem.AppDataDirectory, "command-monitors.json")));
         builder.Services.AddSingleton<ICommandMonitorAlertSink, AndroidCommandMonitorAlertSink>();
