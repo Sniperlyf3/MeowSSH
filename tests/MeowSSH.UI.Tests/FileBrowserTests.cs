@@ -15,6 +15,9 @@ public class FileBrowserTests(TestHostFixture fixture)
     private static ILocator Entry(IPage page, string name) =>
         page.Locator($"[data-testid=file-entry][data-file-name='{name}']");
 
+    private static ILocator Actions(IPage page, string name) =>
+        page.Locator($"[data-testid=file-actions][data-file-name='{name}']");
+
     [Fact]
     public async Task OpensInTheSessionsOwnDirectoryRatherThanTheRoot()
     {
@@ -122,6 +125,36 @@ public class FileBrowserTests(TestHostFixture fixture)
         await page.GetByTestId("create-folder").ClickAsync();
 
         await Assertions.Expect(Entry(page, "new-release")).ToBeVisibleAsync();
+    }
+
+    [Fact]
+    public async Task FileCanBeRenamedFromActionsSheet()
+    {
+        var page = await OpenFilesAsync();
+
+        await Actions(page, "start.sh").ClickAsync();
+        await page.GetByTestId("rename-file").ClickAsync();
+        await page.GetByTestId("rename-name").FillAsync("renamed.sh");
+        await page.GetByTestId("confirm-rename").ClickAsync();
+
+        await Assertions.Expect(Entry(page, "renamed.sh")).ToBeVisibleAsync();
+        await Assertions.Expect(Entry(page, "start.sh")).ToHaveCountAsync(0);
+    }
+
+    [Fact]
+    public async Task RenameRejectsPathTraversalNames()
+    {
+        var page = await OpenFilesAsync();
+
+        await Actions(page, "start.sh").ClickAsync();
+        await page.GetByTestId("rename-file").ClickAsync();
+        await page.GetByTestId("rename-name").FillAsync("../escape.sh");
+        await page.GetByTestId("confirm-rename").ClickAsync();
+
+        await Assertions.Expect(page.GetByTestId("rename-error"))
+            .ToContainTextAsync("without path separators");
+        await Assertions.Expect(page.GetByTestId("rename-sheet")).ToBeVisibleAsync();
+        await Assertions.Expect(Entry(page, "start.sh")).ToBeVisibleAsync();
     }
 
     [Fact]
