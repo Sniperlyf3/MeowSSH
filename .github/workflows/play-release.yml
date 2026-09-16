@@ -95,6 +95,48 @@ jobs:
             exit 1
           fi
 
+          LICENSING_PUBLIC_KEY_URL="${LICENSING_API_BASE_URL%/}/v1/entitlements/public-key"
+          LICENSING_PUBLIC_KEY_RESPONSE="$RUNNER_TEMP/licensing-public-key.json"
+          if ! curl --fail --location --silent --show-error --max-time 20 --retry 2 --retry-delay 1 "$LICENSING_PUBLIC_KEY_URL" -o "$LICENSING_PUBLIC_KEY_RESPONSE"; then
+            echo "::error::The production licensing public-key endpoint must be reachable before a Play release."
+            exit 1
+          fi
+          if ! python3 - "$LICENSING_PUBLIC_KEY_RESPONSE" "$LICENSING_PUBLIC_KEY" <<'PY'
+          import base64
+          import json
+          import sys
+
+          path, expected_key = sys.argv[1], sys.argv[2]
+          try:
+              with open(path, encoding="utf-8") as handle:
+                  payload = json.load(handle)
+          except (OSError, json.JSONDecodeError) as exc:
+              print(f"Licensing public-key endpoint returned invalid JSON: {exc}", file=sys.stderr)
+              raise SystemExit(1)
+
+          algorithm = payload.get("algorithm")
+          actual_key = payload.get("subjectPublicKeyInfoBase64")
+          if algorithm != "ECDSA_P256_SHA256":
+              print(f"Unexpected licensing signing algorithm: {algorithm!r}", file=sys.stderr)
+              raise SystemExit(1)
+          if not isinstance(actual_key, str) or not actual_key:
+              print("Licensing public-key endpoint did not return subjectPublicKeyInfoBase64.", file=sys.stderr)
+              raise SystemExit(1)
+          try:
+              base64.b64decode(actual_key, validate=True)
+              base64.b64decode(expected_key, validate=True)
+          except ValueError as exc:
+              print(f"Licensing public key is not valid Base64: {exc}", file=sys.stderr)
+              raise SystemExit(1)
+          if actual_key != expected_key:
+              print("Configured LICENSING_PUBLIC_KEY does not match the production licensing service signing key.", file=sys.stderr)
+              raise SystemExit(1)
+          PY
+          then
+            echo "::error::Production licensing signing-key verification failed."
+            exit 1
+          fi
+
           for name in PRIVACY_POLICY_URL SUPPORT_URL TERMS_OF_SERVICE_URL; do
             if [[ "${!name}" != https://* ]]; then
               echo "::error::$name must be a public HTTPS URL."
@@ -255,6 +297,7 @@ jobs:
           echo "16 KiB ELF alignment: verified for $native_count packaged shared libraries" >> "$GITHUB_STEP_SUMMARY"
           echo "Pro Cloud sales: disabled" >> "$GITHUB_STEP_SUMMARY"
           echo "Licensing API: HTTPS and /readyz verified ($LICENSING_API_BASE_URL)" >> "$GITHUB_STEP_SUMMARY"
+          echo "Licensing signing key: active backend key matches embedded app verification key" >> "$GITHUB_STEP_SUMMARY"
           echo "Tailcat DERP map: $TAILCAT_DERP_MAP_URL" >> "$GITHUB_STEP_SUMMARY"
           echo "Third-party notices: packaged" >> "$GITHUB_STEP_SUMMARY"
           echo "Privacy/support/Terms links: configured and reachable" >> "$GITHUB_STEP_SUMMARY"
