@@ -3,16 +3,27 @@
 
 <link rel="stylesheet" href="_content/MeowSSH.UI/css/tailcat.css" />
 <section class="tailcat-page" data-testid="tailcat-page">
-    <div class="segmented tailcat-sections" role="tablist" aria-label="Tailcat tools">
-        @foreach (var section in Sections)
+    <nav class="tailcat-intents" aria-label="Tailcat tools" data-testid="tailcat-intent-groups">
+        @foreach (var group in IntentGroups)
         {
-            <button type="button" role="tab"
-                    class="segmented__option @(_section == section.Id ? "segmented__option--on" : "")"
-                    aria-selected="@(_section == section.Id ? "true" : "false")"
-                    data-testid="tailcat-section-@section.Id"
-                    @onclick="() => _section = section.Id">@section.Label</button>
+            <section class="tailcat-intent-group" aria-labelledby="tailcat-intent-@group.Id">
+                <div class="tailcat-intent-group__heading">
+                    <strong id="tailcat-intent-@group.Id">@group.Label</strong>
+                    <small>@group.Description</small>
+                </div>
+                <div class="segmented tailcat-sections" role="tablist" aria-label="@group.Label">
+                    @foreach (var section in group.Sections)
+                    {
+                        <button type="button" role="tab"
+                                class="segmented__option @(_section == section.Id ? "segmented__option--on" : "")"
+                                aria-selected="@(_section == section.Id ? "true" : "false")"
+                                data-testid="tailcat-section-@section.Id"
+                                @onclick="() => _section = section.Id">@section.Label</button>
+                    }
+                </div>
+            </section>
         }
-    </div>
+    </nav>
 
     @if (_section == "workspaces")
     {
@@ -57,11 +68,36 @@
 </section>
 
 @code {
-    private static readonly (string Id, string Label)[] Sections =
+    private sealed record Section(string Id, string Label);
+    private sealed record IntentGroup(string Id, string Label, string Description, Section[] Sections);
+
+    private static readonly IntentGroup[] IntentGroups =
     [
-        ("workspaces", "Workspaces"), ("phone", "This phone"), ("connect", "Connect"), ("vpn", "VPN"),
-        ("transfers", "Transfers"), ("address", "Address"), ("keys", "Keys"), ("diagnostics", "Diagnostics"),
+        new("connect", "Connect", "Reach peers and reusable Tailcat workspaces.",
+        [
+            new("connect", "Connect"),
+            new("address", "Addresses"),
+            new("workspaces", "Workspaces"),
+        ]),
+        new("devices", "Devices & keys", "Configure this phone and manage Tailcat identities.",
+        [
+            new("phone", "This phone"),
+            new("keys", "Keys"),
+        ]),
+        new("network", "Network & VPN", "Route device traffic through Tailcat.",
+        [
+            new("vpn", "VPN"),
+        ]),
+        new("transfers", "Transfers", "Browse and transfer files over Tailcat.",
+        [
+            new("transfers", "Transfers"),
+        ]),
+        new("diagnostics", "Diagnostics", "Inspect connectivity and relay behavior.",
+        [
+            new("diagnostics", "Diagnostics"),
+        ]),
     ];
+
     private string _section = "phone";
     private TailcatHubSnapshot _snapshot = new(null, null, [], []);
 
