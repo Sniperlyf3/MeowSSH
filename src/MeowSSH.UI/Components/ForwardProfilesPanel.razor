@@ -1,0 +1,248 @@
+@inject IPortForwardProfileService Profiles
+
+<section class="settings__section" data-testid="forward-profiles">
+    <div class="setting-card">
+        <span class="setting-card__copy">
+            <span class="setting-card__title">Saved forward profiles <span class="action-pro-badge">PRO</span></span>
+            <span class="setting-card__body">Reusable local, remote, and SOCKS tunnel presets. SOCKS credentials are never stored in a profile.</span>
+        </span>
+        <button type="button" class="btn btn--ghost" data-testid="toggle-forward-profiles" @onclick="ToggleAsync">
+            @(_expanded ? "Hide" : "Manage")
+        </button>
+    </div>
+
+    @if (_expanded)
+    {
+        @if (!string.IsNullOrWhiteSpace(_error))
+        {
+            <p class="field__error" role="alert" data-testid="forward-profile-error">@_error</p>
+        }
+
+        <div class="stack" data-testid="forward-profile-editor">
+            <label class="field">
+                <span class="field__label">Profile name</span>
+                <input class="field__input" data-testid="forward-profile-name" maxlength="80"
+                       @bind="_label" @bind:event="oninput" />
+            </label>
+
+            <div class="forward-kinds" role="group" aria-label="Profile forward type">
+                @foreach (var kind in Enum.GetValues<SshForwardKind>())
+                {
+                    <button type="button" class="btn @(_kind == kind ? "btn--primary" : "btn--ghost")"
+                            data-testid="@($"profile-kind-{kind.ToString().ToLowerInvariant()}")"
+                            @onclick="() => SelectKind(kind)">@KindLabel(kind)</button>
+                }
+            </div>
+
+            <label class="field">
+                <span class="field__label">Listen address</span>
+                <input class="field__input mono" data-testid="forward-profile-listen"
+                       autocomplete="off" autocapitalize="none" spellcheck="false"
+                       @bind="_listenAddress" @bind:event="oninput" />
+                <span class="field__hint">For TCP use host:port, for a local/SOCKS Unix socket use an absolute path and enable Unix socket.</span>
+            </label>
+
+            @if (_kind != SshForwardKind.Socks)
+            {
+                <label class="field">
+                    <span class="field__label">Destination</span>
+                    <input class="field__input mono" data-testid="forward-profile-destination"
+                           autocomplete="off" autocapitalize="none" spellcheck="false"
+                           @bind="_destination" @bind:event="oninput" />
+                </label>
+            }
+
+            @if (_kind != SshForwardKind.Remote)
+            {
+                <label class="forward-option">
+                    <input type="checkbox" data-testid="forward-profile-unix" @bind="_useUnixSocket" />
+                    <span><strong>Unix socket listener</strong><small>Use the listen value as a local socket path.</small></span>
+                </label>
+            }
+
+            @if (!_useUnixSocket && _kind is SshForwardKind.Local or SshForwardKind.Socks)
+            {
+                <label class="forward-option">
+                    <input type="checkbox" data-testid="forward-profile-public-bind" @bind="_allowNonLoopback" />
+                    <span><strong>Allow non-loopback bind</strong><small>Can expose the tunnel to your local network.</small></span>
+                </label>
+            }
+
+            @if (_kind == SshForwardKind.Socks)
+            {
+                <label class="forward-option">
+                    <input type="checkbox" data-testid="forward-profile-socks-auth" @bind="_requireSocksAuth" />
+                    <span><strong>Require generated SOCKS credentials</strong><small>Fresh random credentials are generated every time the profile starts.</small></span>
+                </label>
+            }
+
+            <label class="field">
+                <span class="field__label">Maximum simultaneous connections</span>
+                <input class="field__input mono" type="number" min="0" max="65535"
+                       data-testid="forward-profile-max-connections" @bind="_maxConnections" />
+            </label>
+
+            <button type="button" class="btn btn--primary btn--block" data-testid="save-forward-profile"
+                    disabled="@_busy" @onclick="SaveAsync">Save profile</button>
+        </div>
+
+        @if (_items.Count == 0)
+        {
+            <p class="setting-card__body" data-testid="forward-profiles-empty">No saved forward profiles.</p>
+        }
+        else
+        {
+            <div class="stack" data-testid="forward-profile-list">
+                @foreach (var profile in _items)
+                {
+                    <article class="setting-card" data-testid="forward-profile" @key="profile.Id">
+                        <span class="setting-card__copy">
+                            <span class="setting-card__title">@profile.Label</span>
+                            <span class="setting-card__body mono">@Route(profile)</span>
+                        </span>
+                        <div class="settings__actions">
+                            <button type="button" class="btn btn--primary" data-testid="start-forward-profile"
+                                    disabled="@_busy" @onclick="() => StartAsync(profile)">Start</button>
+                            <button type="button" class="btn btn--danger" data-testid="delete-forward-profile"
+                                    disabled="@_busy" @onclick="() => DeleteAsync(profile.Id)">Delete</button>
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+    }
+</section>
+
+@code {
+    [Parameter] public EventCallback<ForwardRequest> OnStart { get; set; }
+
+    private IReadOnlyList<PortForwardProfile> _items = [];
+    private bool _expanded;
+    private bool _busy;
+    private string? _error;
+    private string _label = "";
+    private SshForwardKind _kind = SshForwardKind.Local;
+    private string _listenAddress = "127.0.0.1:8080";
+    private string _destination = "127.0.0.1:80";
+    private bool _allowNonLoopback;
+    private bool _requireSocksAuth = true;
+    private int _maxConnections = 256;
+    private bool _useUnixSocket;
+
+    private async Task ToggleAsync()
+    {
+        _expanded = !_expanded;
+        if (_expanded) await ReloadAsync();
+    }
+
+    private void SelectKind(SshForwardKind kind)
+    {
+        _kind = kind;
+        if (kind == SshForwardKind.Remote) _useUnixSocket = false;
+        _error = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_busy) return;
+        _busy = true;
+        _error = null;
+        try
+        {
+            await Profiles.SaveAsync(new PortForwardProfile(
+                Guid.Empty,
+                _label,
+                _kind,
+                _listenAddress,
+                _kind == SshForwardKind.Socks ? null : _destination,
+                _allowNonLoopback,
+                _requireSocksAuth,
+                _maxConnections,
+                _useUnixSocket,
+                default));
+            _label = "";
+            await ReloadAsync();
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or ArgumentException)
+        {
+            _error = exception.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task StartAsync(PortForwardProfile profile)
+    {
+        if (_busy) return;
+        _busy = true;
+        _error = null;
+        try
+        {
+            await OnStart.InvokeAsync(new ForwardRequest(
+                profile.Kind,
+                profile.ListenAddress,
+                profile.Destination,
+                profile.AllowNonLoopbackBind,
+                profile.RequireSocksAuth,
+                null,
+                null,
+                profile.MaxConnections,
+                profile.UseUnixSocket));
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or ArgumentException or SshException)
+        {
+            _error = exception.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task DeleteAsync(Guid id)
+    {
+        if (_busy) return;
+        _busy = true;
+        _error = null;
+        try
+        {
+            await Profiles.DeleteAsync(id);
+            await ReloadAsync();
+        }
+        catch (InvalidOperationException exception)
+        {
+            _error = exception.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task ReloadAsync()
+    {
+        try
+        {
+            _items = await Profiles.GetAllAsync();
+        }
+        catch (InvalidOperationException exception)
+        {
+            _items = [];
+            _error = exception.Message;
+        }
+    }
+
+    private static string Route(PortForwardProfile profile) => profile.Kind == SshForwardKind.Socks
+        ? $"{profile.ListenAddress} → SOCKS5"
+        : $"{profile.ListenAddress} → {profile.Destination}";
+
+    private static string KindLabel(SshForwardKind kind) => kind switch
+    {
+        SshForwardKind.Local => "Local (-L)",
+        SshForwardKind.Remote => "Remote (-R)",
+        SshForwardKind.Socks => "SOCKS5 (-D)",
+        _ => kind.ToString(),
+    };
+}
