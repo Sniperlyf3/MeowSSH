@@ -87,13 +87,14 @@ jobs:
             echo "::warning::Persistent Android signing secrets are not configured; APK signatures may change between runners and require uninstall/reinstall."
           fi
           "${args[@]}"
-      - name: Check the native binaries survived packaging
+      - name: Check packaged native binaries and notices
         run: |
           APK=$(find src/MeowSSH.App/bin -name "*-Signed.apk" | head -1)
           test -n "$APK"
           unzip -l "$APK" | grep -q "lib/arm64-v8a/libmeowshell.so"
           unzip -l "$APK" | grep -q "lib/arm64-v8a/libtailcat.so"
           unzip -l "$APK" | grep -q "lib/arm64-v8a/libhev-socks5-tunnel.so"
+          unzip -l "$APK" | grep -q "third_party_notices.txt"
           echo "APK: $APK ($(du -h "$APK" | cut -f1))"
       - name: Upload the APK
         uses: actions/upload-artifact@v7
@@ -143,6 +144,7 @@ jobs:
           unzip -l "$APK" | grep -q "lib/arm64-v8a/libmeowshell.so"
           unzip -l "$APK" | grep -q "lib/arm64-v8a/libtailcat.so"
           unzip -l "$APK" | grep -q "lib/arm64-v8a/libhev-socks5-tunnel.so"
+          unzip -l "$APK" | grep -q "third_party_notices.txt"
 
           MERGED_MANIFEST=$(find src/MeowSSH.App/obj/Release -path '*/android/AndroidManifest.xml' -type f | head -1)
           test -n "$MERGED_MANIFEST"
@@ -154,6 +156,7 @@ jobs:
 
           echo "Hardened Release APK: $APK ($(du -h "$APK" | cut -f1))"
           echo "Merged foreground-service declaration: verified"
+          echo "Third-party notices: packaged"
       - name: Upload hardened Release APK
         uses: actions/upload-artifact@v7
         with:
@@ -224,6 +227,7 @@ jobs:
             -c Release -f net10.0-android36.0 \
             -p:AndroidPackageFormat=aab \
             -p:EnableTailcatVpn=false \
+            -p:EnableProCloudSales=false \
             -p:ILLinkTreatWarningsAsErrors=false \
             -p:SourceRevisionId=${{ github.sha }} \
             -p:Version=0.1.${{ github.run_number }} \
@@ -240,6 +244,7 @@ jobs:
             unzip -l "$AAB" | grep -q "base/lib/$abi/libmeowshell.so"
             unzip -l "$AAB" | grep -q "base/lib/$abi/libtailcat.so"
           done
+          unzip -l "$AAB" | grep -q "third_party_notices.txt"
           if unzip -l "$AAB" | grep -q "libhev-socks5-tunnel.so"; then
             echo "::error::VPN-excluded AAB contains the HEV tunnel library."
             exit 1
@@ -258,6 +263,7 @@ jobs:
 
           echo "Validated Play ABIs: arm64-v8a, x86_64"
           echo "VPN-excluded merged manifest: verified"
+          echo "Third-party notices: packaged"
           echo "AAB: $AAB ($(du -h "$AAB" | cut -f1))"
       - name: Upload CI app bundle
         uses: actions/upload-artifact@v7
