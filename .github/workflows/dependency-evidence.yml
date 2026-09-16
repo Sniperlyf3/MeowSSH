@@ -16,13 +16,16 @@ permissions:
 jobs:
   dependency-evidence:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
 
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: "10.0.x"
+
+      - name: Install the Android workload
+        run: dotnet workload install maui-android
 
       - name: Generate dependency evidence
         shell: bash
@@ -33,8 +36,14 @@ jobs:
         run: |
           set -euo pipefail
           EVIDENCE=artifacts/dependency-inventory
-          python3 -m json.tool "$EVIDENCE/nuget-dependencies.json" >/dev/null
-          python3 -m json.tool "$EVIDENCE/nuget-vulnerabilities.json" >/dev/null
+          for report in \
+            solution-nuget-dependencies.json \
+            solution-nuget-vulnerabilities.json \
+            android-app-nuget-dependencies.json \
+            android-app-nuget-vulnerabilities.json; do
+            python3 -m json.tool "$EVIDENCE/$report" >/dev/null
+          done
+          grep -Fq 'src/MeowSSH.App/MeowSSH.App.csproj' "$EVIDENCE/android-app-nuget-dependencies.json"
           test "$(cat "$EVIDENCE/source-commit.txt")" = "$(git rev-parse HEAD)"
           (cd "$EVIDENCE" && sha256sum -c SHA256SUMS)
 
