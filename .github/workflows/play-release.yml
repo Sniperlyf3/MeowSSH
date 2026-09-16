@@ -24,6 +24,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 concurrency:
   group: play-release
@@ -56,7 +57,8 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
-          GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          PLAY_WIF_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          PLAY_PUBLISH_SERVICE_ACCOUNT: ${{ vars.GCP_PLAY_PUBLISH_SERVICE_ACCOUNT }}
           LICENSING_API_BASE_URL: ${{ vars.LICENSING_API_BASE_URL }}
           LICENSING_PUBLIC_KEY: ${{ vars.LICENSING_PUBLIC_KEY_SUBJECT_PUBLIC_KEY_INFO_BASE64 }}
           PRIVACY_POLICY_URL: ${{ vars.PRIVACY_POLICY_URL }}
@@ -71,9 +73,14 @@ jobs:
             fi
           done
 
-          if [[ "${{ inputs.publish_internal }}" == "true" && -z "$GOOGLE_PLAY_SERVICE_ACCOUNT_JSON" ]]; then
-            echo "::error::GOOGLE_PLAY_SERVICE_ACCOUNT_JSON is required when publishing to the Play internal track."
-            exit 1
+          if [[ "${{ inputs.publish_internal }}" == "true" ]]; then
+            publish_required=(PLAY_WIF_PROVIDER PLAY_PUBLISH_SERVICE_ACCOUNT)
+            for name in "${publish_required[@]}"; do
+              if [[ -z "${!name:-}" ]]; then
+                echo "::error::$name is required when publishing to the Play internal track."
+                exit 1
+              fi
+            done
           fi
 
           for name in PRIVACY_POLICY_URL SUPPORT_URL; do
@@ -213,11 +220,20 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      - name: Authenticate to Google Play with Workload Identity
+        id: play-auth
+        if: ${{ inputs.publish_internal }}
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_PLAY_PUBLISH_SERVICE_ACCOUNT }}
+          create_credentials_file: true
+
       - name: Publish to Google Play internal testing
         if: ${{ inputs.publish_internal }}
         uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5
         with:
-          serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          serviceAccountJson: ${{ steps.play-auth.outputs.credentials_file_path }}
           packageName: dev.sniperlyf3.meowssh
           releaseFiles: ${{ env.AAB }}
           tracks: internal
@@ -227,5 +243,6 @@ jobs:
         if: ${{ inputs.publish_internal }}
         shell: bash
         run: |
+          echo "Google Play authentication: Workload Identity federation (no service-account private key)" >> "$GITHUB_STEP_SUMMARY"
           echo "Google Play track: internal" >> "$GITHUB_STEP_SUMMARY"
           echo "Publication: requested and committed through the Android Publisher API" >> "$GITHUB_STEP_SUMMARY"
