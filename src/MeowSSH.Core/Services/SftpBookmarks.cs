@@ -80,11 +80,11 @@ public sealed class SftpBookmarkService(
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         var trimmed = path.Trim();
-        if (!trimmed.StartsWith('/', StringComparison.Ordinal))
+        if (!trimmed.StartsWith("/", StringComparison.Ordinal))
             throw new ArgumentException("An absolute remote path is required.", nameof(path));
         if (trimmed.Length > 4096)
             throw new ArgumentException("Remote bookmark paths must be 4096 characters or fewer.", nameof(path));
-        while (trimmed.Length > 1 && trimmed.EndsWith('/', StringComparison.Ordinal))
+        while (trimmed.Length > 1 && trimmed.EndsWith("/", StringComparison.Ordinal))
             trimmed = trimmed[..^1];
         return trimmed;
     }
