@@ -63,9 +63,10 @@ jobs:
           LICENSING_PUBLIC_KEY: ${{ vars.LICENSING_PUBLIC_KEY_SUBJECT_PUBLIC_KEY_INFO_BASE64 }}
           PRIVACY_POLICY_URL: ${{ vars.PRIVACY_POLICY_URL }}
           SUPPORT_URL: ${{ vars.SUPPORT_URL }}
+          TAILCAT_DERP_MAP_URL: ${{ vars.TAILCAT_DERP_MAP_URL }}
         run: |
           set -euo pipefail
-          required=(ANDROID_KEYSTORE_BASE64 ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD ANDROID_STORE_PASSWORD LICENSING_API_BASE_URL LICENSING_PUBLIC_KEY PRIVACY_POLICY_URL SUPPORT_URL)
+          required=(ANDROID_KEYSTORE_BASE64 ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD ANDROID_STORE_PASSWORD LICENSING_API_BASE_URL LICENSING_PUBLIC_KEY PRIVACY_POLICY_URL SUPPORT_URL TAILCAT_DERP_MAP_URL)
           for name in "${required[@]}"; do
             if [[ -z "${!name:-}" ]]; then
               echo "::error::$name is required for a production Play release."
@@ -93,6 +94,24 @@ jobs:
               exit 1
             fi
           done
+
+          if [[ "$TAILCAT_DERP_MAP_URL" != https://* ]]; then
+            echo "::error::TAILCAT_DERP_MAP_URL must be a public HTTPS URL."
+            exit 1
+          fi
+          DERP_MAP="$RUNNER_TEMP/tailcat-derp-map.json"
+          if ! curl --fail --location --silent --show-error --max-time 20 --retry 2 --retry-delay 1 "$TAILCAT_DERP_MAP_URL" -o "$DERP_MAP"; then
+            echo "::error::TAILCAT_DERP_MAP_URL must be publicly reachable before a production Play release."
+            exit 1
+          fi
+          if ! python3 -m json.tool "$DERP_MAP" >/dev/null; then
+            echo "::error::TAILCAT_DERP_MAP_URL did not return valid JSON."
+            exit 1
+          fi
+          if [[ "$TAILCAT_DERP_MAP_URL" != "https://tailcat.dev/derpmap.json" ]] && ! grep -Fq "$TAILCAT_DERP_MAP_URL" PRIVACY.md; then
+            echo "::error::A custom production DERP map must be named explicitly in PRIVACY.md before release."
+            exit 1
+          fi
 
           if grep -Fq 'A public support/privacy contact must be inserted here before the Play Store production listing is submitted.' PRIVACY.md; then
             echo "::error::PRIVACY.md still contains the unresolved public support/privacy contact placeholder."
@@ -125,6 +144,7 @@ jobs:
           LICENSING_PUBLIC_KEY: ${{ vars.LICENSING_PUBLIC_KEY_SUBJECT_PUBLIC_KEY_INFO_BASE64 }}
           PRIVACY_POLICY_URL: ${{ vars.PRIVACY_POLICY_URL }}
           SUPPORT_URL: ${{ vars.SUPPORT_URL }}
+          TAILCAT_DERP_MAP_URL: ${{ vars.TAILCAT_DERP_MAP_URL }}
         run: |
           set -euo pipefail
           dotnet publish src/MeowSSH.App/MeowSSH.App.csproj \
@@ -141,7 +161,7 @@ jobs:
             "-p:ApplicationVersion=${{ inputs.version_code }}" \
             "-p:EnableTailcatVpn=${{ inputs.include_tailcat_vpn }}" \
             -p:EnableProCloudSales=false \
-            -p:TailcatDerpMapUrl=https://tailcat.dev/derpmap.json \
+            "-p:TailcatDerpMapUrl=$TAILCAT_DERP_MAP_URL" \
             "-p:LicensingApiBaseUrl=$LICENSING_API_BASE_URL" \
             "-p:LicensingPublicKeySubjectPublicKeyInfoBase64=$LICENSING_PUBLIC_KEY" \
             "-p:PrivacyPolicyUrl=$PRIVACY_POLICY_URL" \
@@ -149,6 +169,8 @@ jobs:
 
       - name: Verify release bundle
         shell: bash
+        env:
+          TAILCAT_DERP_MAP_URL: ${{ vars.TAILCAT_DERP_MAP_URL }}
         run: |
           set -euo pipefail
           AAB=$(find src/MeowSSH.App/bin/Release -name "*.aab" | head -1)
@@ -205,7 +227,7 @@ jobs:
           echo "Play ABIs: arm64-v8a, x86_64" >> "$GITHUB_STEP_SUMMARY"
           echo "16 KiB ELF alignment: verified for $native_count packaged shared libraries" >> "$GITHUB_STEP_SUMMARY"
           echo "Pro Cloud sales: disabled" >> "$GITHUB_STEP_SUMMARY"
-          echo "Tailcat DERP map: https://tailcat.dev/derpmap.json" >> "$GITHUB_STEP_SUMMARY"
+          echo "Tailcat DERP map: $TAILCAT_DERP_MAP_URL" >> "$GITHUB_STEP_SUMMARY"
           echo "Third-party notices: packaged" >> "$GITHUB_STEP_SUMMARY"
           echo "Privacy/support links: configured and reachable" >> "$GITHUB_STEP_SUMMARY"
           echo "Play bundle: $AAB ($(du -h "$AAB" | cut -f1))" >> "$GITHUB_STEP_SUMMARY"
