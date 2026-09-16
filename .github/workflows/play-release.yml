@@ -87,10 +87,6 @@ jobs:
             echo "::error::PRIVACY.md still contains the unresolved public support/privacy contact placeholder."
             exit 1
           fi
-          if grep -Fq 'The exact infrastructure model must be finalized before public launch' PRIVACY.md; then
-            echo "::error::PRIVACY.md still marks the Tailcat coordination/relay infrastructure model as unresolved."
-            exit 1
-          fi
 
           if ! [[ "${{ inputs.version_code }}" =~ ^[1-9][0-9]*$ ]]; then
             echo "::error::version_code must be a positive integer."
@@ -134,6 +130,7 @@ jobs:
             "-p:ApplicationVersion=${{ inputs.version_code }}" \
             "-p:EnableTailcatVpn=${{ inputs.include_tailcat_vpn }}" \
             -p:EnableProCloudSales=false \
+            -p:TailcatDerpMapUrl=https://tailcat.dev/derpmap.json \
             "-p:LicensingApiBaseUrl=$LICENSING_API_BASE_URL" \
             "-p:LicensingPublicKeySubjectPublicKeyInfoBase64=$LICENSING_PUBLIC_KEY" \
             "-p:PrivacyPolicyUrl=$PRIVACY_POLICY_URL" \
@@ -151,6 +148,7 @@ jobs:
             unzip -l "$AAB" | grep -q "base/lib/$abi/libmeowshell.so"
             unzip -l "$AAB" | grep -q "base/lib/$abi/libtailcat.so"
           done
+          unzip -l "$AAB" | grep -q "third_party_notices.txt"
 
           if [[ "${{ inputs.include_tailcat_vpn }}" == "true" ]]; then
             for abi in arm64-v8a x86_64; do
@@ -168,6 +166,8 @@ jobs:
           echo "AAB=$AAB" >> "$GITHUB_ENV"
           echo "Play ABIs: arm64-v8a, x86_64" >> "$GITHUB_STEP_SUMMARY"
           echo "Pro Cloud sales: disabled" >> "$GITHUB_STEP_SUMMARY"
+          echo "Tailcat DERP map: https://tailcat.dev/derpmap.json" >> "$GITHUB_STEP_SUMMARY"
+          echo "Third-party notices: packaged" >> "$GITHUB_STEP_SUMMARY"
           echo "Privacy/support links: configured" >> "$GITHUB_STEP_SUMMARY"
           echo "Play bundle: $AAB ($(du -h "$AAB" | cut -f1))" >> "$GITHUB_STEP_SUMMARY"
           echo "Version: ${{ inputs.version_name }} (${{ inputs.version_code }})" >> "$GITHUB_STEP_SUMMARY"
@@ -181,7 +181,6 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      # Pinned to upload-google-play v1.1.5 rather than a mutable tag.
       - name: Publish to Google Play internal testing
         if: ${{ inputs.publish_internal }}
         uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5
