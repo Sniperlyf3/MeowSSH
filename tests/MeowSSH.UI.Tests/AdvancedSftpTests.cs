@@ -10,7 +10,9 @@ public sealed class AdvancedSftpTests(TestHostFixture fixture)
         var page = await fixture.NewPageAsync();
         await page.GetByTestId("tab-files").ClickAsync();
         await Assertions.Expect(page.GetByTestId("files-host-list")).ToBeVisibleAsync();
-        await page.Locator("[data-testid='advanced-sftp-host'][data-host-label='prod-web-01']").ClickAsync();
+        var more = page.Locator("[data-testid='files-host-more'][data-host-label='prod-web-01']");
+        await more.Locator("summary").ClickAsync();
+        await more.Locator("[data-testid='advanced-sftp-host']").ClickAsync();
         await Assertions.Expect(page.GetByTestId("advanced-sftp-page")).ToBeVisibleAsync();
         return page;
     }
@@ -20,6 +22,19 @@ public sealed class AdvancedSftpTests(TestHostFixture fixture)
 
     private static ILocator Folder(IPage page, string name) =>
         page.Locator($"[data-testid='advanced-folder'][data-file-name='{name}']");
+
+    [Fact]
+    public async Task NormalFilesLandingKeepsAdvancedSftpContextual()
+    {
+        var page = await fixture.NewPageAsync();
+        await page.GetByTestId("tab-files").ClickAsync();
+        var more = page.Locator("[data-testid='files-host-more'][data-host-label='prod-web-01']");
+
+        await Assertions.Expect(more).ToBeVisibleAsync();
+        await Assertions.Expect(more.Locator("[data-testid='advanced-sftp-host']")).Not.ToBeVisibleAsync();
+        await more.Locator("summary").ClickAsync();
+        await Assertions.Expect(more.Locator("[data-testid='advanced-sftp-host']")).ToBeVisibleAsync();
+    }
 
     [Fact]
     public async Task NonEmptyDirectoryCanBeDeletedRecursivelyAfterSummaryConfirmation()
