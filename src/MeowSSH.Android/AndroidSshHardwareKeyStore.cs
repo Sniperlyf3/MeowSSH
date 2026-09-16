@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Security.Cryptography.X509Certificates;
+using Android.Runtime;
 using Android.Security.Keystore;
 using Java.Security;
 using Java.Security.Interfaces;
@@ -49,9 +50,6 @@ public sealed class AndroidSshHardwareKeyStore : ISshHardwareKeyStore
         if (store.ContainsAlias(alias))
             throw new InvalidOperationException("A non-exportable SSH key with this identifier already exists.");
 
-        // StrongBox is preferred when the device supports EC signing there. The
-        // platform throws rather than silently degrading, so retry explicitly in
-        // the regular AndroidKeyStore and later report what Android actually used.
         try
         {
             Generate(alias, strongBox: true);
@@ -81,7 +79,7 @@ public sealed class AndroidSshHardwareKeyStore : ISshHardwareKeyStore
         cancellationToken.ThrowIfCancellationRequested();
         ValidateKeyId(keyId);
         try { LoadKeyStore().DeleteEntry(Alias(keyId)); }
-        catch { /* already absent is the desired state */ }
+        catch { }
         return ValueTask.CompletedTask;
     }
 
@@ -96,11 +94,10 @@ public sealed class AndroidSshHardwareKeyStore : ISshHardwareKeyStore
         if (!string.Equals(algorithm, SshKeyType, StringComparison.Ordinal))
             throw new NotSupportedException($"Android P-256 SSH keys cannot sign using '{algorithm}'.");
 
-        var privateKey = LoadKeyStore().GetKey(Alias(keyId), null)
-            ?? throw new InvalidOperationException("The selected non-exportable SSH key no longer exists on this device.");
+        var privateKey = GetPrivateKey(LoadKeyStore(), keyId);
         var signer = Signature.GetInstance(SignatureAlgorithm)
             ?? throw new InvalidOperationException("Android does not provide SHA-256 ECDSA signing.");
-        signer.InitSign((IPrivateKey)privateKey);
+        signer.InitSign(privateKey);
         signer.Update(data.ToArray());
         var der = signer.Sign()
             ?? throw new InvalidOperationException("Android returned no SSH signature.");
@@ -135,17 +132,28 @@ public sealed class AndroidSshHardwareKeyStore : ISshHardwareKeyStore
             ?? throw new InvalidOperationException("The selected AndroidKeyStore entry has no public certificate.");
         var certificateDer = certificate.GetEncoded()
             ?? throw new InvalidOperationException("Android returned no encoded certificate for the SSH key.");
+        var privateKey = GetPrivateKey(store, keyId);
 
-        var privateKey = store.GetKey(alias, null);
-        if (privateKey is not IPrivateKey typedPrivateKey)
-            throw new InvalidOperationException("The selected AndroidKeyStore entry has no signing key.");
-
-        var (hardwareBacked, strongBoxBacked) = GetBacking(typedPrivateKey);
+        var (hardwareBacked, strongBoxBacked) = GetBacking(privateKey);
         return new SshHardwareKeyInfo(
             keyId,
             ToOpenSshPublicKey(certificateDer, keyId),
             hardwareBacked,
             strongBoxBacked);
+    }
+
+    private static IPrivateKey GetPrivateKey(KeyStore store, string keyId)
+    {
+        var key = store.GetKey(Alias(keyId), null)
+            ?? throw new InvalidOperationException("The selected non-exportable SSH key no longer exists on this device.");
+        try
+        {
+            return key.JavaCast<IPrivateKey>();
+        }
+        catch (InvalidCastException exception)
+        {
+            throw new InvalidOperationException("The selected AndroidKeyStore entry has no signing key.", exception);
+        }
     }
 
     private static (bool HardwareBacked, bool StrongBoxBacked) GetBacking(IPrivateKey privateKey)
@@ -169,18 +177,12 @@ public sealed class AndroidSshHardwareKeyStore : ISshHardwareKeyStore
         }
         catch
         {
-            // Security metadata is informative, never a reason to pretend a
-            // working non-exportable key is stronger than Android can prove.
             return (false, false);
         }
     }
 
     private static string ToOpenSshPublicKey(byte[] certificateDer, string keyId)
     {
-        // Android's Java binding does not consistently expose the certificate's
-        // EC public key as IECPublicKey on every runtime. Decode the standard
-        // X.509 SubjectPublicKeyInfo through .NET instead; this exports public
-        // coordinates only and never touches the AndroidKeyStore private key.
         using var certificate = X509CertificateLoader.LoadCertificate(certificateDer);
         using var publicKey = certificate.GetECDsaPublicKey()
             ?? throw new InvalidOperationException("The selected AndroidKeyStore entry is not an EC key.");
