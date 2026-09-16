@@ -15,6 +15,11 @@ public class PortForwardTests(TestHostFixture fixture)
         return page;
     }
 
+    private static async Task OpenAdvancedAsync(ILocator workspace)
+    {
+        await workspace.GetByTestId("forward-advanced-options").Locator("summary").ClickAsync();
+    }
+
     [Fact]
     public async Task LocalForwardUsesTheExistingSessionAndShowsAssignedPort()
     {
@@ -37,11 +42,27 @@ public class PortForwardTests(TestHostFixture fixture)
     }
 
     [Fact]
+    public async Task CommonForwardFormKeepsSpecialistControlsCollapsed()
+    {
+        var page = await OpenForwardsAsync();
+        var workspace = page.Locator(".session-workspace.is-active");
+
+        await workspace.GetByTestId("add-first-forward").ClickAsync();
+
+        await Assertions.Expect(workspace.GetByTestId("forward-destination-host")).ToBeVisibleAsync();
+        await Assertions.Expect(workspace.GetByTestId("start-forward")).ToBeVisibleAsync();
+        await Assertions.Expect(workspace.GetByTestId("forward-unix-socket")).Not.ToBeVisibleAsync();
+        await Assertions.Expect(workspace.GetByTestId("forward-public-bind")).Not.ToBeVisibleAsync();
+        await Assertions.Expect(workspace.GetByTestId("forward-max-connections")).Not.ToBeVisibleAsync();
+    }
+
+    [Fact]
     public async Task SavedProfileCanBeStartedAndDeleted()
     {
         var page = await OpenForwardsAsync();
         var workspace = page.Locator(".session-workspace.is-active");
 
+        await workspace.GetByTestId("forward-profiles-disclosure").Locator("summary").ClickAsync();
         await workspace.GetByTestId("toggle-forward-profiles").ClickAsync();
         await workspace.GetByTestId("forward-profile-name").FillAsync("Database");
         await workspace.GetByTestId("forward-profile-listen").FillAsync("127.0.0.1:0");
@@ -87,6 +108,7 @@ public class PortForwardTests(TestHostFixture fixture)
 
         await workspace.GetByTestId("add-first-forward").ClickAsync();
         await workspace.GetByTestId("forward-kind-socks").ClickAsync();
+        await OpenAdvancedAsync(workspace);
         await workspace.GetByTestId("forward-custom-socks-auth").CheckAsync();
         await workspace.GetByTestId("forward-socks-username").FillAsync("cat-user");
         await workspace.GetByTestId("forward-socks-password").FillAsync("cat-secret");
@@ -104,6 +126,7 @@ public class PortForwardTests(TestHostFixture fixture)
         var workspace = page.Locator(".session-workspace.is-active");
 
         await workspace.GetByTestId("add-first-forward").ClickAsync();
+        await OpenAdvancedAsync(workspace);
         await workspace.GetByTestId("forward-unix-socket").CheckAsync();
         await workspace.GetByTestId("forward-socket-path").FillAsync("/tmp/meowssh-db.sock");
         await workspace.GetByTestId("forward-destination-host").FillAsync("db.internal");
@@ -151,6 +174,7 @@ public class PortForwardTests(TestHostFixture fixture)
             .ToContainTextAsync("Enable non-loopback binding");
         await Assertions.Expect(workspace.GetByTestId("forward-row")).ToHaveCountAsync(0);
 
+        await OpenAdvancedAsync(workspace);
         await workspace.GetByTestId("forward-public-bind").CheckAsync();
         await workspace.GetByTestId("start-forward").ClickAsync();
         await Assertions.Expect(workspace.GetByTestId("forward-row")).ToHaveCountAsync(1);
