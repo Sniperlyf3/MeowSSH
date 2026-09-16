@@ -8,7 +8,8 @@ public sealed class CommandMonitoringTests(TestHostFixture fixture)
     private async Task<IPage> OpenMonitoringAsync()
     {
         var page = await fixture.NewPageAsync();
-        await page.GetByTestId("tab-monitoring").ClickAsync();
+        await page.GetByTestId("tab-tools").ClickAsync();
+        await page.GetByTestId("open-tool-monitoring").ClickAsync();
         await Assertions.Expect(page.GetByTestId("monitoring-page")).ToBeVisibleAsync();
         return page;
     }
