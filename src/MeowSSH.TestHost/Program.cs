@@ -56,7 +56,8 @@ builder.Services.AddScoped<ILocalFileTransferService, LocalFileTransferService>(
 builder.Services.AddScoped<IExternalUriLauncher, NoOpExternalUriLauncher>();
 builder.Services.AddScoped(_ => new AppExternalLinks(
     new Uri("https://example.test/privacy"),
-    new Uri("https://example.test/support")));
+    new Uri("https://example.test/support"),
+    new Uri("https://example.test/terms")));
 
 builder.Services.AddScoped<InteractiveSshPrompts>();
 builder.Services.AddScoped<ISshPrompts>(sp => sp.GetRequiredService<InteractiveSshPrompts>());
