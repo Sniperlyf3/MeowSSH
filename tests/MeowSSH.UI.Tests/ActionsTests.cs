@@ -8,7 +8,8 @@ public sealed class ActionsTests(TestHostFixture fixture)
     private async Task<IPage> OpenActionsAsync()
     {
         var page = await fixture.NewPageAsync();
-        await page.GetByTestId("tab-actions").ClickAsync();
+        await page.GetByTestId("tab-tools").ClickAsync();
+        await page.GetByTestId("open-tool-actions").ClickAsync();
         await Assertions.Expect(page.GetByTestId("actions-page")).ToBeVisibleAsync();
         return page;
     }
