@@ -3,27 +3,41 @@
 <div class="app">
     <header class="topbar">
         <h1 class="topbar__title">@CurrentTitle</h1>
-        <div class="topbar__actions">@((_showTailcat || _showActions || _showMonitoring || _showHealth || _showBackup) ? null : Actions)</div>
+        <div class="topbar__actions">
+            @if (_activeTool is not null)
+            {
+                <button type="button" class="btn btn--ghost" data-testid="tools-back"
+                        @onclick="ShowToolsHub">Tools</button>
+            }
+            else if (!_showToolsHub)
+            {
+                @Actions
+            }
+        </div>
     </header>
 
     <main class="app__body" data-testid="app-body">
-        @if (_showTailcat)
+        @if (_showToolsHub)
+        {
+            <ToolsHubPage OnSelected="OpenTool" />
+        }
+        else if (_activeTool == "tailcat")
         {
             <TailcatHubPanel />
         }
-        else if (_showActions)
+        else if (_activeTool == "actions")
         {
             <ActionsPage />
         }
-        else if (_showMonitoring)
+        else if (_activeTool == "monitoring")
         {
             <CommandMonitoringPage />
         }
-        else if (_showHealth)
+        else if (_activeTool == "health")
         {
             <HostHealthDashboardPage />
         }
-        else if (_showBackup)
+        else if (_activeTool == "backup")
         {
             <EncryptedBackupPage />
         }
@@ -56,60 +70,47 @@
     [Parameter] public string ActiveTab { get; set; } = "hosts";
     [Parameter] public EventCallback<string> OnTabSelected { get; set; }
 
-    private bool _showTailcat;
-    private bool _showActions;
-    private bool _showMonitoring;
-    private bool _showHealth;
-    private bool _showBackup;
-    private string CurrentTitle => _showTailcat ? "Tailcat" : _showActions ? "Actions" : _showMonitoring ? "Monitoring" : _showHealth ? "Host Health" : _showBackup ? "Backup" : Title;
-    private string CurrentTab => _showTailcat ? "tailcat" : _showActions ? "actions" : _showMonitoring ? "monitoring" : _showHealth ? "health" : _showBackup ? "backup" : ActiveTab;
+    private bool _showToolsHub;
+    private string? _activeTool;
+
+    private string CurrentTitle => _activeTool switch
+    {
+        "tailcat" => "Tailcat",
+        "actions" => "Actions",
+        "monitoring" => "Monitoring",
+        "health" => "Host Health",
+        "backup" => "Backup",
+        _ when _showToolsHub => "Tools",
+        _ => Title,
+    };
+
+    private string CurrentTab => _showToolsHub || _activeTool is not null ? "tools" : ActiveTab;
 
     protected override Task OnInitializedAsync() => Monitoring.InitializeAsync();
 
     private async Task SelectTabAsync(string tab)
     {
-        if (tab == "tailcat")
+        if (tab == "tools")
         {
-            ShowInternal(tailcat: true);
-            return;
-        }
-        if (tab == "actions")
-        {
-            ShowInternal(actions: true);
-            return;
-        }
-        if (tab == "monitoring")
-        {
-            ShowInternal(monitoring: true);
-            return;
-        }
-        if (tab == "health")
-        {
-            ShowInternal(health: true);
-            return;
-        }
-        if (tab == "backup")
-        {
-            ShowInternal(backup: true);
+            ShowToolsHub();
             return;
         }
 
-        ShowInternal();
+        _showToolsHub = false;
+        _activeTool = null;
         await OnTabSelected.InvokeAsync(tab);
     }
 
-    private void ShowInternal(
-        bool tailcat = false,
-        bool actions = false,
-        bool monitoring = false,
-        bool health = false,
-        bool backup = false)
+    private void ShowToolsHub()
     {
-        _showTailcat = tailcat;
-        _showActions = actions;
-        _showMonitoring = monitoring;
-        _showHealth = health;
-        _showBackup = backup;
+        _activeTool = null;
+        _showToolsHub = true;
+    }
+
+    private void OpenTool(string tool)
+    {
+        _showToolsHub = false;
+        _activeTool = tool;
     }
 
     private sealed record Tab(string Id, string Label, string Icon);
@@ -118,11 +119,7 @@
     [
         new("hosts", "Hosts", "terminal"),
         new("files", "Files", "folder"),
-        new("actions", "Actions", "terminal"),
-        new("monitoring", "Monitor", "alert"),
-        new("health", "Health", "alert"),
-        new("tailcat", "Tailcat", "network"),
-        new("backup", "Backup", "shield"),
+        new("tools", "Tools", "settings"),
         new("keys", "Keys", "key"),
         new("settings", "Settings", "settings"),
     ];
