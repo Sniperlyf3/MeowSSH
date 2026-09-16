@@ -1,0 +1,78 @@
+name: Play Release Dependency Evidence
+
+on:
+  workflow_run:
+    workflows: ["Play Release"]
+    types: [completed]
+  pull_request:
+    paths:
+      - ".github/workflows/play-release-dependency-evidence.yml"
+      - "scripts/generate-dependency-inventory.sh"
+      - "scripts/validate-dependency-inventory.sh"
+      - "scripts/test-validate-dependency-inventory.sh"
+      - "MeowSSH.slnx"
+      - "Directory.Build.props"
+      - "**/*.csproj"
+
+permissions:
+  contents: read
+
+jobs:
+  verify-validator:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Test dependency evidence validator
+        shell: bash
+        run: bash scripts/test-validate-dependency-inventory.sh
+
+  release-evidence:
+    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out the exact Play release commit
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Install the Android workload
+        run: dotnet workload install maui-android
+
+      - name: Generate dependency evidence
+        shell: bash
+        run: bash scripts/generate-dependency-inventory.sh artifacts/play-release-dependency-inventory
+
+      - name: Validate evidence against the released source commit
+        shell: bash
+        run: bash scripts/validate-dependency-inventory.sh artifacts/play-release-dependency-inventory "${{ github.event.workflow_run.head_sha }}"
+
+      - name: Record Play release provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          EVIDENCE=artifacts/play-release-dependency-inventory
+          cat > "$EVIDENCE/play-release-provenance.txt" <<EOF
+          play_release_run_id=${{ github.event.workflow_run.id }}
+          play_release_run_number=${{ github.event.workflow_run.run_number }}
+          source_commit=${{ github.event.workflow_run.head_sha }}
+          source_branch=${{ github.event.workflow_run.head_branch }}
+          triggering_event=${{ github.event.workflow_run.event }}
+          EOF
+          (cd "$EVIDENCE" && sha256sum play-release-provenance.txt >> SHA256SUMS)
+          (cd "$EVIDENCE" && sha256sum -c SHA256SUMS)
+
+      - name: Upload exact-commit Play release dependency evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: play-release-dependency-evidence-${{ github.event.workflow_run.head_sha }}
+          path: artifacts/play-release-dependency-inventory/
+          if-no-files-found: error
+          retention-days: 90
