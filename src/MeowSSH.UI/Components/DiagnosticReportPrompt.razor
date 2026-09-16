@@ -1,13 +1,13 @@
 @using MeowSSH.Core.Diagnostics
 
 <div class="sheet diagnostic-prompt" role="dialog" aria-labelledby="diagnostic-report-title" data-testid="diagnostic-report-prompt">
-    <p class="sheet__title" id="diagnostic-report-title">Help improve MeowSSH?</p>
+    <p class="sheet__title" id="diagnostic-report-title">MeowSSH closed unexpectedly</p>
     <p class="sheet__body">
-        MeowSSH saved an anonymized crash report on this device. You can send it in one tap, or review exactly what is included first.
+        A sanitized crash report was saved only on this device. Nothing was uploaded. You can save it for support or review exactly what it contains first.
     </p>
 
     <details class="diagnostic-prompt__details" data-testid="diagnostic-report-details">
-        <summary>Review what’s included</summary>
+        <summary>Review saved report</summary>
         <div class="diagnostic-prompt__detail-body">
             <p class="sheet__body">
                 Included: app version, platform, sanitized crash details, and recent high-level app actions.
@@ -53,22 +53,17 @@
                     </ul>
                 </div>
             }
-
-            <button type="button" class="btn btn--ghost btn--block diagnostic-prompt__discard"
-                    data-testid="discard-diagnostic-report" @onclick="OnDiscard">
-                Discard report
-            </button>
         </div>
     </details>
 
     <div class="form__actions diagnostic-prompt__actions">
         <button type="button" class="btn btn--primary btn--block"
-                data-testid="send-diagnostic-report" disabled="@Busy" @onclick="OnSend">
-            @(Busy ? "Sending…" : "Send anonymized report")
+                data-testid="save-diagnostic-report" disabled="@Busy" @onclick="OnSave">
+            @(Busy ? "Saving…" : "Save anonymized report")
         </button>
         <button type="button" class="btn btn--ghost btn--block"
-                data-testid="dismiss-diagnostic-report" disabled="@Busy" @onclick="OnDismiss">
-            Not now
+                data-testid="discard-diagnostic-report" disabled="@Busy" @onclick="OnDiscard">
+            Discard report
         </button>
     </div>
 </div>
@@ -76,8 +71,7 @@
 @code {
     [Parameter, EditorRequired] public DiagnosticReportSnapshot Report { get; set; } = default!;
     [Parameter] public bool Busy { get; set; }
-    [Parameter] public EventCallback OnSend { get; set; }
-    [Parameter] public EventCallback OnDismiss { get; set; }
+    [Parameter] public EventCallback OnSave { get; set; }
     [Parameter] public EventCallback OnDiscard { get; set; }
 
     private static string FriendlyBreadcrumb(DiagnosticBreadcrumbKind kind) => kind switch
