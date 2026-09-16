@@ -56,7 +56,8 @@ public static class TailcatRelayClassifier
                 .Append(TailcatRelayClassifierOptions.TailcatDefaultDerpMapUrl));
 
         var mapIsMeow = map is not null && meowMaps.Contains(map);
-        var mapIsPublic = map is null || publicMaps.Contains(map);
+        var explicitPublicMap = map is not null && publicMaps.Contains(map);
+        var mapIsPublic = map is null || explicitPublicMap;
 
         if (hosts.Length > 0)
         {
@@ -67,12 +68,21 @@ public static class TailcatRelayClassifier
 
             if (allMeow)
                 return Result(TailcatRelayClass.MeowSsh);
+
+            // If the caller explicitly resolved through the known public map, that map provenance
+            // is authoritative unless the embedded result conflicts with a known MeowSSH-owned host.
+            // This lets freshly expanded public-default addresses remain identifiable even when the
+            // upstream relay hostname set changes, without treating arbitrary self-contained imports
+            // as public by default.
+            if (explicitPublicMap && !anyMeow)
+                return Result(TailcatRelayClass.PublicDefault);
+
             if (allPublic)
                 return Result(TailcatRelayClass.PublicDefault);
 
-            // A trusted map origin that disagrees with embedded relay hosts is ambiguous.
-            // Do not claim those bytes belong to MeowSSH (or upstream) when the address says otherwise.
-            if (mapIsMeow || (map is not null && publicMaps.Contains(map)) || anyMeow || anyPublic)
+            // MeowSSH ownership stays strict: a trusted MeowSSH map that embeds any unrecognized
+            // host is ambiguous and must never become billable merely because the map URL matched.
+            if (mapIsMeow || anyMeow || anyPublic)
                 return Result(TailcatRelayClass.Unknown);
 
             // Embedded third-party hosts are only called user-owned when the caller explicitly
