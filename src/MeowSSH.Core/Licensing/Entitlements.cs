@@ -19,6 +19,7 @@ public enum PremiumFeature
     MultiHostActions,
     CommandMonitoring,
     HostHealthDashboard,
+    PortForwardProfiles,
     SessionLogs,
     PremiumCustomization,
     EncryptedLocalBackup,

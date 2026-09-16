@@ -37,6 +37,31 @@ public class PortForwardTests(TestHostFixture fixture)
     }
 
     [Fact]
+    public async Task SavedProfileCanBeStartedAndDeleted()
+    {
+        var page = await OpenForwardsAsync();
+        var workspace = page.Locator(".session-workspace.is-active");
+
+        await workspace.GetByTestId("toggle-forward-profiles").ClickAsync();
+        await workspace.GetByTestId("forward-profile-name").FillAsync("Database");
+        await workspace.GetByTestId("forward-profile-listen").FillAsync("127.0.0.1:0");
+        await workspace.GetByTestId("forward-profile-destination").FillAsync("db.internal:5432");
+        await workspace.GetByTestId("save-forward-profile").ClickAsync();
+
+        var profile = workspace.GetByTestId("forward-profile");
+        await Assertions.Expect(profile).ToContainTextAsync("Database");
+        await Assertions.Expect(profile).ToContainTextAsync("db.internal:5432");
+
+        await profile.GetByTestId("start-forward-profile").ClickAsync();
+        var row = workspace.GetByTestId("forward-row");
+        await Assertions.Expect(row).ToContainTextAsync("db.internal:5432");
+        await Assertions.Expect(row).ToContainTextAsync("127.0.0.1:42000");
+
+        await profile.GetByTestId("delete-forward-profile").ClickAsync();
+        await Assertions.Expect(workspace.GetByTestId("forward-profiles-empty")).ToBeVisibleAsync();
+    }
+
+    [Fact]
     public async Task SocksForwardDisplaysGeneratedCredentials()
     {
         var page = await OpenForwardsAsync();
