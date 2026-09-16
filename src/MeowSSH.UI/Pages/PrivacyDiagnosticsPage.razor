@@ -1,0 +1,200 @@
+@using MeowSSH.Core.Diagnostics
+@inject IPendingDiagnosticReportStore PendingReports
+@inject ILocalFileTransferService LocalFiles
+
+<AppShell Title="Privacy & diagnostics" ActiveTab="settings">
+    <Actions>
+        <button type="button" class="btn btn--icon" aria-label="Back to Settings"
+                data-testid="privacy-diagnostics-back" @onclick="OnClosed">
+            <Icon Name="back" />
+        </button>
+    </Actions>
+    <ChildContent>
+        <section class="settings" data-testid="privacy-diagnostics-page">
+            <div class="settings__section">
+                <h2 class="section-label">Report a problem</h2>
+                <p class="setting-card__body">
+                    Describe what happened. MeowSSH can create a local report you can review and share with support.
+                    Nothing is uploaded automatically.
+                </p>
+
+                <label class="field">
+                    <span class="field__label">What went wrong?</span>
+                    <textarea class="field__input" rows="5" maxlength="4096"
+                              data-testid="bug-description" @bind="_description" @bind:event="oninput"
+                              placeholder="Tell us what happened and where you were in the app."></textarea>
+                </label>
+
+                <details class="setting-card diagnostic-extra" data-testid="bug-report-more-details">
+                    <summary>More details</summary>
+                    <div class="diagnostic-extra__body">
+                        <label class="field">
+                            <span class="field__label">What did you expect?</span>
+                            <textarea class="field__input" rows="3" maxlength="2048"
+                                      data-testid="bug-expected" @bind="_expected" @bind:event="oninput"></textarea>
+                        </label>
+                        <label class="field">
+                            <span class="field__label">Steps to reproduce</span>
+                            <textarea class="field__input" rows="4" maxlength="4096"
+                                      data-testid="bug-steps" @bind="_steps" @bind:event="oninput"></textarea>
+                        </label>
+                    </div>
+                </details>
+
+                @if (_pendingReport is not null)
+                {
+                    <label class="setting-card setting-card--toggle" for="attach-diagnostics">
+                        <span class="setting-card__copy">
+                            <span class="setting-card__title">Attach anonymized crash diagnostics</span>
+                            <span class="setting-card__body">Off by default. Includes sanitized stack traces, app version and recent high-level app actions only.</span>
+                        </span>
+                        <input id="attach-diagnostics" type="checkbox" class="settings__toggle"
+                               data-testid="attach-bug-diagnostics" @bind="_attachDiagnostics" />
+                    </label>
+
+                    @if (_attachDiagnostics)
+                    {
+                        <details class="setting-card diagnostic-extra" data-testid="bug-diagnostic-review">
+                            <summary>Review attached diagnostics</summary>
+                            <div class="diagnostic-extra__body">
+                                <p class="setting-card__body">
+                                    Not included: terminal contents, commands, host names, addresses, usernames, file names, passwords, keys, or account identifiers.
+                                </p>
+                                <dl class="diagnostic-review__metadata">
+                                    <div><dt>App</dt><dd class="mono">@_pendingReport.AppVersion</dd></div>
+                                    <div><dt>Platform</dt><dd>@_pendingReport.Platform</dd></div>
+                                    <div><dt>Captured</dt><dd>@_pendingReport.CapturedAtUtc.ToLocalTime().ToString("g")</dd></div>
+                                </dl>
+                                @foreach (var exception in _pendingReport.Exceptions)
+                                {
+                                    <div class="diagnostic-review__exception">
+                                        <strong class="mono">@exception.Type</strong>
+                                        @if (!string.IsNullOrWhiteSpace(exception.Message))
+                                        {
+                                            <pre>@exception.Message</pre>
+                                        }
+                                        @if (!string.IsNullOrWhiteSpace(exception.StackTrace))
+                                        {
+                                            <pre>@exception.StackTrace</pre>
+                                        }
+                                    </div>
+                                }
+                                @if (_pendingReport.Breadcrumbs.Count > 0)
+                                {
+                                    <div>
+                                        <strong>Recent app actions</strong>
+                                        <ul>
+                                            @foreach (var breadcrumb in _pendingReport.Breadcrumbs)
+                                            {
+                                                <li>@breadcrumb.Kind</li>
+                                            }
+                                        </ul>
+                                    </div>
+                                }
+                            </div>
+                        </details>
+                    }
+                }
+                else
+                {
+                    <div class="setting-card" data-testid="no-pending-diagnostics">
+                        <span class="setting-card__copy">
+                            <span class="setting-card__title">No crash diagnostics waiting</span>
+                            <span class="setting-card__body">A normal bug report can still be exported without diagnostic data.</span>
+                        </span>
+                    </div>
+                }
+
+                <button type="button" class="btn btn--primary btn--block"
+                        data-testid="export-bug-report" disabled="@(_busy || string.IsNullOrWhiteSpace(_description))"
+                        @onclick="ExportAsync">
+                    @(_busy ? "Preparing…" : "Export report")
+                </button>
+
+                @if (!string.IsNullOrWhiteSpace(_message))
+                {
+                    <p class="setting-card__body" role="status" data-testid="bug-report-message">@_message</p>
+                }
+            </div>
+
+            <div class="settings__section">
+                <h2 class="section-label">Privacy</h2>
+                <div class="setting-card">
+                    <span class="setting-card__copy">
+                        <span class="setting-card__title">Diagnostics stay local until you choose otherwise</span>
+                        <span class="setting-card__body">Crash capture and report preparation do not silently submit analytics or diagnostic data.</span>
+                    </span>
+                </div>
+                @if (_pendingReport is not null)
+                {
+                    <button type="button" class="btn btn--ghost btn--block"
+                            data-testid="discard-pending-diagnostics" disabled="@_busy" @onclick="DiscardPendingAsync">
+                        Discard saved crash diagnostics
+                    </button>
+                }
+            </div>
+        </section>
+    </ChildContent>
+</AppShell>
+
+@code {
+    [Parameter] public EventCallback OnClosed { get; set; }
+
+    private DiagnosticReportSnapshot? _pendingReport;
+    private string _description = string.Empty;
+    private string _expected = string.Empty;
+    private string _steps = string.Empty;
+    private bool _attachDiagnostics;
+    private bool _busy;
+    private string? _message;
+
+    protected override async Task OnInitializedAsync() =>
+        _pendingReport = await PendingReports.LoadAsync();
+
+    private async Task ExportAsync()
+    {
+        if (_busy || string.IsNullOrWhiteSpace(_description)) return;
+        _busy = true;
+        _message = null;
+        string? temporary = null;
+        try
+        {
+            var text = BugReportExportBuilder.Build(
+                _description,
+                _expected,
+                _steps,
+                _attachDiagnostics ? _pendingReport : null);
+            var name = $"meowssh-bug-report-{DateTime.UtcNow:yyyyMMdd-HHmmss}.txt";
+            temporary = LocalFiles.CreateTemporaryPath(name);
+            await File.WriteAllTextAsync(temporary, text);
+            var destination = await LocalFiles.PublishDownloadAsync(temporary, name);
+            _message = $"Bug report exported to {destination}";
+        }
+        catch (Exception exception) when (exception is ArgumentException or IOException or UnauthorizedAccessException)
+        {
+            _message = exception.Message;
+        }
+        finally
+        {
+            if (temporary is not null) LocalFiles.DeleteTemporaryFile(temporary);
+            _busy = false;
+        }
+    }
+
+    private async Task DiscardPendingAsync()
+    {
+        if (_busy) return;
+        _busy = true;
+        try
+        {
+            await PendingReports.ClearAsync();
+            _pendingReport = null;
+            _attachDiagnostics = false;
+            _message = "Saved crash diagnostics discarded.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}
