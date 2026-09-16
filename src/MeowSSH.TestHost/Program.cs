@@ -27,6 +27,8 @@ builder.Services.AddScoped<ITailcatWorkspaceService, TailcatWorkspaceService>();
 builder.Services.AddScoped<ICommandActionStore, MemoryCommandActionStore>();
 builder.Services.AddScoped<ICommandActionService, CommandActionService>();
 builder.Services.AddScoped<IParameterizedCommandActionRunner, ParameterizedCommandActionRunner>();
+builder.Services.AddScoped<ICommandActionSequenceStore, MemoryCommandActionSequenceStore>();
+builder.Services.AddScoped<ICommandActionSequenceService, CommandActionSequenceService>();
 builder.Services.AddScoped<IHostHealthDashboardService, HostHealthDashboardService>();
 builder.Services.AddScoped<ICommandMonitorStore, MemoryCommandMonitorStore>();
 builder.Services.AddScoped<ICommandMonitorAlertSink, NoOpCommandMonitorAlertSink>();

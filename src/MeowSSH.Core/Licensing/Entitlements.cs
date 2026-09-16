@@ -18,6 +18,7 @@ public enum PremiumFeature
     AdvancedSftp,
     MultiHostActions,
     ActionVariables,
+    ActionSequences,
     BroadcastInput,
     CommandMonitoring,
     HostHealthDashboard,
