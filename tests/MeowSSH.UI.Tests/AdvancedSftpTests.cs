@@ -92,4 +92,21 @@ public sealed class AdvancedSftpTests(TestHostFixture fixture)
         await page.GetByTestId("advanced-delete-bookmark").ClickAsync();
         await Assertions.Expect(page.GetByTestId("advanced-bookmarks-empty")).ToBeVisibleAsync();
     }
+
+    [Fact]
+    public async Task ProRemoteSearchFindsNestedFileAndCanOpenItsFolder()
+    {
+        var page = await OpenAdvancedAsync();
+
+        await page.GetByTestId("sftp-search-query").FillAsync("settings");
+        await page.GetByTestId("run-sftp-search").ClickAsync();
+
+        await Assertions.Expect(page.GetByTestId("sftp-search-count")).ToContainTextAsync("1 result");
+        var result = page.GetByTestId("sftp-search-result");
+        await Assertions.Expect(result).ToContainTextAsync("settings.toml");
+        await Assertions.Expect(result).ToContainTextAsync(".config/settings.toml");
+
+        await result.GetByTestId("open-sftp-search-result").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("advanced-crumbs")).ToContainTextAsync(".config");
+    }
 }
