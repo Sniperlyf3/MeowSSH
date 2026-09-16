@@ -93,6 +93,9 @@ public static class MauiProgram
             Path.Combine(FileSystem.AppDataDirectory, "actions.json")));
         builder.Services.AddSingleton<ICommandActionService, CommandActionService>();
         builder.Services.AddSingleton<IParameterizedCommandActionRunner, ParameterizedCommandActionRunner>();
+        builder.Services.AddSingleton<ICommandActionSequenceStore>(_ => new FileCommandActionSequenceStore(
+            Path.Combine(FileSystem.AppDataDirectory, "action-sequences.json")));
+        builder.Services.AddSingleton<ICommandActionSequenceService, CommandActionSequenceService>();
         builder.Services.AddSingleton<IHostHealthDashboardService, HostHealthDashboardService>();
         builder.Services.AddSingleton<ICommandMonitorStore>(_ => new FileCommandMonitorStore(
             Path.Combine(FileSystem.AppDataDirectory, "command-monitors.json")));

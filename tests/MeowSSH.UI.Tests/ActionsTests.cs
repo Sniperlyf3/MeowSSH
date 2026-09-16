@@ -90,6 +90,33 @@ public sealed class ActionsTests(TestHostFixture fixture)
         await Assertions.Expect(card).ToContainTextAsync("{{environment}}");
     }
 
+    [Fact]
+    public async Task ProActionCanRunOrderedMultiStepSequence()
+    {
+        var page = await OpenActionsAsync();
+
+        await page.GetByTestId("add-action").ClickAsync();
+        await page.GetByTestId("action-name").FillAsync("Deploy sequence");
+        await page.GetByTestId("action-command").FillAsync("echo prepare");
+        await SelectHostAsync(page, "prod-web-01");
+        await page.GetByTestId("save-action").ClickAsync();
+
+        var card = page.Locator("[data-testid^='action-card-']").Filter(new LocatorFilterOptions { HasTextString = "Deploy sequence" });
+        await card.GetByTestId("configure-action-sequence").ClickAsync();
+        await page.GetByTestId("action-sequence-commands").FillAsync("echo deploy\necho verify");
+        await page.GetByTestId("save-action-sequence").ClickAsync();
+
+        await Assertions.Expect(card.GetByTestId("action-sequence-summary")).ToContainTextAsync("3 steps");
+        await card.GetByTestId("run-action-sequence").ClickAsync();
+
+        var results = card.GetByTestId("action-sequence-results");
+        await Assertions.Expect(results).ToContainTextAsync("Sequence completed successfully");
+        await Assertions.Expect(results.GetByTestId("action-sequence-step-result")).ToHaveCountAsync(3);
+        await Assertions.Expect(results).ToContainTextAsync("echo prepare on");
+        await Assertions.Expect(results).ToContainTextAsync("echo deploy on");
+        await Assertions.Expect(results).ToContainTextAsync("echo verify on");
+    }
+
     private static async Task SelectHostAsync(IPage page, string label)
     {
         var host = page.Locator("label.action-host").Filter(new LocatorFilterOptions { HasTextString = label });
