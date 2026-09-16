@@ -159,8 +159,8 @@ public sealed class CommandActionSequenceService(
     private async Task<IndexedResult> RunTargetAsync(
         CommandAction action,
         CommandActionSequence sequence,
-        IReadOnlyList<string> templates,
-        IReadOnlyList<string> rendered,
+        string[] templates,
+        string[] rendered,
         Guid hostId,
         int index,
         Dictionary<Guid, HostRecord> hosts,
@@ -186,7 +186,7 @@ public sealed class CommandActionSequenceService(
                 connection = await engine.ConnectAsync(target, resolvedCredentials, prompts, cancellationToken).ConfigureAwait(false);
 
                 var stepResults = new List<CommandActionStepResult>();
-                for (var step = 0; step < rendered.Count; step++)
+                for (var step = 0; step < rendered.Length; step++)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     var stepStarted = _timeProvider.GetUtcNow();
