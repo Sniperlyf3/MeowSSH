@@ -36,11 +36,17 @@ public sealed class SshCredentials : IDisposable
 
     /// <summary>
     /// Identifiers for keys held in the device's hardware key store, which sign
-    /// without the key ever being readable. Paired with their public keys.
+    /// without the key ever being readable. Paired with their SSH wire-format public keys.
     /// </summary>
     public IReadOnlyList<string> KeyStoreKeyIds { get; init; } = [];
 
     public IReadOnlyList<byte[]> KeyStorePublicKeys { get; init; } = [];
+
+    /// <summary>
+    /// Platform signer used only when Meowshell asks one of <see cref="KeyStoreKeyIds"/>
+    /// to sign an authentication challenge. Private key material never enters this object.
+    /// </summary>
+    public ISshHardwareKeySigner? HardwareKeySigner { get; init; }
 
     /// <summary>Offers no stored authentication material.</summary>
     public static SshCredentials None { get; } = new();
