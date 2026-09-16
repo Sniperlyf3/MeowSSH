@@ -134,15 +134,26 @@ jobs:
             echo "::error::MeowSSH-owned code produced linker/AOT trim diagnostics."
             exit 1
           fi
-      - name: Verify hardened Release package
+      - name: Verify hardened Release package and merged manifest
         run: |
+          set -euo pipefail
           APK=$(find src/MeowSSH.App/bin/Release -name "*-Signed.apk" | head -1)
           test -n "$APK"
           unzip -t "$APK" >/dev/null
           unzip -l "$APK" | grep -q "lib/arm64-v8a/libmeowshell.so"
           unzip -l "$APK" | grep -q "lib/arm64-v8a/libtailcat.so"
           unzip -l "$APK" | grep -q "lib/arm64-v8a/libhev-socks5-tunnel.so"
+
+          MERGED_MANIFEST=$(find src/MeowSSH.App/obj/Release -path '*/android/AndroidManifest.xml' -type f | head -1)
+          test -n "$MERGED_MANIFEST"
+          grep -q 'android.permission.FOREGROUND_SERVICE_SPECIAL_USE' "$MERGED_MANIFEST"
+          grep -q 'dev.sniperlyf3.meowssh.SessionKeepAliveService' "$MERGED_MANIFEST"
+          grep -q 'android:foregroundServiceType="specialUse"' "$MERGED_MANIFEST"
+          grep -q 'android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE' "$MERGED_MANIFEST"
+          grep -q 'Keeps a user-initiated terminal session alive' "$MERGED_MANIFEST"
+
           echo "Hardened Release APK: $APK ($(du -h "$APK" | cut -f1))"
+          echo "Merged foreground-service declaration: verified"
       - name: Upload hardened Release APK
         uses: actions/upload-artifact@v7
         with:
@@ -218,7 +229,7 @@ jobs:
             -p:Version=0.1.${{ github.run_number }} \
             -p:ApplicationDisplayVersion=0.1.${{ github.run_number }} \
             -p:ApplicationVersion=${{ github.run_number }}
-      - name: Verify Play ABI coverage and VPN exclusion
+      - name: Verify Play ABI coverage, VPN exclusion and merged manifest
         shell: bash
         run: |
           set -euo pipefail
@@ -233,7 +244,20 @@ jobs:
             echo "::error::VPN-excluded AAB contains the HEV tunnel library."
             exit 1
           fi
+
+          MERGED_MANIFEST=$(find src/MeowSSH.App/obj/Release -path '*/android/AndroidManifest.xml' -type f | head -1)
+          test -n "$MERGED_MANIFEST"
+          grep -q 'android.permission.FOREGROUND_SERVICE_SPECIAL_USE' "$MERGED_MANIFEST"
+          grep -q 'dev.sniperlyf3.meowssh.SessionKeepAliveService' "$MERGED_MANIFEST"
+          grep -q 'android:foregroundServiceType="specialUse"' "$MERGED_MANIFEST"
+          grep -q 'android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE' "$MERGED_MANIFEST"
+          if grep -q 'TailcatVpnService' "$MERGED_MANIFEST"; then
+            echo "::error::VPN-excluded AAB merged manifest still declares TailcatVpnService."
+            exit 1
+          fi
+
           echo "Validated Play ABIs: arm64-v8a, x86_64"
+          echo "VPN-excluded merged manifest: verified"
           echo "AAB: $AAB ($(du -h "$AAB" | cut -f1))"
       - name: Upload CI app bundle
         uses: actions/upload-artifact@v7
