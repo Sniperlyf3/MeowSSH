@@ -12,16 +12,12 @@
     gap: var(--space-4);
 }
 
-.keys-header h2 {
-    font-size: var(--text-lg);
-}
-
+.keys-header h2 { font-size: var(--text-lg); }
 .keys-header p {
     margin-top: 2px;
     color: var(--text-muted);
     font-size: var(--text-xs);
 }
-
 .keys-header__add {
     flex: none;
     padding-inline: var(--space-4);
@@ -45,7 +41,9 @@
     background: var(--surface);
 }
 
-.credential-card__icon {
+.credential-card__icon,
+.keys-editor__glyph,
+.credential-flow__icon {
     display: grid;
     place-items: center;
     width: 2.5rem;
@@ -53,9 +51,12 @@
     border-radius: var(--radius-md);
     background: var(--accent-wash);
     color: var(--accent);
+    flex: none;
 }
 
-.credential-card__icon .icon {
+.credential-card__icon .icon,
+.keys-editor__glyph .icon,
+.credential-flow__icon .icon {
     width: 19px;
     height: 19px;
 }
@@ -100,25 +101,50 @@
     white-space: nowrap;
 }
 
-.credential-card__actions {
+.credential-card__manage {
+    position: relative;
+}
+
+.credential-card__manage > summary {
+    min-height: 2.5rem;
     display: flex;
     align-items: center;
-    gap: var(--space-1);
+    padding-inline: var(--space-3);
+    border-radius: var(--radius-md);
+    color: var(--text-muted);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    cursor: pointer;
+    list-style: none;
+}
+
+.credential-card__manage > summary::-webkit-details-marker { display: none; }
+.credential-card__manage > summary:hover { background: var(--surface-raised); color: var(--text); }
+
+.credential-card__manage-actions {
+    position: absolute;
+    z-index: 10;
+    right: 0;
+    top: calc(100% + var(--space-1));
+    display: grid;
+    gap: var(--space-2);
+    width: min(16rem, 78vw);
+    padding: var(--space-3);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-md);
+    background: var(--surface-raised);
+    box-shadow: var(--shadow-pop);
+}
+
+.credential-card__manage-actions .btn {
+    justify-content: flex-start;
+    width: 100%;
 }
 
 .credential-card__public-key {
     grid-column: 1 / -1;
     width: 100%;
     margin-top: var(--space-2);
-}
-
-.credential-card__delete {
-    color: var(--text-faint);
-}
-
-.credential-card__delete:hover {
-    color: var(--danger);
-    background: var(--danger-wash);
 }
 
 .keys-security-note {
@@ -140,22 +166,13 @@
     margin-top: 1px;
     color: var(--ok);
 }
-
-.keys-security-note__icon .icon {
-    width: 16px;
-    height: 16px;
-}
-
+.keys-security-note__icon .icon { width: 16px; height: 16px; }
 .keys-security-note strong,
-.keys-security-note small {
-    display: block;
-}
-
+.keys-security-note small { display: block; }
 .keys-security-note strong {
     margin-bottom: 2px;
     font-size: var(--text-xs);
 }
-
 .keys-security-note small {
     color: var(--text-muted);
     font-size: var(--text-xs);
@@ -165,7 +182,7 @@
 .keys-editor {
     display: flex;
     flex-direction: column;
-    gap: var(--space-5);
+    gap: var(--space-4);
 }
 
 .keys-editor__intro {
@@ -178,44 +195,113 @@
     border-radius: var(--radius-lg);
     background: var(--surface);
 }
-
-.keys-editor__glyph {
-    display: grid;
-    place-items: center;
-    width: 2.5rem;
-    height: 2.5rem;
-    border-radius: var(--radius-md);
-    background: var(--accent-wash);
-    color: var(--accent);
-}
-
 .keys-editor__intro strong,
-.keys-editor__intro small {
-    display: block;
-}
-
+.keys-editor__intro small { display: block; }
 .keys-editor__intro small {
     margin-top: 2px;
     color: var(--text-muted);
     font-size: var(--text-xs);
 }
 
-.keys-empty {
-    padding-inline: var(--space-3);
+.keys-editor__change-type {
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: 2.75rem;
+    padding: 0 var(--space-2);
+    border: 0;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
 }
+.keys-editor__change-type:hover { color: var(--text); }
+.keys-editor__change-type:disabled { opacity: .55; cursor: default; }
+.keys-editor__change-type .icon { width: 17px; height: 17px; }
+
+.credential-flow-picker {
+    display: grid;
+    gap: var(--space-2);
+}
+
+.credential-flow {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--space-3);
+    width: 100%;
+    min-height: 4.5rem;
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--surface);
+    color: var(--text);
+    text-align: left;
+    cursor: pointer;
+}
+.credential-flow:hover,
+.credential-flow:focus-visible {
+    border-color: var(--border-strong);
+    background: var(--surface-raised);
+}
+.credential-flow > span:nth-child(2) { min-width: 0; }
+.credential-flow strong,
+.credential-flow small { display: block; }
+.credential-flow strong { font-size: var(--text-sm); }
+.credential-flow small {
+    margin-top: 2px;
+    color: var(--text-muted);
+    font-size: var(--text-xs);
+    line-height: 1.4;
+}
+.credential-flow > .icon {
+    width: 17px;
+    height: 17px;
+    color: var(--text-faint);
+}
+
+.keys-generated {
+    display: grid;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface-sunken);
+}
+.keys-generated__status {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    color: var(--ok);
+    font-size: var(--text-xs);
+    font-weight: 600;
+}
+.keys-generated__status .icon { width: 16px; height: 16px; }
+
+.keys-empty { padding-inline: var(--space-3); }
 
 @media (max-width: 420px) {
     .credential-card {
+        grid-template-columns: auto minmax(0, 1fr);
         gap: var(--space-2);
         padding-left: var(--space-3);
     }
-
-    .credential-card__icon {
-        width: 2.25rem;
-        height: 2.25rem;
+    .credential-card__icon { width: 2.25rem; height: 2.25rem; }
+    .credential-card__kind { display: none; }
+    .credential-card__manage {
+        grid-column: 1 / -1;
+        justify-self: stretch;
     }
-
-    .credential-card__kind {
-        display: none;
+    .credential-card__manage > summary {
+        justify-content: center;
+        border-top: 1px solid var(--border);
+        border-radius: 0;
     }
+    .credential-card__manage-actions {
+        position: static;
+        width: 100%;
+        margin-top: var(--space-2);
+        box-shadow: none;
+    }
+    .credential-flow { padding-inline: var(--space-3); }
 }
