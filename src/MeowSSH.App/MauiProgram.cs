@@ -85,10 +85,17 @@ public static class MauiProgram
         builder.Services.AddSingleton<ICommandMonitorAlertSink, AndroidCommandMonitorAlertSink>();
         builder.Services.AddSingleton<CommandMonitoringService>();
         builder.Services.AddSingleton<ICommandMonitoringService>(sp => sp.GetRequiredService<CommandMonitoringService>());
+#if TAILCAT_VPN
         builder.Services.AddSingleton<AndroidTailcatVpnController>();
         builder.Services.AddSingleton<ITailcatVpnController>(sp => new EntitlementTailcatVpnController(
             sp.GetRequiredService<AndroidTailcatVpnController>(),
             sp.GetRequiredService<IEntitlementService>()));
+#else
+        builder.Services.AddSingleton<UnavailableTailcatVpnController>();
+        builder.Services.AddSingleton<ITailcatVpnController>(sp => new EntitlementTailcatVpnController(
+            sp.GetRequiredService<UnavailableTailcatVpnController>(),
+            sp.GetRequiredService<IEntitlementService>()));
+#endif
 
         builder.Services.AddSingleton<ISshEngine>(sp => new MeowshellSshEngine(sp.GetRequiredService<MeowshellSshEngineOptions>()));
         builder.Services.AddSingleton<IProtocolConnectionEngine>(sp => new SshProtocolConnectionEngine(sp.GetRequiredService<ISshEngine>()));
