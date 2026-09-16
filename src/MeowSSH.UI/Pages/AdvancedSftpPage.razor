@@ -48,6 +48,8 @@
             </div>
         </div>
 
+        <SftpRemoteSearchPanel Sftp="Sftp" RootPath="@_path" OnNavigate="NavigateAsync" />
+
         @if (_error is not null)
         {
             <div class="notice notice--danger" role="alert" data-testid="advanced-sftp-error">

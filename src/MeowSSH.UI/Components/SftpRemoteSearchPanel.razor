@@ -1,0 +1,113 @@
+@inject ISftpRemoteSearchService Search
+@implements IDisposable
+
+<section class="stack" data-testid="sftp-remote-search">
+    <div class="section-head">
+        <div>
+            <h2 class="section-label">Remote search <span class="action-pro-badge">PRO</span></h2>
+            <p class="action-muted">Search names and paths below the current folder. No remote index is created.</p>
+        </div>
+    </div>
+
+    <div class="field-row">
+        <label class="field field--grow">
+            <span class="field__label">Search</span>
+            <input class="field__input" data-testid="sftp-search-query" maxlength="256"
+                   autocomplete="off" autocapitalize="none" spellcheck="false"
+                   @bind="_query" @bind:event="oninput" />
+        </label>
+        @if (_running)
+        {
+            <button type="button" class="btn btn--ghost" data-testid="cancel-sftp-search" @onclick="Cancel">Cancel</button>
+        }
+        else
+        {
+            <button type="button" class="btn btn--primary" data-testid="run-sftp-search" @onclick="RunAsync">Search</button>
+        }
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(_message))
+    {
+        <p class="action-message" role="alert" data-testid="sftp-search-message">@_message</p>
+    }
+
+    @if (_results is not null)
+    {
+        <p class="action-muted" data-testid="sftp-search-count">@_results.Count result@(_results.Count == 1 ? "" : "s")</p>
+        <div class="action-list" data-testid="sftp-search-results">
+            @foreach (var result in _results)
+            {
+                <article class="action-card" data-testid="sftp-search-result">
+                    <div class="action-card__copy">
+                        <strong>@result.File.Name</strong>
+                        <code>@result.RelativePath</code>
+                        <p class="action-muted">@(result.File.IsDirectory ? "Folder" : result.File.IsSymlink ? "Symlink" : "File")</p>
+                    </div>
+                    <button type="button" class="btn btn--ghost"
+                            data-testid="open-sftp-search-result"
+                            @onclick="() => OpenResultAsync(result)">
+                        Open folder
+                    </button>
+                </article>
+            }
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public ISftpSession Sftp { get; set; } = default!;
+    [Parameter, EditorRequired] public string RootPath { get; set; } = "/";
+    [Parameter] public EventCallback<string> OnNavigate { get; set; }
+
+    private string _query = string.Empty;
+    private IReadOnlyList<SftpSearchResult>? _results;
+    private string? _message;
+    private bool _running;
+    private CancellationTokenSource? _cancellation;
+
+    private async Task RunAsync()
+    {
+        if (_running) return;
+        _running = true;
+        _message = null;
+        _results = null;
+        _cancellation = new CancellationTokenSource();
+        try
+        {
+            var root = RootPath == "/"
+                ? new RemoteFile("root", "/", 0, 0x41ED, DateTimeOffset.UtcNow, true)
+                : await Sftp.StatAsync(RootPath, _cancellation.Token);
+            _results = await Search.SearchAsync(Sftp, root, _query, _cancellation.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            _message = "Search cancelled.";
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or ArgumentException or SshException)
+        {
+            _message = exception.Message;
+        }
+        finally
+        {
+            _cancellation?.Dispose();
+            _cancellation = null;
+            _running = false;
+        }
+    }
+
+    private Task OpenResultAsync(SftpSearchResult result)
+    {
+        var path = result.File.IsDirectory && !result.File.IsSymlink
+            ? result.File.Path
+            : RemotePath.ParentOf(result.File.Path) ?? RootPath;
+        return OnNavigate.InvokeAsync(path);
+    }
+
+    private void Cancel() => _cancellation?.Cancel();
+
+    public void Dispose()
+    {
+        _cancellation?.Cancel();
+        _cancellation?.Dispose();
+    }
+}
