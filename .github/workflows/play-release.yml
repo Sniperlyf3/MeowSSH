@@ -85,6 +85,16 @@ jobs:
             done
           fi
 
+          if [[ "$LICENSING_API_BASE_URL" != https://* ]]; then
+            echo "::error::LICENSING_API_BASE_URL must be a public HTTPS URL."
+            exit 1
+          fi
+          LICENSING_READY_URL="${LICENSING_API_BASE_URL%/}/readyz"
+          if ! curl --fail --location --silent --show-error --max-time 20 --retry 2 --retry-delay 1 "$LICENSING_READY_URL" -o /dev/null; then
+            echo "::error::The production licensing API must pass $LICENSING_READY_URL before a Play release."
+            exit 1
+          fi
+
           for name in PRIVACY_POLICY_URL SUPPORT_URL TERMS_OF_SERVICE_URL; do
             if [[ "${!name}" != https://* ]]; then
               echo "::error::$name must be a public HTTPS URL."
@@ -187,6 +197,7 @@ jobs:
         shell: bash
         env:
           TAILCAT_DERP_MAP_URL: ${{ vars.TAILCAT_DERP_MAP_URL }}
+          LICENSING_API_BASE_URL: ${{ vars.LICENSING_API_BASE_URL }}
         run: |
           set -euo pipefail
           AAB=$(find src/MeowSSH.App/bin/Release -name "*.aab" | head -1)
@@ -243,6 +254,7 @@ jobs:
           echo "Play ABIs: arm64-v8a, x86_64" >> "$GITHUB_STEP_SUMMARY"
           echo "16 KiB ELF alignment: verified for $native_count packaged shared libraries" >> "$GITHUB_STEP_SUMMARY"
           echo "Pro Cloud sales: disabled" >> "$GITHUB_STEP_SUMMARY"
+          echo "Licensing API: HTTPS and /readyz verified ($LICENSING_API_BASE_URL)" >> "$GITHUB_STEP_SUMMARY"
           echo "Tailcat DERP map: $TAILCAT_DERP_MAP_URL" >> "$GITHUB_STEP_SUMMARY"
           echo "Third-party notices: packaged" >> "$GITHUB_STEP_SUMMARY"
           echo "Privacy/support/Terms links: configured and reachable" >> "$GITHUB_STEP_SUMMARY"
