@@ -15,8 +15,6 @@ public class HostListTests(TestHostFixture fixture)
     [Fact]
     public async Task ConnectedHostsAreGroupedAboveTheRest()
     {
-        // A live session is what the user is most likely returning to, so it must
-        // not be buried in an alphabetical list.
         var page = await fixture.NewPageAsync();
         var headings = page.Locator(".section-label");
 
@@ -62,8 +60,6 @@ public class HostListTests(TestHostFixture fixture)
     [Fact]
     public async Task NothingOverflowsAtPhoneWidth()
     {
-        // The app ships to phones only, so a horizontal scrollbar is a defect, not
-        // a cosmetic issue -- it means a control has been pushed off screen.
         var page = await fixture.NewPageAsync();
 
         var overflows = await page.EvaluateAsync<bool>(
@@ -73,19 +69,33 @@ public class HostListTests(TestHostFixture fixture)
     }
 
     [Fact]
-    public async Task EveryNavigationTabIsReachable()
+    public async Task PrimaryNavigationHasFiveStableDestinations()
     {
         var page = await fixture.NewPageAsync();
 
-        foreach (var tab in new[] { "hosts", "files", "tailcat", "keys", "settings" })
+        foreach (var tab in new[] { "hosts", "files", "tools", "keys", "settings" })
             await Assertions.Expect(page.GetByTestId($"tab-{tab}")).ToBeVisibleAsync();
+
+        await Assertions.Expect(page.Locator("nav[aria-label='Main'] button")).ToHaveCountAsync(5);
+        foreach (var legacy in new[] { "actions", "monitoring", "health", "tailcat", "backup" })
+            await Assertions.Expect(page.GetByTestId($"tab-{legacy}")).ToHaveCountAsync(0);
+    }
+
+    [Fact]
+    public async Task ToolsProvidesOneTapAccessToSpecialistDestinations()
+    {
+        var page = await fixture.NewPageAsync();
+
+        await page.GetByTestId("tab-tools").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("tools-hub")).ToBeVisibleAsync();
+        await page.GetByTestId("open-tool-tailcat").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("tailcat-page")).ToBeVisibleAsync();
+        await Assertions.Expect(page.GetByTestId("tab-tools")).ToHaveAttributeAsync("aria-current", "page");
     }
 
     [Fact]
     public async Task IconsRenderAtAReadableSizeRatherThanFillingTheirButton()
     {
-        // Regression guard: an <svg> carrying only a viewBox resolves to 100%
-        // width, which once made the fingerprint icon swallow its entire button.
         var page = await fixture.NewPageAsync("/?locked");
         var icon = page.GetByTestId("unlock-biometric").Locator(".icon");
         await Assertions.Expect(icon).ToBeVisibleAsync();
