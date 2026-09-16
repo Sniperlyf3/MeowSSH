@@ -1,6 +1,7 @@
 @page "/"
 @page "/hosts"
 @using MeowSSH.UI.Pages
+@using MeowSSH.Core.Diagnostics
 @using MeowSSH.Core.Ssh
 @* Without an explicit render mode the page is statically rendered: it looks
    right but no button does anything, so every interaction test fails. *@
@@ -20,7 +21,23 @@
     <span data-testid="interactive" hidden></span>
 }
 
-@if (_multi)
+@if (_diagnosticReport is not null)
+{
+    <div class="hosts" data-testid="diagnostic-background">
+        <p class="visually-hidden">Diagnostic prompt playground</p>
+    </div>
+    <DiagnosticReportPrompt Report="_diagnosticReport"
+                            OnSend="SendDiagnosticReport"
+                            OnDismiss="DismissDiagnosticReport"
+                            OnDiscard="DiscardDiagnosticReport" />
+}
+else if (_diagnosticResult is not null)
+{
+    <div class="sheet" role="status" data-testid="diagnostic-result">
+        <p class="sheet__title">@_diagnosticResult</p>
+    </div>
+}
+else if (_multi)
 {
     <AppRoot />
 }
@@ -76,6 +93,8 @@ else
     private HostRecord? _editTarget;
     private SessionState? _session;
     private FilesState? _files;
+    private DiagnosticReportSnapshot? _diagnosticReport;
+    private string? _diagnosticResult;
 
     private sealed record SessionState(HostRecord Host, FakeSshShell Shell);
 
@@ -94,6 +113,8 @@ else
         if (query.Contains("newhost", StringComparison.OrdinalIgnoreCase)) _editing = true;
         if (!_multi && query.Contains("files", StringComparison.OrdinalIgnoreCase))
             _files = new FilesState(SampleHost, new FakeSftpSession());
+        if (query.Contains("diagnostic", StringComparison.OrdinalIgnoreCase))
+            _diagnosticReport = SampleDiagnosticReport();
     }
 
     private bool _sessionStarted;
@@ -129,6 +150,37 @@ else
     {
         _editing = false;
         _editTarget = null;
+    }
+
+    private void SendDiagnosticReport()
+    {
+        _diagnosticReport = null;
+        _diagnosticResult = "Send requested";
+    }
+
+    private void DismissDiagnosticReport()
+    {
+        _diagnosticReport = null;
+        _diagnosticResult = "Deferred";
+    }
+
+    private void DiscardDiagnosticReport()
+    {
+        _diagnosticReport = null;
+        _diagnosticResult = "Discarded";
+    }
+
+    private static DiagnosticReportSnapshot SampleDiagnosticReport()
+    {
+        var breadcrumbs = new DiagnosticBreadcrumbBuffer();
+        breadcrumbs.Add(DiagnosticBreadcrumbKind.AppStarted, DateTimeOffset.UtcNow.AddMinutes(-2));
+        breadcrumbs.Add(DiagnosticBreadcrumbKind.StartedSshSession, DateTimeOffset.UtcNow.AddMinutes(-1));
+        return DiagnosticReportSnapshotBuilder.Capture(
+            new InvalidOperationException("Connection state changed unexpectedly."),
+            breadcrumbs,
+            "2.0.0-test",
+            "Android",
+            DateTimeOffset.UtcNow);
     }
 
     /// <summary>The host the file browser opens against when driven by URL.</summary>
