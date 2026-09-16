@@ -43,9 +43,10 @@
 
 .session-tabs__item {
   display: flex;
+  align-items: stretch;
   flex: 0 0 auto;
   min-width: 8.5rem;
-  max-width: 13rem;
+  max-width: 15rem;
   border-right: 1px solid var(--border);
   background: var(--surface-sunken);
 }
@@ -96,7 +97,38 @@
   line-height: 1.1;
 }
 
-.session-tabs__mode,
+.session-tabs__view {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  align-self: center;
+  margin-right: var(--space-1);
+}
+
+.session-tabs__view-select {
+  width: auto;
+  max-width: 6.5rem;
+  min-height: 2rem;
+  padding: 0.25rem 1.65rem 0.25rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.session-tabs__view-select:hover {
+  border-color: var(--border-strong);
+}
+
+.session-tabs__view-select:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .session-tabs__close,
 .session-tabs__new {
   flex: 0 0 auto;
@@ -106,15 +138,6 @@
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
-}
-
-.session-tabs__mode {
-  width: 2.2rem;
-}
-
-.session-tabs__mode .icon {
-  width: 1rem;
-  height: 1rem;
 }
 
 .session-tabs__close {
@@ -133,16 +156,10 @@
   font-weight: 400;
 }
 
-.session-tabs__mode:hover,
 .session-tabs__close:hover,
 .session-tabs__new:hover {
   background: var(--surface-raised);
   color: var(--text);
-}
-
-.session-tabs__mode:disabled {
-  opacity: 0.4;
-  cursor: default;
 }
 
 .session-resume {

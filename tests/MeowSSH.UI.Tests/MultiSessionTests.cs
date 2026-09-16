@@ -5,6 +5,8 @@ namespace MeowSSH.UI.Tests;
 [Collection(nameof(TestHostCollection))]
 public class MultiSessionTests(TestHostFixture fixture)
 {
+    private static readonly string[] SessionViewOptions = ["Terminal", "Files", "Forwards"];
+
     private async Task<IPage> OpenMultiAsync()
     {
         var page = await fixture.NewPageAsync("/?multi");
@@ -72,24 +74,48 @@ public class MultiSessionTests(TestHostFixture fixture)
     }
 
     [Fact]
-    public async Task OneConnectionCanSwitchBetweenTerminalAndFiles()
+    public async Task SessionUsesOneStableViewSelectorForTerminalFilesAndForwards()
     {
         var page = await OpenMultiAsync();
 
         await page.GetByTestId("host-row").Filter(new() { HasText = "prod-web-01" }).ClickAsync();
         var workspace = ActiveWorkspace(page);
-        await Assertions.Expect(workspace.GetByTestId("terminal")).ToBeVisibleAsync();
+        var selector = workspace.GetByTestId("session-view-selector");
 
-        await workspace.GetByTestId("toggle-session-view").ClickAsync();
+        await Assertions.Expect(selector).ToHaveCountAsync(1);
+        await Assertions.Expect(selector).ToHaveValueAsync("Terminal");
+        Assert.Equal(SessionViewOptions, await selector.Locator("option").AllTextContentsAsync());
+        await Assertions.Expect(workspace.GetByTestId("toggle-session-view")).ToHaveCountAsync(0);
+        await Assertions.Expect(workspace.GetByTestId("open-forwards")).ToHaveCountAsync(0);
+
+        await selector.SelectOptionAsync("Files");
         workspace = ActiveWorkspace(page);
         await Assertions.Expect(workspace.GetByTestId("files")).ToBeVisibleAsync();
-        await Assertions.Expect(workspace.GetByTestId("session-tab").First).ToContainTextAsync("Files");
+        await Assertions.Expect(workspace.GetByTestId("session-view-selector")).ToHaveValueAsync("Files");
 
-        await workspace.GetByTestId("toggle-session-view").ClickAsync();
-        workspace = ActiveWorkspace(page);
+        await workspace.GetByTestId("session-view-selector").SelectOptionAsync("Forwards");
+        await Assertions.Expect(workspace.GetByTestId("forwards-page")).ToBeVisibleAsync();
+        await Assertions.Expect(workspace.GetByTestId("session-view-selector")).ToHaveValueAsync("Forwards");
+
+        await workspace.GetByTestId("session-view-selector").SelectOptionAsync("Terminal");
         await Assertions.Expect(workspace.GetByTestId("terminal")).ToBeVisibleAsync();
-        await Assertions.Expect(workspace.GetByTestId("session-tab").First).ToContainTextAsync("SSH");
+        await Assertions.Expect(workspace.GetByTestId("session-view-selector")).ToHaveValueAsync("Terminal");
         await Assertions.Expect(workspace.GetByTestId("session-tab")).ToHaveCountAsync(1);
+    }
+
+    [Fact]
+    public async Task ViewSelectorCanGoDirectlyFromForwardsBackToFiles()
+    {
+        var page = await OpenMultiAsync();
+
+        await page.GetByTestId("host-row").Filter(new() { HasText = "prod-web-01" }).ClickAsync();
+        var workspace = ActiveWorkspace(page);
+        await workspace.GetByTestId("session-view-selector").SelectOptionAsync("Forwards");
+        await Assertions.Expect(workspace.GetByTestId("forwards-page")).ToBeVisibleAsync();
+
+        await workspace.GetByTestId("session-view-selector").SelectOptionAsync("Files");
+        await Assertions.Expect(workspace.GetByTestId("files")).ToBeVisibleAsync();
+        await Assertions.Expect(workspace.GetByTestId("session-view-selector")).ToHaveValueAsync("Files");
     }
 
     [Fact]
