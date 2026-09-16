@@ -54,9 +54,13 @@ public sealed class AndroidSshHardwareKeyStore : ISshHardwareKeyStore
         {
             Generate(alias, strongBox: true);
         }
-        catch (Exception)
+        catch (StrongBoxUnavailableException)
         {
-            try { store.DeleteEntry(alias); } catch { }
+            // StrongBox is an optional capability. Fall back only when Android explicitly
+            // reports that the requested StrongBox hardware cannot satisfy this key request.
+            // Any other provider/security failure must remain visible to the caller.
+            if (store.ContainsAlias(alias))
+                store.DeleteEntry(alias);
             Generate(alias, strongBox: false);
         }
 
@@ -78,8 +82,10 @@ public sealed class AndroidSshHardwareKeyStore : ISshHardwareKeyStore
     {
         cancellationToken.ThrowIfCancellationRequested();
         ValidateKeyId(keyId);
-        try { LoadKeyStore().DeleteEntry(Alias(keyId)); }
-        catch { }
+        var store = LoadKeyStore();
+        var alias = Alias(keyId);
+        if (store.ContainsAlias(alias))
+            store.DeleteEntry(alias);
         return ValueTask.CompletedTask;
     }
 
