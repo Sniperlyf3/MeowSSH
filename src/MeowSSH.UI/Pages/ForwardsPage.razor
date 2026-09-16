@@ -18,8 +18,6 @@
     </header>
 
     <div class="forwards__body">
-        <ForwardProfilesPanel OnStart="OnStart" />
-
         @if (Forwards.Count == 0)
         {
             <div class="empty" data-testid="forwards-empty">
@@ -70,6 +68,14 @@
                 }
             </div>
         }
+
+        <details class="setting-card" data-testid="forward-profiles-disclosure">
+            <summary class="setting-card__copy">
+                <span class="setting-card__title">Saved forward profiles <span class="action-pro-badge">PRO</span></span>
+                <span class="setting-card__body">Reusable tunnel presets for recurring routes.</span>
+            </summary>
+            <ForwardProfilesPanel OnStart="OnStart" />
+        </details>
     </div>
 </div>
 
@@ -89,17 +95,6 @@
         </div>
 
         <div class="stack">
-            @if (_kind is SshForwardKind.Local or SshForwardKind.Socks)
-            {
-                <label class="forward-option">
-                    <input type="checkbox" data-testid="forward-unix-socket" @bind="_useUnixSocket" />
-                    <span>
-                        <strong>Use Unix domain socket</strong>
-                        <small>Listen on a local socket path instead of a TCP port.</small>
-                    </span>
-                </label>
-            }
-
             @if (_useUnixSocket && _kind is SshForwardKind.Local or SshForwardKind.Socks)
             {
                 <label class="field">
@@ -146,60 +141,79 @@
                 </label>
             }
 
-            @if (!_useUnixSocket && _kind is SshForwardKind.Local or SshForwardKind.Socks)
-            {
-                <label class="forward-option">
-                    <input type="checkbox" data-testid="forward-public-bind" @bind="_allowNonLoopback" />
-                    <span>
-                        <strong>Allow non-loopback bind</strong>
-                        <small>Only enable this intentionally. It can expose the forwarded service to your local network.</small>
-                    </span>
-                </label>
-            }
-
             @if (_kind == SshForwardKind.Socks)
             {
                 <label class="forward-option">
                     <input type="checkbox" data-testid="forward-socks-auth" @bind="_socksAuth" />
                     <span>
                         <strong>Require SOCKS authentication</strong>
-                        <small>Recommended for TCP listeners. MeowSSH generates credentials unless you provide your own.</small>
+                        <small>Recommended for TCP listeners. MeowSSH generates credentials automatically.</small>
                     </span>
                 </label>
-
-                @if (_socksAuth)
-                {
-                    <label class="forward-option">
-                        <input type="checkbox" data-testid="forward-custom-socks-auth" @bind="_customSocksAuth" />
-                        <span>
-                            <strong>Use custom SOCKS credentials</strong>
-                            <small>Otherwise a random username and password are generated for this proxy.</small>
-                        </span>
-                    </label>
-
-                    @if (_customSocksAuth)
-                    {
-                        <label class="field">
-                            <span class="field__label">SOCKS username</span>
-                            <input class="field__input mono" data-testid="forward-socks-username"
-                                   autocomplete="off" autocapitalize="none" spellcheck="false"
-                                   @bind="_socksUsername" @bind:event="oninput" />
-                        </label>
-                        <label class="field">
-                            <span class="field__label">SOCKS password</span>
-                            <input class="field__input mono" type="password" data-testid="forward-socks-password"
-                                   autocomplete="new-password" @bind="_socksPassword" @bind:event="oninput" />
-                        </label>
-                    }
-                }
             }
 
-            <label class="field">
-                <span class="field__label">Maximum simultaneous connections</span>
-                <input class="field__input mono" type="number" min="0" max="65535" inputmode="numeric"
-                       data-testid="forward-max-connections" @bind="_maxConnections" />
-                <span class="field__hint">Default 256. Set 0 only when you intentionally want no limit.</span>
-            </label>
+            <details class="setting-card" data-testid="forward-advanced-options">
+                <summary class="setting-card__copy">
+                    <span class="setting-card__title">Advanced options</span>
+                    <span class="setting-card__body">Unix sockets, network exposure, custom SOCKS credentials and connection limits.</span>
+                </summary>
+                <div class="stack">
+                    @if (_kind is SshForwardKind.Local or SshForwardKind.Socks)
+                    {
+                        <label class="forward-option">
+                            <input type="checkbox" data-testid="forward-unix-socket" @bind="_useUnixSocket" />
+                            <span>
+                                <strong>Use Unix domain socket</strong>
+                                <small>Listen on a local socket path instead of a TCP port.</small>
+                            </span>
+                        </label>
+                    }
+
+                    @if (!_useUnixSocket && _kind is SshForwardKind.Local or SshForwardKind.Socks)
+                    {
+                        <label class="forward-option">
+                            <input type="checkbox" data-testid="forward-public-bind" @bind="_allowNonLoopback" />
+                            <span>
+                                <strong>Allow non-loopback bind</strong>
+                                <small>Only enable this intentionally. It can expose the forwarded service to your local network.</small>
+                            </span>
+                        </label>
+                    }
+
+                    @if (_kind == SshForwardKind.Socks && _socksAuth)
+                    {
+                        <label class="forward-option">
+                            <input type="checkbox" data-testid="forward-custom-socks-auth" @bind="_customSocksAuth" />
+                            <span>
+                                <strong>Use custom SOCKS credentials</strong>
+                                <small>Otherwise a random username and password are generated for this proxy.</small>
+                            </span>
+                        </label>
+
+                        @if (_customSocksAuth)
+                        {
+                            <label class="field">
+                                <span class="field__label">SOCKS username</span>
+                                <input class="field__input mono" data-testid="forward-socks-username"
+                                       autocomplete="off" autocapitalize="none" spellcheck="false"
+                                       @bind="_socksUsername" @bind:event="oninput" />
+                            </label>
+                            <label class="field">
+                                <span class="field__label">SOCKS password</span>
+                                <input class="field__input mono" type="password" data-testid="forward-socks-password"
+                                       autocomplete="new-password" @bind="_socksPassword" @bind:event="oninput" />
+                            </label>
+                        }
+                    }
+
+                    <label class="field">
+                        <span class="field__label">Maximum simultaneous connections</span>
+                        <input class="field__input mono" type="number" min="0" max="65535" inputmode="numeric"
+                               data-testid="forward-max-connections" @bind="_maxConnections" />
+                        <span class="field__hint">Default 256. Set 0 only when you intentionally want no limit.</span>
+                    </label>
+                </div>
+            </details>
 
             @if (_validation is not null)
             {
