@@ -59,6 +59,9 @@ public static class MauiProgram
             sp.GetRequiredService<IEntitlementService>()));
         builder.Services.AddSingleton<IAdvancedSftpService, AdvancedSftpService>();
         builder.Services.AddSingleton<IEncryptedVaultBackupService, EncryptedVaultBackupService>();
+        builder.Services.AddSingleton<IPortForwardProfileStore>(_ => new FilePortForwardProfileStore(
+            Path.Combine(FileSystem.AppDataDirectory, "port-forward-profiles.json")));
+        builder.Services.AddSingleton<IPortForwardProfileService, PortForwardProfileService>();
 
         var nativeDirectory = global::Android.App.Application.Context.ApplicationInfo!.NativeLibraryDir!;
         var engineOptions = new MeowshellSshEngineOptions(
