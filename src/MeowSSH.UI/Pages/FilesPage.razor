@@ -172,6 +172,10 @@
                 Rename
             </button>
             <button type="button" class="btn btn--ghost btn--block"
+                    data-testid="move-file" @onclick="() => StartMove(selected)">
+                Move
+            </button>
+            <button type="button" class="btn btn--ghost btn--block"
                     data-testid="change-permissions" @onclick="() => StartPermissions(selected)">
                 Change permissions
             </button>
@@ -201,6 +205,28 @@
             <button type="button" class="btn btn--primary btn--block"
                     data-testid="confirm-rename" @onclick="RenameAsync">Rename</button>
             <button type="button" class="btn btn--ghost btn--block" @onclick="CancelRename">Cancel</button>
+        </div>
+    </div>
+}
+
+@if (_moveTarget is { } moveTarget)
+{
+    <div class="sheet" role="dialog" aria-label="Move file" data-testid="move-sheet">
+        <p class="sheet__title">Move @moveTarget.Name</p>
+        <p class="sheet__body">Enter an absolute destination folder. The item keeps its current name.</p>
+        <label class="field">
+            <span class="field__label">Destination folder</span>
+            <input class="field__input mono" type="text" autocomplete="off" spellcheck="false"
+                   data-testid="move-destination" @bind="_moveDestination" @bind:event="oninput" />
+        </label>
+        @if (_moveError is not null)
+        {
+            <p class="field__error" role="alert" data-testid="move-error">@_moveError</p>
+        }
+        <div class="form__actions">
+            <button type="button" class="btn btn--primary btn--block"
+                    data-testid="confirm-move" @onclick="MoveAsync">Move</button>
+            <button type="button" class="btn btn--ghost btn--block" @onclick="CancelMove">Cancel</button>
         </div>
     </div>
 }
@@ -278,6 +304,9 @@
     private RemoteFile? _renameTarget;
     private string _renameText = "";
     private string? _renameError;
+    private RemoteFile? _moveTarget;
+    private string _moveDestination = "";
+    private string? _moveError;
     private RemoteFile? _deleteTarget;
     private RemoteFile? _permissionsTarget;
     private string _permissionText = "";
@@ -323,6 +352,7 @@
         _newFolder = null;
         _selected = null;
         CancelRename();
+        CancelMove();
         await LoadAsync();
     }
 
@@ -403,6 +433,70 @@
         catch (SshException ex)
         {
             _renameError = ex.Message;
+        }
+    }
+
+    private void StartMove(RemoteFile entry)
+    {
+        _selected = null;
+        _moveTarget = entry;
+        _moveDestination = _path;
+        _moveError = null;
+    }
+
+    private void CancelMove()
+    {
+        _moveTarget = null;
+        _moveDestination = "";
+        _moveError = null;
+    }
+
+    private async Task MoveAsync()
+    {
+        if (_moveTarget is null) return;
+
+        var destination = _moveDestination.Trim().TrimEnd('/');
+        if (destination.Length == 0) destination = "/";
+        if (!destination.StartsWith('/', StringComparison.Ordinal))
+        {
+            _moveError = "Use an absolute destination folder beginning with /.";
+            return;
+        }
+
+        var sourceParent = RemotePath.ParentOf(_moveTarget.Path) ?? "/";
+        if (string.Equals(destination, sourceParent, StringComparison.Ordinal))
+        {
+            _moveError = "Choose a different destination folder.";
+            return;
+        }
+
+        if (_moveTarget.IsDirectory &&
+            (string.Equals(destination, _moveTarget.Path, StringComparison.Ordinal) ||
+             destination.StartsWith(_moveTarget.Path + "/", StringComparison.Ordinal)))
+        {
+            _moveError = "A folder cannot be moved into itself or one of its descendants.";
+            return;
+        }
+
+        try
+        {
+            if (destination != "/")
+            {
+                var destinationEntry = await Sftp.StatAsync(destination);
+                if (!destinationEntry.IsDirectory || destinationEntry.IsSymlink)
+                {
+                    _moveError = "The destination must be a real directory.";
+                    return;
+                }
+            }
+
+            await Sftp.RenameAsync(_moveTarget.Path, RemotePath.Join(destination, _moveTarget.Name));
+            CancelMove();
+            await LoadAsync();
+        }
+        catch (SshException ex)
+        {
+            _moveError = ex.Message;
         }
     }
 
