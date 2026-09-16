@@ -55,6 +55,8 @@ public static class MauiProgram
         builder.Services.AddSingleton<IThirdPartyNoticeProvider, PackagedThirdPartyNoticeProvider>();
         builder.Services.AddSingleton<IPendingDiagnosticReportStore>(_ => new FilePendingDiagnosticReportStore(
             Path.Combine(FileSystem.AppDataDirectory, "diagnostics")));
+        builder.Services.AddSingleton<DiagnosticBreadcrumbBuffer>();
+        builder.Services.AddSingleton<DiagnosticCrashRecorder>();
         builder.Services.AddSingleton(LaunchBuildConfig.ExternalLinks);
         builder.Services.AddSingleton<IQrScanner, AndroidQrScanner>();
         builder.Services.AddSingleton<ISerialDeviceService, AndroidUsbSerialDeviceService>();
