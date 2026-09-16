@@ -31,7 +31,7 @@
         <label class="field">
             <span class="field__label">Custom DERP map URL</span>
             <input class="field__input mono" data-testid="tailcat-address-derpmap" placeholder="https://…/derpmap/default" @bind="_derpMapUrl" @bind:event="oninput" />
-            <span class="field__hint">Optional. Leave blank for Tailcat's default map. Useful with private/custom DERP infrastructure.</span>
+            <span class="field__hint">Optional. Leave blank for Tailcat's public default map. A custom map is treated as user-managed infrastructure unless it matches trusted MeowSSH fleet configuration.</span>
         </label>
         <div class="form__row">
             <button class="btn btn--primary field--grow" disabled="@(_busy || string.IsNullOrWhiteSpace(_address))" data-testid="tailcat-resolve-address" @onclick="ResolveAsync">@(_busy ? "Working…" : "Embed DERP details")</button>
@@ -67,7 +67,24 @@
                 <dt>Pre-shared key</dt><dd>@(details.HasPresharedKey ? "Embedded" : "Not embedded")</dd>
                 <dt>Region reference</dt><dd>@(details.RegionId == 0 ? "Embedded / none" : details.RegionId.ToString())</dd>
                 <dt>Embedded regions</dt><dd>@details.EmbeddedRegions.Count</dd>
+                <dt>Relay class</dt><dd data-testid="tailcat-relay-class">@RelayClassLabel(_relayClassification?.RelayClass ?? TailcatRelayClass.Unknown)</dd>
             </dl>
+            @if (_relayClassification?.RelayClass == TailcatRelayClass.PublicDefault)
+            {
+                <p class="note" data-testid="tailcat-public-relay-warning">This address uses Tailcat's public relay infrastructure. It is third-party and rate-limited; MeowSSH does not provide an uptime or throughput guarantee for it.</p>
+            }
+            else if (_relayClassification?.RelayClass == TailcatRelayClass.UserOwned)
+            {
+                <p class="note" data-testid="tailcat-user-relay-note">This address uses a custom relay map. Traffic through that relay is not MeowSSH-hosted infrastructure.</p>
+            }
+            else if (_relayClassification?.RelayClass == TailcatRelayClass.MeowSsh)
+            {
+                <p class="note" data-testid="tailcat-meowssh-relay-note">This address is configured for MeowSSH-operated relay infrastructure. Runtime diagnostics still determine whether the connection is direct or actually relayed.</p>
+            }
+            else
+            {
+                <p class="field__hint" data-testid="tailcat-unknown-relay-note">Relay ownership could not be proven from this address and map selection.</p>
+            }
             @foreach (var region in details.EmbeddedRegions)
             {
                 <div class="tailcat-running-row" data-testid="tailcat-address-region"><span><strong>@(region.Name ?? region.Code ?? $"Region {region.RegionId}")</strong><small>@region.Nodes.Count relay node@(region.Nodes.Count == 1 ? "" : "s")</small></span></div>
@@ -88,12 +105,18 @@
 </div>
 
 @code {
+    private static readonly TailcatRelayClassifierOptions RelayClassifierOptions = new(
+        MeowSshRelayHosts: [],
+        MeowSshDerpMapUrls: [],
+        PublicDefaultRelayHosts: []);
+
     private IReadOnlyList<HostRecord> _savedPeers = [];
     private string _address = "";
     private string _derpMapUrl = "";
     private string _peerName = "";
     private string? _resolvedAddress;
     private TailcatAddressDetails? _details;
+    private TailcatRelayClassification? _relayClassification;
     private string? _qrSvg;
     private bool _busy;
     private string? _error;
@@ -106,28 +129,54 @@
     {
         if (!Guid.TryParse(args.Value?.ToString(), out var id)) return;
         var peer = _savedPeers.FirstOrDefault(host => host.Id == id); if (peer is null) return;
-        _address = peer.Address; _peerName = peer.Label; _resolvedAddress = null; _details = null; ClearQr();
+        _address = peer.Address; _peerName = peer.Label; _resolvedAddress = null; _details = null; _relayClassification = null; ClearQr();
     }
     private async Task ScanQrAsync() => await RunAsync(async () =>
     {
         var scanned = await QrScanner.ScanAsync();
         if (string.IsNullOrWhiteSpace(scanned)) { _notice = "QR scan cancelled."; return; }
-        // Validate before accepting it. Inspect resolves DNS names too, but QR import intentionally accepts only real Tailcat addresses.
         if (!scanned.Trim().StartsWith("tc", StringComparison.Ordinal)) throw new InvalidOperationException("The scanned QR code is not a Tailcat address.");
         var details = await Hub.InspectAddressAsync(scanned.Trim(), Empty(_derpMapUrl));
         _address = scanned.Trim();
         _resolvedAddress = details.ResolvedAddress;
         _details = details;
+        _relayClassification = Classify(details);
         ClearQr();
         _notice = "Tailcat QR imported and validated.";
     });
-    private async Task ResolveAsync() => await RunAsync(async () => { _resolvedAddress = await Hub.ResolveAddressAsync(_address, Empty(_derpMapUrl)); _details = null; ClearQr(); _notice = "Expanded address ready. Keep it secret like the original address."; });
-    private async Task InspectAsync() => await RunAsync(async () => { _details = await Hub.InspectAddressAsync(_address, Empty(_derpMapUrl)); _resolvedAddress = _details.ResolvedAddress; ClearQr(); });
+    private async Task ResolveAsync() => await RunAsync(async () =>
+    {
+        var selectedMap = Empty(_derpMapUrl);
+        _resolvedAddress = await Hub.ResolveAddressAsync(_address, selectedMap);
+        _details = await Hub.InspectAddressAsync(_resolvedAddress, selectedMap);
+        _relayClassification = TailcatRelayClassifier.Classify(
+            _details,
+            selectedMap ?? TailcatRelayClassifierOptions.TailcatDefaultDerpMapUrl,
+            RelayClassifierOptions);
+        ClearQr();
+        _notice = "Expanded address ready. Keep it secret like the original address.";
+    });
+    private async Task InspectAsync() => await RunAsync(async () =>
+    {
+        _details = await Hub.InspectAddressAsync(_address, Empty(_derpMapUrl));
+        _resolvedAddress = _details.ResolvedAddress;
+        _relayClassification = Classify(_details);
+        ClearQr();
+    });
     private async Task SavePeerAsync() => await RunAsync(async () =>
     {
         await Editor.SaveHostAsync(new HostRecord { Id = Guid.NewGuid(), Label = _peerName.Trim(), Address = AddressToSave.Trim(), Protocol = HostProtocol.Ssh, Transport = SshTransport.Tailcat, Port = 22, AutoReconnect = true, Tags = ["tailcat"] });
         await ReloadPeersAsync(); _notice = $"Saved {_peerName.Trim()}.";
     });
+    private TailcatRelayClassification Classify(TailcatAddressDetails details) =>
+        TailcatRelayClassifier.Classify(details, Empty(_derpMapUrl), RelayClassifierOptions);
+    private static string RelayClassLabel(TailcatRelayClass relayClass) => relayClass switch
+    {
+        TailcatRelayClass.MeowSsh => "MeowSSH relay",
+        TailcatRelayClass.UserOwned => "Your relay",
+        TailcatRelayClass.PublicDefault => "Public Tailcat relay",
+        _ => "Unknown",
+    };
     private void ToggleQr()
     {
         _error = null; if (_qrSvg is not null) { ClearQr(); return; }

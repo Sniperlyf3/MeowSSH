@@ -9,7 +9,12 @@
 
     <article class="tailcat-card">
         <h2>Android VPN</h2>
-        @if (_snapshot.IsRunning)
+        @if (!Vpn.IsAvailable)
+        {
+            <p class="note" data-testid="tailcat-vpn-unavailable">Full-device VPN is not included in this MeowSSH build.</p>
+            <p class="field__hint">Tailcat shell, file transfer and other non-VPN features remain available.</p>
+        }
+        else if (_snapshot.IsRunning)
         {
             <p class="note" data-testid="tailcat-vpn-running"><strong>Tailcat VPN is active.</strong> Routing @string.Join(", ", _snapshot.Routes)</p>
             <p class="field__hint">MeowSSH itself is excluded from the VPN so its Tailcat/DERP transport cannot loop back into the tunnel.</p>

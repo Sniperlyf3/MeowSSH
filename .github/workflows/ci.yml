@@ -18,38 +18,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: "10.0.x"
-
       - name: Restore
         run: dotnet restore
-
       - name: Build
         run: dotnet build --no-restore --configuration Release
-
       - name: Unit tests
         run: dotnet test tests/MeowSSH.Core.Tests --no-build --configuration Release --logger "trx;LogFileName=core.trx"
-
-      # Against a real OpenSSH server over a real socket. Nothing else catches a
-      # wrong signature byte, a mis-negotiated terminal mode, or a host key
-      # policy that trusts more than it should.
       - name: Install OpenSSH server
         run: sudo apt-get update && sudo apt-get install -y openssh-server
-
       - name: SSH engine integration tests
         run: sudo -E env "PATH=$PATH" dotnet test tests/MeowSSH.Integration.Tests --no-build --configuration Release --logger "trx;LogFileName=integration.trx"
-
-      # The UI is Razor components in a WebView, so the same components that ship
-      # to Android run in a browser. That is what lets the interaction tests run
-      # here at all -- no emulator, no device farm.
       - name: Install Playwright browsers
         run: pwsh tests/MeowSSH.UI.Tests/bin/Release/net10.0/playwright.ps1 install chromium --with-deps
-
       - name: UI end-to-end tests
         run: dotnet test tests/MeowSSH.UI.Tests --no-build --configuration Release --logger "trx;LogFileName=ui.trx"
-
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v7
@@ -58,30 +43,20 @@ jobs:
           path: "**/TestResults/*.trx"
           if-no-files-found: ignore
 
-  # Fast installable development artifact. Release hardening is validated in its
-  # own job below so AOT does not slow every emulator/development path.
   android-apk:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: "10.0.x"
-
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "21"
-
       - name: Install the Android workload
         run: dotnet workload install maui-android
-
       - name: Build the APK
-        # Every CI run gets a monotonically increasing Android versionCode so a
-        # newer artifact can replace an older installed build. If the persistent
-        # signing secrets are configured, the same certificate is also reused
-        # across runners; without that Android may still require an uninstall.
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
@@ -97,7 +72,6 @@ jobs:
             -p:ApplicationDisplayVersion=0.1.${{ github.run_number }}
             -p:ApplicationVersion=${{ github.run_number }}
           )
-
           if [[ -n "$ANDROID_KEYSTORE_BASE64" ]]; then
             KEYSTORE="$RUNNER_TEMP/meowssh-ci.keystore"
             printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
@@ -112,18 +86,16 @@ jobs:
           else
             echo "::warning::Persistent Android signing secrets are not configured; APK signatures may change between runners and require uninstall/reinstall."
           fi
-
           "${args[@]}"
-
-      - name: Check the native binaries survived packaging
+      - name: Check packaged native binaries and notices
         run: |
           APK=$(find src/MeowSSH.App/bin -name "*-Signed.apk" | head -1)
           test -n "$APK"
           unzip -l "$APK" | grep -q "lib/arm64-v8a/libmeowshell.so"
           unzip -l "$APK" | grep -q "lib/arm64-v8a/libtailcat.so"
           unzip -l "$APK" | grep -q "lib/arm64-v8a/libhev-socks5-tunnel.so"
+          unzip -l "$APK" | grep -q "third_party_notices.txt"
           echo "APK: $APK ($(du -h "$APK" | cut -f1))"
-
       - name: Upload the APK
         uses: actions/upload-artifact@v7
         with:
@@ -131,27 +103,20 @@ jobs:
           path: src/MeowSSH.App/bin/Debug/net10.0-android36.0/android-arm64/publish/*-Signed.apk
           if-no-files-found: error
 
-  # This is the artifact configuration intended for distribution. It deliberately
-  # pays the AOT/linker cost so CI catches reflection, Java-binding and native
-  # packaging regressions before a paid build reaches Play Console.
   android-release-hardening:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
-
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: "10.0.x"
-
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "21"
-
       - name: Install the Android workload
         run: dotnet workload install maui-android
-
       - name: Build AOT/full-linked Release APK
         shell: bash
         run: |
@@ -166,25 +131,32 @@ jobs:
             -p:ApplicationDisplayVersion=0.1.${{ github.run_number }} \
             -p:ApplicationVersion=${{ github.run_number }} \
             2>&1 | tee "$LOG"
-
-          # Several Android/Blazor/binding packages intentionally use reflection
-          # and Java dynamic callbacks. Their warnings stay visible above, while
-          # any trim diagnostic in code we own still fails the hardened build.
           if grep -E '/src/MeowSSH\.(App|Core|Android|UI)/.*IL[0-9]{4}' "$LOG"; then
             echo "::error::MeowSSH-owned code produced linker/AOT trim diagnostics."
             exit 1
           fi
-
-      - name: Verify hardened Release package
+      - name: Verify hardened Release package and merged manifest
         run: |
+          set -euo pipefail
           APK=$(find src/MeowSSH.App/bin/Release -name "*-Signed.apk" | head -1)
           test -n "$APK"
           unzip -t "$APK" >/dev/null
           unzip -l "$APK" | grep -q "lib/arm64-v8a/libmeowshell.so"
           unzip -l "$APK" | grep -q "lib/arm64-v8a/libtailcat.so"
           unzip -l "$APK" | grep -q "lib/arm64-v8a/libhev-socks5-tunnel.so"
-          echo "Hardened Release APK: $APK ($(du -h "$APK" | cut -f1))"
+          unzip -l "$APK" | grep -q "third_party_notices.txt"
 
+          MERGED_MANIFEST=$(find src/MeowSSH.App/obj/Release -path '*/android/AndroidManifest.xml' -type f | head -1)
+          test -n "$MERGED_MANIFEST"
+          grep -q 'android.permission.FOREGROUND_SERVICE_SPECIAL_USE' "$MERGED_MANIFEST"
+          grep -q 'dev.sniperlyf3.meowssh.SessionKeepAliveService' "$MERGED_MANIFEST"
+          grep -q 'android:foregroundServiceType="specialUse"' "$MERGED_MANIFEST"
+          grep -q 'android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE' "$MERGED_MANIFEST"
+          grep -q 'Keeps a user-initiated terminal session alive' "$MERGED_MANIFEST"
+
+          echo "Hardened Release APK: $APK ($(du -h "$APK" | cut -f1))"
+          echo "Merged foreground-service declaration: verified"
+          echo "Third-party notices: packaged"
       - name: Upload hardened Release APK
         uses: actions/upload-artifact@v7
         with:
@@ -192,42 +164,32 @@ jobs:
           path: src/MeowSSH.App/bin/Release/net10.0-android36.0/android-arm64/publish/*-Signed.apk
           if-no-files-found: error
 
-  # The layer Playwright cannot reach: a real Keystore, a real filesystem, real
-  # API-level guards. Everything above it is proven on Linux in seconds; this
-  # job exists for the handful of claims that have no desktop equivalent and
-  # were previously only ever checked by installing the APK and looking.
   device-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
-
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: "10.0.x"
-
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "21"
-
       - name: Install the Android workload
         run: dotnet workload install maui-android
-
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
             | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-
       - name: Build the device test APK
         run: >
           dotnet build tests/MeowSSH.Device.Tests/MeowSSH.Device.Tests.csproj
           -c Debug -f net10.0-android36.0
-
       - name: Run the device tests on an emulator
-        uses: reactivecircus/android-emulator-runner@v2
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
         with:
           api-level: 34
           target: google_apis
@@ -235,7 +197,6 @@ jobs:
           disable-animations: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           script: ./scripts/run-device-tests.sh
-
       - name: Upload the device test report
         if: always()
         uses: actions/upload-artifact@v7
@@ -243,3 +204,98 @@ jobs:
           name: device-test-report
           path: instrumentation.txt
           if-no-files-found: ignore
+
+  play-aab-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Install the Android workload
+        run: dotnet workload install maui-android
+      - name: Build production-shape VPN-excluded AAB
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet publish src/MeowSSH.App/MeowSSH.App.csproj \
+            -c Release -f net10.0-android36.0 \
+            -p:AndroidPackageFormat=aab \
+            -p:EnableTailcatVpn=false \
+            -p:EnableProCloudSales=false \
+            -p:ILLinkTreatWarningsAsErrors=false \
+            -p:SourceRevisionId=${{ github.sha }} \
+            -p:Version=0.1.${{ github.run_number }} \
+            -p:ApplicationDisplayVersion=0.1.${{ github.run_number }} \
+            -p:ApplicationVersion=${{ github.run_number }}
+      - name: Verify Play ABI coverage, 16 KiB alignment, VPN exclusion and merged manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          AAB=$(find src/MeowSSH.App/bin/Release -name "*.aab" | head -1)
+          test -n "$AAB"
+          unzip -t "$AAB" >/dev/null
+          for abi in arm64-v8a x86_64; do
+            unzip -l "$AAB" | grep -q "base/lib/$abi/libmeowshell.so"
+            unzip -l "$AAB" | grep -q "base/lib/$abi/libtailcat.so"
+          done
+          unzip -l "$AAB" | grep -q "third_party_notices.txt"
+          if unzip -l "$AAB" | grep -q "libhev-socks5-tunnel.so"; then
+            echo "::error::VPN-excluded AAB contains the HEV tunnel library."
+            exit 1
+          fi
+
+          command -v readelf >/dev/null
+          NATIVE_DIR="$RUNNER_TEMP/aab-native"
+          rm -rf "$NATIVE_DIR"
+          mkdir -p "$NATIVE_DIR"
+          unzip -q "$AAB" 'base/lib/*/*.so' -d "$NATIVE_DIR"
+          native_count=0
+          bad_alignment=0
+          while IFS= read -r -d '' library; do
+            native_count=$((native_count + 1))
+            while read -r alignment; do
+              [[ -z "$alignment" ]] && continue
+              if (( alignment < 0x4000 )); then
+                echo "::error file=${library#${NATIVE_DIR}/}::PT_LOAD alignment $alignment is below 16 KiB (0x4000)."
+                bad_alignment=$((bad_alignment + 1))
+                break
+              fi
+            done < <(readelf -lW "$library" | awk '$1 == "LOAD" { print $NF }')
+          done < <(find "$NATIVE_DIR/base/lib" -type f -name '*.so' -print0)
+          if (( native_count == 0 )); then
+            echo "::error::No native shared libraries were found for the 16 KiB page-size check."
+            exit 1
+          fi
+          if (( bad_alignment != 0 )); then
+            echo "::error::$bad_alignment native libraries are not 16 KiB ELF-aligned."
+            exit 1
+          fi
+
+          MERGED_MANIFEST=$(find src/MeowSSH.App/obj/Release -path '*/android/AndroidManifest.xml' -type f | head -1)
+          test -n "$MERGED_MANIFEST"
+          grep -q 'android.permission.FOREGROUND_SERVICE_SPECIAL_USE' "$MERGED_MANIFEST"
+          grep -q 'dev.sniperlyf3.meowssh.SessionKeepAliveService' "$MERGED_MANIFEST"
+          grep -q 'android:foregroundServiceType="specialUse"' "$MERGED_MANIFEST"
+          grep -q 'android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE' "$MERGED_MANIFEST"
+          if grep -q 'TailcatVpnService' "$MERGED_MANIFEST"; then
+            echo "::error::VPN-excluded AAB merged manifest still declares TailcatVpnService."
+            exit 1
+          fi
+
+          echo "Validated Play ABIs: arm64-v8a, x86_64"
+          echo "16 KiB ELF alignment: verified for $native_count packaged shared libraries"
+          echo "VPN-excluded merged manifest: verified"
+          echo "Third-party notices: packaged"
+          echo "AAB: $AAB ($(du -h "$AAB" | cut -f1))"
+      - name: Upload CI app bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: meowssh-play-aab-${{ github.sha }}
+          path: "src/MeowSSH.App/bin/Release/**/*.aab"
+          if-no-files-found: error

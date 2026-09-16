@@ -1,5 +1,6 @@
 using Android.BillingClient.Api;
 using Android.Content;
+using MeowSSH.App.Services;
 using MeowSSH.Core.Licensing;
 using Microsoft.Maui.ApplicationModel;
 using static Android.BillingClient.Api.BillingClient;
@@ -32,8 +33,16 @@ public sealed class GooglePlayPurchaseService : Java.Lang.Object, IStorePurchase
         var products = new List<StoreProduct>();
         products.AddRange(await QueryProductsAsync(
             new[] { MeowSshProducts.ProLifetime }, ProductType.Inapp, cancellationToken).ConfigureAwait(false));
-        products.AddRange(await QueryProductsAsync(
-            new[] { MeowSshProducts.ProCloud }, ProductType.Subs, cancellationToken).ConfigureAwait(false));
+
+        // Keep Pro Cloud invisible until the actual cloud product exists. A Play
+        // Console subscription being active must never be enough to make an
+        // unfinished tier purchasable from the client.
+        if (CommercialBuildConfig.ProCloudSalesEnabled)
+        {
+            products.AddRange(await QueryProductsAsync(
+                new[] { MeowSshProducts.ProCloud }, ProductType.Subs, cancellationToken).ConfigureAwait(false));
+        }
+
         return products;
     }
 
@@ -43,6 +52,8 @@ public sealed class GooglePlayPurchaseService : Java.Lang.Object, IStorePurchase
 
         var purchases = new List<StorePurchase>();
         purchases.AddRange(await QueryPurchasesAsync(ProductType.Inapp, cancellationToken).ConfigureAwait(false));
+        // Existing/test subscription purchases still need to be restored even
+        // while new Pro Cloud sales are disabled.
         purchases.AddRange(await QueryPurchasesAsync(ProductType.Subs, cancellationToken).ConfigureAwait(false));
         return purchases;
     }
@@ -53,6 +64,13 @@ public sealed class GooglePlayPurchaseService : Java.Lang.Object, IStorePurchase
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(productId);
+        if (string.Equals(productId, MeowSshProducts.ProCloud, StringComparison.Ordinal) &&
+            !CommercialBuildConfig.ProCloudSalesEnabled)
+        {
+            throw new InvalidOperationException(
+                "MeowSSH Pro Cloud is not available for purchase until cloud sync is released.");
+        }
+
         await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
 
         if (_pendingPurchase is { Task.IsCompleted: false })

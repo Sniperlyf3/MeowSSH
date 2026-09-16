@@ -39,6 +39,9 @@ builder.Services.AddScoped<ISessionLogService>(sp => new FileSessionLogService(
     sp.GetRequiredService<IEntitlementService>()));
 builder.Services.AddScoped<IAdvancedSftpService, AdvancedSftpService>();
 builder.Services.AddScoped<IEncryptedVaultBackupService, FakeEncryptedVaultBackupService>();
+builder.Services.AddScoped<FakeSshHardwareKeyStore>();
+builder.Services.AddScoped<ISshHardwareKeyStore>(sp => sp.GetRequiredService<FakeSshHardwareKeyStore>());
+builder.Services.AddScoped<ISshHardwareKeySigner>(sp => sp.GetRequiredService<FakeSshHardwareKeyStore>());
 builder.Services.AddScoped<ProxyJumpConnector>();
 builder.Services.AddScoped<IConnectionEngine>(sp => new SessionLoggingConnectionEngine(
     sp.GetRequiredService<ProxyJumpConnector>(),
@@ -51,6 +54,9 @@ builder.Services.AddScoped<IVaultSession>(sp => sp.GetRequiredService<FakeVaultS
 builder.Services.AddScoped<IActiveSessionLifetime, NoOpActiveSessionLifetime>();
 builder.Services.AddScoped<ILocalFileTransferService, LocalFileTransferService>();
 builder.Services.AddScoped<IExternalUriLauncher, NoOpExternalUriLauncher>();
+builder.Services.AddScoped(_ => new AppExternalLinks(
+    new Uri("https://example.test/privacy"),
+    new Uri("https://example.test/support")));
 
 builder.Services.AddScoped<InteractiveSshPrompts>();
 builder.Services.AddScoped<ISshPrompts>(sp => sp.GetRequiredService<InteractiveSshPrompts>());

@@ -30,6 +30,19 @@ public sealed class EntitlementTailcatVpnControllerTests
     }
 
     [Fact]
+    public async Task BuildWithoutVpnCannotStartEvenWithPro()
+    {
+        var inner = new FakeVpnController(isAvailable: false);
+        var gate = new EntitlementTailcatVpnController(inner, new FakeEntitlements(EntitlementTier.Pro));
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            gate.StartAsync(new TailcatVpnRequest("127.0.0.1:1080", ["0.0.0.0/0"])));
+
+        Assert.Contains("not included", error.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(0, inner.StartCount);
+    }
+
+    [Fact]
     public async Task StopRemainsAvailableWithoutEntitlement()
     {
         var inner = new FakeVpnController();
@@ -40,8 +53,9 @@ public sealed class EntitlementTailcatVpnControllerTests
         Assert.Equal(1, inner.StopCount);
     }
 
-    private sealed class FakeVpnController : ITailcatVpnController
+    private sealed class FakeVpnController(bool isAvailable = true) : ITailcatVpnController
     {
+        public bool IsAvailable { get; } = isAvailable;
         public TailcatVpnSnapshot Snapshot { get; } = new(false, null, []);
         public int StartCount { get; private set; }
         public int StopCount { get; private set; }

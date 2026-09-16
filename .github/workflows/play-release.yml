@@ -11,9 +11,20 @@ on:
         description: Monotonically increasing Android versionCode
         required: true
         type: number
+      include_tailcat_vpn:
+        description: Include Android full-device VPN capability in the Play bundle
+        required: true
+        default: false
+        type: boolean
+      publish_internal:
+        description: Publish the verified bundle to the Google Play internal testing track
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
+  id-token: write
 
 concurrency:
   group: play-release
@@ -46,17 +57,47 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          PLAY_WIF_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          PLAY_PUBLISH_SERVICE_ACCOUNT: ${{ vars.GCP_PLAY_PUBLISH_SERVICE_ACCOUNT }}
           LICENSING_API_BASE_URL: ${{ vars.LICENSING_API_BASE_URL }}
           LICENSING_PUBLIC_KEY: ${{ vars.LICENSING_PUBLIC_KEY_SUBJECT_PUBLIC_KEY_INFO_BASE64 }}
+          PRIVACY_POLICY_URL: ${{ vars.PRIVACY_POLICY_URL }}
+          SUPPORT_URL: ${{ vars.SUPPORT_URL }}
         run: |
           set -euo pipefail
-          required=(ANDROID_KEYSTORE_BASE64 ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD ANDROID_STORE_PASSWORD LICENSING_API_BASE_URL LICENSING_PUBLIC_KEY)
+          required=(ANDROID_KEYSTORE_BASE64 ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD ANDROID_STORE_PASSWORD LICENSING_API_BASE_URL LICENSING_PUBLIC_KEY PRIVACY_POLICY_URL SUPPORT_URL)
           for name in "${required[@]}"; do
             if [[ -z "${!name:-}" ]]; then
               echo "::error::$name is required for a production Play release."
               exit 1
             fi
           done
+
+          if [[ "${{ inputs.publish_internal }}" == "true" ]]; then
+            publish_required=(PLAY_WIF_PROVIDER PLAY_PUBLISH_SERVICE_ACCOUNT)
+            for name in "${publish_required[@]}"; do
+              if [[ -z "${!name:-}" ]]; then
+                echo "::error::$name is required when publishing to the Play internal track."
+                exit 1
+              fi
+            done
+          fi
+
+          for name in PRIVACY_POLICY_URL SUPPORT_URL; do
+            if [[ "${!name}" != https://* ]]; then
+              echo "::error::$name must be a public HTTPS URL."
+              exit 1
+            fi
+            if ! curl --fail --location --silent --show-error --max-time 20 --retry 2 --retry-delay 1 "${!name}" -o /dev/null; then
+              echo "::error::$name must be publicly reachable before a production Play release."
+              exit 1
+            fi
+          done
+
+          if grep -Fq 'A public support/privacy contact must be inserted here before the Play Store production listing is submitted.' PRIVACY.md; then
+            echo "::error::PRIVACY.md still contains the unresolved public support/privacy contact placeholder."
+            exit 1
+          fi
 
           if ! [[ "${{ inputs.version_code }}" =~ ^[1-9][0-9]*$ ]]; then
             echo "::error::version_code must be a positive integer."
@@ -82,11 +123,12 @@ jobs:
           ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
           LICENSING_API_BASE_URL: ${{ vars.LICENSING_API_BASE_URL }}
           LICENSING_PUBLIC_KEY: ${{ vars.LICENSING_PUBLIC_KEY_SUBJECT_PUBLIC_KEY_INFO_BASE64 }}
+          PRIVACY_POLICY_URL: ${{ vars.PRIVACY_POLICY_URL }}
+          SUPPORT_URL: ${{ vars.SUPPORT_URL }}
         run: |
           set -euo pipefail
           dotnet publish src/MeowSSH.App/MeowSSH.App.csproj \
             -c Release -f net10.0-android36.0 \
-            -p:RuntimeIdentifier=android-arm64 \
             -p:AndroidPackageFormat=aab \
             -p:AndroidKeyStore=true \
             "-p:AndroidSigningKeyStore=$KEYSTORE" \
@@ -97,8 +139,13 @@ jobs:
             "-p:Version=${{ inputs.version_name }}" \
             "-p:ApplicationDisplayVersion=${{ inputs.version_name }}" \
             "-p:ApplicationVersion=${{ inputs.version_code }}" \
+            "-p:EnableTailcatVpn=${{ inputs.include_tailcat_vpn }}" \
+            -p:EnableProCloudSales=false \
+            -p:TailcatDerpMapUrl=https://tailcat.dev/derpmap.json \
             "-p:LicensingApiBaseUrl=$LICENSING_API_BASE_URL" \
-            "-p:LicensingPublicKeySubjectPublicKeyInfoBase64=$LICENSING_PUBLIC_KEY"
+            "-p:LicensingPublicKeySubjectPublicKeyInfoBase64=$LICENSING_PUBLIC_KEY" \
+            "-p:PrivacyPolicyUrl=$PRIVACY_POLICY_URL" \
+            "-p:SupportUrl=$SUPPORT_URL"
 
       - name: Verify release bundle
         shell: bash
@@ -107,18 +154,95 @@ jobs:
           AAB=$(find src/MeowSSH.App/bin/Release -name "*.aab" | head -1)
           test -n "$AAB"
           unzip -t "$AAB" >/dev/null
-          unzip -l "$AAB" | grep -q "base/lib/arm64-v8a/libmeowshell.so"
-          unzip -l "$AAB" | grep -q "base/lib/arm64-v8a/libtailcat.so"
-          unzip -l "$AAB" | grep -q "base/lib/arm64-v8a/libhev-socks5-tunnel.so"
+
+          for abi in arm64-v8a x86_64; do
+            unzip -l "$AAB" | grep -q "base/lib/$abi/libmeowshell.so"
+            unzip -l "$AAB" | grep -q "base/lib/$abi/libtailcat.so"
+          done
+          unzip -l "$AAB" | grep -q "third_party_notices.txt"
+
+          if [[ "${{ inputs.include_tailcat_vpn }}" == "true" ]]; then
+            for abi in arm64-v8a x86_64; do
+              unzip -l "$AAB" | grep -q "base/lib/$abi/libhev-socks5-tunnel.so"
+            done
+            echo "Tailcat VPN: included" >> "$GITHUB_STEP_SUMMARY"
+          else
+            if unzip -l "$AAB" | grep -q "libhev-socks5-tunnel.so"; then
+              echo "::error::VPN-excluded Play bundle unexpectedly contains the HEV tunnel native library."
+              exit 1
+            fi
+            echo "Tailcat VPN: excluded" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          command -v readelf >/dev/null
+          NATIVE_DIR="$RUNNER_TEMP/aab-native"
+          rm -rf "$NATIVE_DIR"
+          mkdir -p "$NATIVE_DIR"
+          unzip -q "$AAB" 'base/lib/*/*.so' -d "$NATIVE_DIR"
+          native_count=0
+          bad_alignment=0
+          while IFS= read -r -d '' library; do
+            native_count=$((native_count + 1))
+            while read -r alignment; do
+              [[ -z "$alignment" ]] && continue
+              if (( alignment < 0x4000 )); then
+                echo "::error file=${library#${NATIVE_DIR}/}::PT_LOAD alignment $alignment is below 16 KiB (0x4000)."
+                bad_alignment=$((bad_alignment + 1))
+                break
+              fi
+            done < <(readelf -lW "$library" | awk '$1 == "LOAD" { print $NF }')
+          done < <(find "$NATIVE_DIR/base/lib" -type f -name '*.so' -print0)
+          if (( native_count == 0 )); then
+            echo "::error::No native shared libraries were found for the 16 KiB page-size check."
+            exit 1
+          fi
+          if (( bad_alignment != 0 )); then
+            echo "::error::$bad_alignment native libraries are not 16 KiB ELF-aligned."
+            exit 1
+          fi
+
           echo "AAB=$AAB" >> "$GITHUB_ENV"
+          echo "Play ABIs: arm64-v8a, x86_64" >> "$GITHUB_STEP_SUMMARY"
+          echo "16 KiB ELF alignment: verified for $native_count packaged shared libraries" >> "$GITHUB_STEP_SUMMARY"
+          echo "Pro Cloud sales: disabled" >> "$GITHUB_STEP_SUMMARY"
+          echo "Tailcat DERP map: https://tailcat.dev/derpmap.json" >> "$GITHUB_STEP_SUMMARY"
+          echo "Third-party notices: packaged" >> "$GITHUB_STEP_SUMMARY"
+          echo "Privacy/support links: configured and reachable" >> "$GITHUB_STEP_SUMMARY"
           echo "Play bundle: $AAB ($(du -h "$AAB" | cut -f1))" >> "$GITHUB_STEP_SUMMARY"
           echo "Version: ${{ inputs.version_name }} (${{ inputs.version_code }})" >> "$GITHUB_STEP_SUMMARY"
           echo "Commit: ${{ github.sha }}" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload Play bundle
+      - name: Upload Play bundle artifact
         uses: actions/upload-artifact@v7
         with:
           name: meowssh-play-${{ inputs.version_name }}-${{ inputs.version_code }}
           path: ${{ env.AAB }}
           if-no-files-found: error
           retention-days: 30
+
+      - name: Authenticate to Google Play with Workload Identity
+        id: play-auth
+        if: ${{ inputs.publish_internal }}
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_PLAY_PUBLISH_SERVICE_ACCOUNT }}
+          create_credentials_file: true
+
+      - name: Publish to Google Play internal testing
+        if: ${{ inputs.publish_internal }}
+        uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5
+        with:
+          serviceAccountJson: ${{ steps.play-auth.outputs.credentials_file_path }}
+          packageName: dev.sniperlyf3.meowssh
+          releaseFiles: ${{ env.AAB }}
+          tracks: internal
+          status: completed
+
+      - name: Summarize Play publication
+        if: ${{ inputs.publish_internal }}
+        shell: bash
+        run: |
+          echo "Google Play authentication: Workload Identity federation (no service-account private key)" >> "$GITHUB_STEP_SUMMARY"
+          echo "Google Play track: internal" >> "$GITHUB_STEP_SUMMARY"
+          echo "Publication: requested and committed through the Android Publisher API" >> "$GITHUB_STEP_SUMMARY"
