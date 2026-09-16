@@ -1,0 +1,182 @@
+@inject ICommandActionSequenceService Sequences
+
+<div class="action-sequence" data-testid="action-sequence-@Action.Id">
+    @if (_sequence is null)
+    {
+        <button type="button" class="btn btn--ghost" data-testid="configure-action-sequence" @onclick="OpenEditor">
+            Add steps <span class="action-pro-badge">PRO</span>
+        </button>
+    }
+    else
+    {
+        <span class="action-muted" data-testid="action-sequence-summary">@(_sequence.AdditionalCommands.Count + 1) steps · @(_sequence.StopOnError ? "stop on error" : "continue on error")</span>
+        <button type="button" class="btn btn--primary" data-testid="run-action-sequence" @onclick="StartRun">Run sequence</button>
+        <button type="button" class="btn btn--ghost" data-testid="edit-action-sequence" @onclick="OpenEditor">Edit steps</button>
+    }
+</div>
+
+@if (_editing)
+{
+    <div class="sheet" role="dialog" aria-label="Action sequence" data-testid="action-sequence-dialog">
+        <p class="sheet__title">Multi-step Action</p>
+        <p class="sheet__body">The saved Action command runs first. Add up to 9 follow-up commands, one per line.</p>
+        <label class="field">
+            <span class="field__label">Additional commands</span>
+            <textarea class="field__input mono" rows="7" maxlength="147456"
+                      data-testid="action-sequence-commands" spellcheck="false"
+                      @bind="_commandsText"></textarea>
+        </label>
+        <label class="forward-option">
+            <input type="checkbox" data-testid="action-sequence-stop-on-error" @bind="_stopOnError" />
+            <span><strong>Stop on first failed step</strong><small>Turn this off to continue remaining commands after a non-zero exit.</small></span>
+        </label>
+        @if (!string.IsNullOrWhiteSpace(_message))
+        {
+            <p class="action-message" role="alert" data-testid="action-sequence-message">@_message</p>
+        }
+        <button type="button" class="btn btn--primary btn--block" data-testid="save-action-sequence" @onclick="SaveAsync">Save sequence</button>
+        @if (_sequence is not null)
+        {
+            <button type="button" class="btn btn--danger btn--block" data-testid="delete-action-sequence" @onclick="DeleteAsync">Remove sequence</button>
+        }
+        <button type="button" class="btn btn--ghost btn--block" @onclick="CancelEditor">Cancel</button>
+    </div>
+}
+
+@if (_prompting)
+{
+    <div class="sheet" role="dialog" aria-label="Sequence values" data-testid="action-sequence-values">
+        <p class="sheet__title">Runtime values</p>
+        <p class="sheet__body">Values apply to this sequence run only and are not saved.</p>
+        @foreach (var variable in _variables)
+        {
+            <label class="field">
+                <span class="field__label">@variable</span>
+                <input class="field__input mono" data-testid="sequence-variable-@variable"
+                       autocomplete="off" autocapitalize="none" spellcheck="false"
+                       value="@_values[variable]"
+                       @oninput="args => _values[variable] = args.Value?.ToString() ?? string.Empty" />
+            </label>
+        }
+        @if (!string.IsNullOrWhiteSpace(_message))
+        {
+            <p class="action-message" role="alert" data-testid="action-sequence-message">@_message</p>
+        }
+        <button type="button" class="btn btn--primary btn--block" data-testid="confirm-action-sequence" @onclick="RunAsync">Run sequence</button>
+        <button type="button" class="btn btn--ghost btn--block" @onclick="CancelPrompt">Cancel</button>
+    </div>
+}
+
+@if (_lastRun is not null)
+{
+    <section class="action-results" data-testid="action-sequence-results">
+        <div class="action-results__header">
+            <div><h2>@_lastRun.ActionName</h2><p class="action-muted">@(_lastRun.Succeeded ? "Sequence completed successfully" : "Sequence completed with failures")</p></div>
+            <button type="button" class="btn btn--ghost" @onclick="() => _lastRun = null">Dismiss</button>
+        </div>
+        @foreach (var host in _lastRun.Hosts)
+        {
+            <article class="action-result @(host.Succeeded ? "is-success" : "is-failure")" data-testid="action-sequence-host-result">
+                <strong>@host.HostLabel</strong>
+                @if (host.ConnectionError is not null)
+                {
+                    <p class="action-muted">@host.ConnectionError</p>
+                }
+                @foreach (var step in host.Steps)
+                {
+                    <div class="action-output" data-testid="action-sequence-step-result">
+                        <span>Step @step.StepNumber · exit @step.ExitCode</span>
+                        <code>@step.CommandTemplate</code>
+                        @if (!string.IsNullOrWhiteSpace(step.StandardOutput)) { <pre>@step.StandardOutput</pre> }
+                        @if (!string.IsNullOrWhiteSpace(step.StandardError)) { <pre>@step.StandardError</pre> }
+                    </div>
+                }
+            </article>
+        }
+    </section>
+}
+
+@code {
+    [Parameter, EditorRequired] public CommandAction Action { get; set; } = null!;
+
+    private CommandActionSequence? _sequence;
+    private bool _editing;
+    private bool _prompting;
+    private string _commandsText = string.Empty;
+    private bool _stopOnError = true;
+    private string? _message;
+    private IReadOnlyList<string> _variables = [];
+    private readonly Dictionary<string, string> _values = new(StringComparer.Ordinal);
+    private CommandActionSequenceRun? _lastRun;
+
+    protected override async Task OnInitializedAsync() => _sequence = await Sequences.GetAsync(Action.Id);
+
+    private void OpenEditor()
+    {
+        _commandsText = _sequence is null ? string.Empty : string.Join('\n', _sequence.AdditionalCommands);
+        _stopOnError = _sequence?.StopOnError ?? true;
+        _message = null;
+        _editing = true;
+    }
+
+    private void CancelEditor() { _editing = false; _message = null; }
+
+    private async Task SaveAsync()
+    {
+        _message = null;
+        try
+        {
+            var commands = _commandsText.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+            await Sequences.SaveAsync(new CommandActionSequence(Action.Id, commands, _stopOnError));
+            _sequence = await Sequences.GetAsync(Action.Id);
+            _editing = false;
+        }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or KeyNotFoundException)
+        {
+            _message = exception.Message;
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        await Sequences.DeleteAsync(Action.Id);
+        _sequence = null;
+        _editing = false;
+        _lastRun = null;
+    }
+
+    private void StartRun()
+    {
+        if (_sequence is null) return;
+        _variables = [.. new[] { Action.Command }.Concat(_sequence.AdditionalCommands)
+            .SelectMany(CommandActionTemplate.GetVariables)
+            .Distinct(StringComparer.Ordinal)];
+        _values.Clear();
+        foreach (var variable in _variables) _values[variable] = string.Empty;
+        _message = null;
+        if (_variables.Count == 0) _ = RunAsync();
+        else _prompting = true;
+    }
+
+    private async Task RunAsync()
+    {
+        _message = null;
+        try
+        {
+            _lastRun = await Sequences.RunAsync(Action.Id, _values);
+            CancelPrompt();
+        }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or KeyNotFoundException)
+        {
+            _message = exception.Message;
+        }
+    }
+
+    private void CancelPrompt()
+    {
+        foreach (var key in _values.Keys.ToArray()) _values[key] = string.Empty;
+        _values.Clear();
+        _prompting = false;
+        _message = null;
+    }
+}
