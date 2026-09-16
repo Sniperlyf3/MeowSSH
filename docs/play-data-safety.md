@@ -13,7 +13,7 @@ This file is the release-owner checklist for the production Play listing. It is 
 - Android VPN service — used only for the explicitly initiated full-device Tailcat VPN capability when that feature is included in the release.
 - USB host capability — optional serial-console support.
 
-Re-run a merged-manifest inspection on the final signed AAB. Source manifest inspection alone is not enough because attributes/libraries can contribute manifest entries.
+CI now inspects the merged Release manifest, not only the source manifest. The hardened APK lane requires the session keepalive service, `FOREGROUND_SERVICE_SPECIAL_USE`, `foregroundServiceType="specialUse"`, and `PROPERTY_SPECIAL_USE_FGS_SUBTYPE` to survive manifest merging. The production-shape VPN-excluded AAB lane additionally requires `TailcatVpnService` and the HEV tunnel native library to be absent.
 
 ## Data categories to review in Play Console
 
@@ -70,14 +70,21 @@ Do not assume that an SSH application's VPN feature is automatically acceptable 
 5. Confirm the Play Console VpnService declaration matches the implementation.
 6. If policy eligibility is uncertain, ship v1 with the full-device VPN capability disabled rather than risking rejection of the whole product.
 
+The production `Play Release` workflow defaults `include_tailcat_vpn` to `false`. Changing that input to `true` is a deliberate policy decision and must not be treated as a normal build toggle.
+
 ## Foreground-service release gate
 
-The shipping app uses a special-use foreground service for user-initiated terminal-session continuity. Before release:
+The shipping app uses a special-use foreground service for user-initiated terminal-session continuity. The merged manifest currently describes that subtype as:
 
-- verify the service declaration survives into the merged manifest;
-- verify the declared subtype matches actual behavior;
+> Keeps a user-initiated terminal session alive while MeowSSH is backgrounded
+
+Before release:
+
+- keep the Play Console foreground-service declaration aligned with that actual behavior;
+- explain that the service exists only while preserving a user-initiated SSH/terminal session in the background;
+- do not describe unrelated background synchronization, monitoring or always-on behavior under this subtype;
 - verify notification behavior meets current Android/Play requirements;
-- document the user-visible reason for the foreground service in the Play declaration if requested.
+- retain the CI evidence showing the permission, service type and subtype property survived manifest merging.
 
 ## Privacy-policy publication checklist
 
@@ -85,11 +92,32 @@ Before production rollout:
 
 - replace the placeholder contact in `PRIVACY.md`;
 - publish the policy at a stable HTTPS URL accessible without login;
-- link that URL in Play Console;
-- expose a Privacy entry inside the app or Settings screen;
+- set repository/environment variable `PRIVACY_POLICY_URL` to that exact public URL;
+- set repository/environment variable `SUPPORT_URL` to a stable public HTTPS support destination;
+- link the privacy-policy URL in Play Console;
+- keep the in-app Settings links pointed at the same destinations;
 - ensure statements about Tailcat relays match the infrastructure actually used at launch;
 - ensure statements about telemetry match the production build;
 - ensure cloud language matches which tiers/features are actually for sale.
+
+The production workflow refuses to build a release when either public URL is missing or non-HTTPS.
+
+## Internal-track publication handoff
+
+The `Play Release` workflow can stop after producing the verified signed AAB, or explicitly publish that same artifact to Google Play internal testing with `publish_internal=true`.
+
+For an internal-track publication, confirm all of the following first:
+
+- `ANDROID_KEYSTORE_BASE64`, alias and signing passwords are configured for the persistent upload key;
+- `LICENSING_API_BASE_URL` and `LICENSING_PUBLIC_KEY_SUBJECT_PUBLIC_KEY_INFO_BASE64` point at the deployed production licensing service;
+- `PRIVACY_POLICY_URL` and `SUPPORT_URL` are the public launch destinations;
+- `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` belongs to a Play Console service account with only the app/release permissions needed for this upload path;
+- Play App Signing is configured and the backend trusts the **app signing** certificate, not merely the local upload certificate;
+- the production backend is configured with the Play Console SHA-256 app-signing fingerprint. The backend accepts the human-readable hexadecimal fingerprint and normalizes it to the URL-safe Base64 digest returned by Play Integrity;
+- `include_tailcat_vpn=false` unless the VPN policy gate above has been intentionally cleared;
+- the requested `version_code` has never been used before.
+
+The first application setup and any Play Console declarations that cannot be performed through the Android Publisher API still have to exist before an automated internal-track publication can succeed. Treat a failed internal publish as a release blocker to diagnose, not as a reason to bypass the workflow with a different artifact.
 
 ## Release evidence to retain
 
@@ -102,7 +130,8 @@ For each production candidate retain:
 - Data safety answers used for that release;
 - VPN and foreground-service declaration answers;
 - published privacy-policy revision/date;
-- signing certificate digest;
-- production licensing endpoint and public entitlement-key fingerprint.
+- Play app-signing certificate fingerprint(s);
+- production licensing endpoint and public entitlement-key fingerprint;
+- internal-track upload result and version code when publication was requested.
 
 This makes policy/security claims reproducible when a future release changes permissions, dependencies or hosted services.
