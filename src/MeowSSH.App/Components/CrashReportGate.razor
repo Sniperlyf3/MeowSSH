@@ -1,0 +1,90 @@
+@using MeowSSH.Core.Diagnostics
+@using MeowSSH.UI.Services
+@inject IPendingDiagnosticReportStore PendingDiagnostics
+@inject ILocalFileTransferService LocalFiles
+
+@if (_report is not null)
+{
+    <DiagnosticReportPrompt Report="_report"
+                            Busy="_busy"
+                            OnSave="SaveAsync"
+                            OnDiscard="DiscardAsync" />
+}
+else if (!string.IsNullOrWhiteSpace(_message))
+{
+    <div class="sheet" role="status" data-testid="diagnostic-export-result">
+        <p class="sheet__title">Crash report</p>
+        <p class="sheet__body">@_message</p>
+        <button type="button" class="btn btn--ghost btn--block" @onclick="() => _message = null">Dismiss</button>
+    </div>
+}
+
+@code {
+    private DiagnosticReportSnapshot? _report;
+    private bool _busy;
+    private string? _message;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _report = await PendingDiagnostics.LoadAsync();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            _message = "A saved crash report could not be opened. No diagnostic data was uploaded.";
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_busy || _report is null) return;
+        _busy = true;
+        _message = null;
+        string? temporaryPath = null;
+        try
+        {
+            var report = BugReportExportBuilder.Build(
+                "MeowSSH closed unexpectedly.",
+                expectedBehavior: null,
+                reproductionSteps: null,
+                _report);
+            var fileName = $"meowssh-crash-report-{_report.CapturedAtUtc:yyyyMMdd-HHmmss}.txt";
+            temporaryPath = LocalFiles.CreateTemporaryPath(fileName);
+            await File.WriteAllTextAsync(temporaryPath, report);
+            var destination = await LocalFiles.PublishDownloadAsync(temporaryPath, fileName);
+            await PendingDiagnostics.ClearAsync();
+            _report = null;
+            _message = $"Saved to {destination}. Nothing was uploaded automatically.";
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            _message = $"Could not save the crash report: {exception.Message}";
+        }
+        finally
+        {
+            if (temporaryPath is not null) LocalFiles.DeleteTemporaryFile(temporaryPath);
+            _busy = false;
+        }
+    }
+
+    private async Task DiscardAsync()
+    {
+        if (_busy) return;
+        _busy = true;
+        try
+        {
+            await PendingDiagnostics.ClearAsync();
+            _report = null;
+            _message = "Saved crash report discarded. Nothing was uploaded.";
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            _message = $"Could not discard the saved report: {exception.Message}";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}
