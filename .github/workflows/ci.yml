@@ -233,7 +233,7 @@ jobs:
             -p:Version=0.1.${{ github.run_number }} \
             -p:ApplicationDisplayVersion=0.1.${{ github.run_number }} \
             -p:ApplicationVersion=${{ github.run_number }}
-      - name: Verify Play ABI coverage, VPN exclusion and merged manifest
+      - name: Verify Play ABI coverage, 16 KiB alignment, VPN exclusion and merged manifest
         shell: bash
         run: |
           set -euo pipefail
@@ -250,6 +250,33 @@ jobs:
             exit 1
           fi
 
+          command -v readelf >/dev/null
+          NATIVE_DIR="$RUNNER_TEMP/aab-native"
+          rm -rf "$NATIVE_DIR"
+          mkdir -p "$NATIVE_DIR"
+          unzip -q "$AAB" 'base/lib/*/*.so' -d "$NATIVE_DIR"
+          native_count=0
+          bad_alignment=0
+          while IFS= read -r -d '' library; do
+            native_count=$((native_count + 1))
+            while read -r alignment; do
+              [[ -z "$alignment" ]] && continue
+              if (( alignment < 0x4000 )); then
+                echo "::error file=${library#${NATIVE_DIR}/}::PT_LOAD alignment $alignment is below 16 KiB (0x4000)."
+                bad_alignment=$((bad_alignment + 1))
+                break
+              fi
+            done < <(readelf -lW "$library" | awk '$1 == "LOAD" { print $NF }')
+          done < <(find "$NATIVE_DIR/base/lib" -type f -name '*.so' -print0)
+          if (( native_count == 0 )); then
+            echo "::error::No native shared libraries were found for the 16 KiB page-size check."
+            exit 1
+          fi
+          if (( bad_alignment != 0 )); then
+            echo "::error::$bad_alignment native libraries are not 16 KiB ELF-aligned."
+            exit 1
+          fi
+
           MERGED_MANIFEST=$(find src/MeowSSH.App/obj/Release -path '*/android/AndroidManifest.xml' -type f | head -1)
           test -n "$MERGED_MANIFEST"
           grep -q 'android.permission.FOREGROUND_SERVICE_SPECIAL_USE' "$MERGED_MANIFEST"
@@ -262,6 +289,7 @@ jobs:
           fi
 
           echo "Validated Play ABIs: arm64-v8a, x86_64"
+          echo "16 KiB ELF alignment: verified for $native_count packaged shared libraries"
           echo "VPN-excluded merged manifest: verified"
           echo "Third-party notices: packaged"
           echo "AAB: $AAB ($(du -h "$AAB" | cut -f1))"
