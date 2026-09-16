@@ -9,7 +9,7 @@
 
 .diagnostic-prompt__details > summary {
     cursor: pointer;
-    color: var(--text-secondary);
+    color: var(--text-muted);
     font-size: .92rem;
     font-weight: 600;
     padding: .4rem 0;
@@ -33,7 +33,7 @@
 
 .diagnostic-prompt__metadata dt,
 .diagnostic-prompt__label {
-    color: var(--text-secondary);
+    color: var(--text-muted);
     font-size: .8rem;
     font-weight: 600;
     text-transform: uppercase;
