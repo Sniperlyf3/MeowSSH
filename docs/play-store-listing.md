@@ -22,10 +22,11 @@ Official guidance used for this checklist:
 
 ### Short description
 
-`SSH, SFTP, terminal, keys and secure remote tools for Android.`
+`SSH, SFTP, terminal, keys and secure remote tools for Android`
 
-- 62 characters including punctuation/spaces; Play limit is 80.
-- Do not add `free`, discount language, rankings, competitor names or unsupported features.
+- 61 characters including spaces; Play limit is 80.
+- A single-sentence short description is intentionally left without a trailing full stop to match current Play formatting guidance.
+- Do not add `free`, discount language, rankings, competitor names, calls to action or unsupported features.
 
 ### Full description
 
@@ -87,7 +88,7 @@ Before submission, verify:
 - [ ] Short description ≤ 80 characters.
 - [ ] Full description ≤ 4,000 characters.
 - [ ] 512 × 512, 32-bit PNG Play icon, ≤ 1,024 KB.
-- [ ] Feature graphic prepared if required/used: 1024 × 500 JPEG or 24-bit PNG with no alpha.
+- [ ] Required feature graphic: 1024 × 500 JPEG or 24-bit PNG with no alpha.
 - [ ] Minimum two screenshots uploaded; target at least four high-resolution phone screenshots.
 - [ ] Screenshots reflect the exact public build and contain no secrets or real customer data.
 - [ ] Public store-listing contact email is configured. **Do not invent one in source control.**
