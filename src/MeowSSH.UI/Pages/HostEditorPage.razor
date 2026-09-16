@@ -11,7 +11,7 @@
     </Actions>
 
     <ChildContent>
-        <div class="form" data-testid="host-editor">
+        <div class="form host-editor" data-testid="host-editor">
             <label class="field">
                 <span class="field__label">Name</span>
                 <input class="field__input" type="text" data-testid="host-label"
@@ -21,66 +21,30 @@
             </label>
 
             <label class="field">
-                <span class="field__label">Group</span>
-                <input class="field__input" type="text" data-testid="host-group"
-                       placeholder="Production" autocomplete="off" spellcheck="false"
-                       @bind="_group" @bind:event="oninput" />
-                <span class="field__hint">Optional. Hosts in the same group are kept together in the host list.</span>
-            </label>
-
-            <label class="field">
-                <span class="field__label">Tags</span>
-                <input class="field__input" type="text" data-testid="host-tags"
-                       placeholder="prod, eu-west, database" autocomplete="off" spellcheck="false"
-                       @bind="_tags" @bind:event="oninput" />
-                <span class="field__hint">Comma-separated tags are searchable from the Hosts screen.</span>
-            </label>
-
-            <label class="forward-option">
-                <input type="checkbox" data-testid="host-favorite" @bind="_isFavorite" />
-                <span>
-                    <strong>Favorite</strong>
-                    <small>Keep this host in a Favorites section near the top of the list.</small>
-                </span>
-            </label>
-
-            <fieldset class="field">
-                <legend class="field__label">Protocol</legend>
-                <div class="segmented" role="radiogroup" aria-label="Protocol">
+                <span class="field__label">Protocol</span>
+                <select class="field__input" data-testid="host-protocol"
+                        value="@_protocol" @onchange="OnProtocolChanged">
                     @foreach (var option in Protocols)
                     {
-                        <button type="button"
-                                class="segmented__option @(_protocol == option.Value ? "segmented__option--on" : "")"
-                                role="radio"
-                                aria-checked="@(_protocol == option.Value ? "true" : "false")"
-                                data-testid="@($"protocol-{option.Value}")"
-                                @onclick="() => SetProtocol(option.Value)">
-                            @option.Label
-                        </button>
+                        <option value="@option.Value">@option.Label</option>
                     }
-                </div>
+                </select>
                 <span class="field__hint">@ProtocolHint</span>
-            </fieldset>
+            </label>
 
             @if (_protocol == HostProtocol.Ssh)
             {
-                <fieldset class="field">
-                    <legend class="field__label">How to reach it</legend>
-                    <div class="segmented" role="radiogroup" aria-label="Transport">
+                <label class="field">
+                    <span class="field__label">Connection method</span>
+                    <select class="field__input" data-testid="host-transport"
+                            value="@_transport" @onchange="OnTransportChanged">
                         @foreach (var option in Transports)
                         {
-                            <button type="button"
-                                    class="segmented__option @(_transport == option.Value ? "segmented__option--on" : "")"
-                                    role="radio"
-                                    aria-checked="@(_transport == option.Value ? "true" : "false")"
-                                    data-testid="@($"transport-{option.Value}")"
-                                    @onclick="() => SetTransport(option.Value)">
-                                @option.Label
-                            </button>
+                            <option value="@option.Value">@option.Label</option>
                         }
-                    </div>
+                    </select>
                     <span class="field__hint">@TransportHint</span>
-                </fieldset>
+                </label>
             }
 
             @if (_protocol == HostProtocol.Serial)
@@ -205,54 +169,100 @@
                 </p>
             }
 
-            @if (_protocol == HostProtocol.Ssh)
-            {
-                <label class="field">
-                    <span class="field__label">Jump host</span>
-                    <select class="field__input" data-testid="jump-host" @bind="_jumpHostId">
-                        <option value="">Direct connection</option>
-                        @foreach (var jump in _jumpHosts)
-                        {
-                            <option value="@jump.Id">@jump.Label — @jump.DisplayAddress</option>
-                        }
-                    </select>
-                    <span class="field__hint">Optional. Connect through another saved SSH host first. Every hop uses its own saved credential and host-key verification.</span>
-                </label>
-
-                <label class="forward-option">
-                    <input type="checkbox" data-testid="forward-agent" @bind="_forwardAgent" />
+            <details class="host-editor__section" data-testid="host-organisation" open="@HasOrganisationSettings">
+                <summary>
                     <span>
-                        <strong>Forward SSH agent</strong>
-                        <small>Lets the remote session request signatures from this connection's selected key without sending the private key to the server.</small>
+                        <strong>Organisation</strong>
+                        <small>Group, tags and favorite</small>
                     </span>
-                </label>
-            }
+                    <Icon Name="chevron" />
+                </summary>
+                <div class="host-editor__section-body">
+                    <label class="field">
+                        <span class="field__label">Group</span>
+                        <input class="field__input" type="text" data-testid="host-group"
+                               placeholder="Production" autocomplete="off" spellcheck="false"
+                               @bind="_group" @bind:event="oninput" />
+                        <span class="field__hint">Optional. Hosts in the same group are kept together in the host list.</span>
+                    </label>
 
-            @if (SupportsProxy)
-            {
-                <label class="field">
-                    <span class="field__label">Upstream proxy</span>
-                    <input class="field__input mono" type="text" data-testid="ssh-proxy-url"
-                           placeholder="socks5://127.0.0.1:1080" autocomplete="off"
-                           autocapitalize="none" spellcheck="false"
-                           @bind="_proxyUrl" @bind:event="oninput" />
-                    <span class="field__hint">Optional. Route the first SSH hop through a SOCKS5 or HTTP CONNECT proxy.</span>
-                    @if (!ProxyIsValid)
-                    {
-                        <span class="field__error" data-testid="ssh-proxy-validation">Use a socks5:// or http:// proxy URL.</span>
-                    }
-                </label>
-            }
+                    <label class="field">
+                        <span class="field__label">Tags</span>
+                        <input class="field__input" type="text" data-testid="host-tags"
+                               placeholder="prod, eu-west, database" autocomplete="off" spellcheck="false"
+                               @bind="_tags" @bind:event="oninput" />
+                        <span class="field__hint">Comma-separated tags are searchable from the Hosts screen.</span>
+                    </label>
+
+                    <label class="forward-option">
+                        <input type="checkbox" data-testid="host-favorite" @bind="_isFavorite" />
+                        <span>
+                            <strong>Favorite</strong>
+                            <small>Keep this host in a Favorites section near the top of the list.</small>
+                        </span>
+                    </label>
+                </div>
+            </details>
 
             @if (_protocol != HostProtocol.Local)
             {
-                <label class="forward-option">
-                    <input type="checkbox" data-testid="auto-reconnect" @bind="_autoReconnect" />
-                    <span>
-                        <strong>Automatically reconnect</strong>
-                        <small>Retries unexpected disconnects with exponential backoff. Authentication and host-key failures are never retried automatically.</small>
-                    </span>
-                </label>
+                <details class="host-editor__section" data-testid="host-advanced" open="@HasAdvancedSettings">
+                    <summary>
+                        <span>
+                            <strong>Advanced connection</strong>
+                            <small>Jump host, proxy and reconnect behavior</small>
+                        </span>
+                        <Icon Name="chevron" />
+                    </summary>
+                    <div class="host-editor__section-body">
+                        @if (_protocol == HostProtocol.Ssh)
+                        {
+                            <label class="field">
+                                <span class="field__label">Jump host</span>
+                                <select class="field__input" data-testid="jump-host" @bind="_jumpHostId">
+                                    <option value="">Direct connection</option>
+                                    @foreach (var jump in _jumpHosts)
+                                    {
+                                        <option value="@jump.Id">@jump.Label — @jump.DisplayAddress</option>
+                                    }
+                                </select>
+                                <span class="field__hint">Optional. Connect through another saved SSH host first.</span>
+                            </label>
+
+                            <label class="forward-option">
+                                <input type="checkbox" data-testid="forward-agent" @bind="_forwardAgent" />
+                                <span>
+                                    <strong>Forward SSH agent</strong>
+                                    <small>Lets the remote session request signatures without sending the private key to the server.</small>
+                                </span>
+                            </label>
+                        }
+
+                        @if (SupportsProxy)
+                        {
+                            <label class="field">
+                                <span class="field__label">Upstream proxy</span>
+                                <input class="field__input mono" type="text" data-testid="ssh-proxy-url"
+                                       placeholder="socks5://127.0.0.1:1080" autocomplete="off"
+                                       autocapitalize="none" spellcheck="false"
+                                       @bind="_proxyUrl" @bind:event="oninput" />
+                                <span class="field__hint">Optional. Route the first SSH hop through a SOCKS5 or HTTP CONNECT proxy.</span>
+                                @if (!ProxyIsValid)
+                                {
+                                    <span class="field__error" data-testid="ssh-proxy-validation">Use a socks5:// or http:// proxy URL.</span>
+                                }
+                            </label>
+                        }
+
+                        <label class="forward-option">
+                            <input type="checkbox" data-testid="auto-reconnect" @bind="_autoReconnect" />
+                            <span>
+                                <strong>Automatically reconnect</strong>
+                                <small>Retries unexpected disconnects with exponential backoff. Authentication and host-key failures are not retried.</small>
+                            </span>
+                        </label>
+                    </div>
+                </details>
             }
 
             @if (_error is not null)
@@ -308,6 +318,8 @@
     [Parameter] public EventCallback OnCancelled { get; set; }
 
     private bool IsNew => Host is null;
+    private bool HasOrganisationSettings => !string.IsNullOrWhiteSpace(_group) || !string.IsNullOrWhiteSpace(_tags) || _isFavorite;
+    private bool HasAdvancedSettings => !string.IsNullOrWhiteSpace(_jumpHostId) || !string.IsNullOrWhiteSpace(_proxyUrl) || _forwardAgent || !_autoReconnect;
 
     private static (HostProtocol Value, string Label)[] Protocols =>
     [
@@ -321,8 +333,8 @@
     private static (SshTransport Value, string Label)[] Transports =>
     [
         (SshTransport.Tcp, "SSH"),
-        (SshTransport.Tailcat, "tailcat"),
-        (SshTransport.TailscaleSsh, "Tailscale"),
+        (SshTransport.Tailcat, "Tailcat"),
+        (SshTransport.TailscaleSsh, "Tailscale SSH"),
     ];
 
     private string ProtocolHint => _protocol switch
@@ -336,13 +348,13 @@
 
     private string TransportHint => _transport switch
     {
-        SshTransport.Tailcat => "A tailcat address reaches the machine without an open inbound port.",
-        SshTransport.TailscaleSsh => "Reached across your tailnet using Tailscale SSH identity.",
-        _ => "An ordinary SSH server reached over TCP.",
+        SshTransport.Tailcat => "Reach the machine with a Tailcat address without opening an inbound port.",
+        SshTransport.TailscaleSsh => "Reach the machine across your tailnet using Tailscale SSH identity.",
+        _ => "Connect to an ordinary SSH server over TCP.",
     };
 
     private string AddressLabel => _transport == SshTransport.Tailcat && _protocol == HostProtocol.Ssh
-        ? "tailcat address"
+        ? "Tailcat address"
         : "Hostname or IP";
 
     private string AddressPlaceholder => _protocol switch
@@ -412,6 +424,18 @@
             .Where(host => !host.IsDeleted && host.Protocol == HostProtocol.Ssh && host.Id != Host?.Id)
             .OrderBy(host => host.Label, StringComparer.OrdinalIgnoreCase)];
         await RefreshSerialDevicesAsync();
+    }
+
+    private void OnProtocolChanged(ChangeEventArgs args)
+    {
+        if (Enum.TryParse<HostProtocol>(args.Value?.ToString(), out var protocol))
+            SetProtocol(protocol);
+    }
+
+    private void OnTransportChanged(ChangeEventArgs args)
+    {
+        if (Enum.TryParse<SshTransport>(args.Value?.ToString(), out var transport))
+            SetTransport(transport);
     }
 
     private void SetProtocol(HostProtocol protocol)
