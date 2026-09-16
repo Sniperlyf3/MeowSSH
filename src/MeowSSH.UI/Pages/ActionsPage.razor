@@ -33,6 +33,7 @@
                 <textarea class="field__input action-editor__command" data-testid="action-command"
                           rows="5" maxlength="16384" spellcheck="false"
                           placeholder="sudo systemctl restart nginx" @bind="_command"></textarea>
+                <span class="field__hint">Pro: use <code>{{"{{variable}}"}}</code> to request a shell-quoted value each time the Action runs.</span>
             </label>
 
             <label class="field action-editor__timeout">
@@ -106,18 +107,24 @@
             @foreach (var action in _actions)
             {
                 var isRunning = _runningActionId == action.Id;
+                var variables = CommandActionTemplate.GetVariables(action.Command);
+                var isParameterized = variables.Count > 0;
                 <article class="action-card" data-testid="action-card-@action.Id">
                     <div class="action-card__header">
                         <div class="action-card__copy">
                             <div class="action-card__title-row">
                                 <h2>@action.Name</h2>
-                                @if (action.HostIds.Count > 1)
+                                @if (action.HostIds.Count > 1 || isParameterized)
                                 {
                                     <span class="action-pro-badge">PRO</span>
                                 }
                             </div>
                             <code class="action-card__command">@action.Command</code>
                             <p class="action-muted">@HostSummary(action) · @action.TimeoutSeconds s timeout</p>
+                            @if (isParameterized)
+                            {
+                                <p class="action-muted" data-testid="action-variable-summary">Runtime values: @string.Join(", ", variables)</p>
+                            }
                         </div>
                     </div>
 
@@ -126,6 +133,10 @@
                         {
                             <button type="button" class="btn btn--ghost" data-testid="cancel-run"
                                     @onclick="CancelRun">Cancel</button>
+                        }
+                        else if (isParameterized)
+                        {
+                            <ParameterizedActionRun Action="action" Disabled="@(_runningActionId is not null)" />
                         }
                         else
                         {
