@@ -439,7 +439,7 @@
     private string SavedHardwareStatus(CredentialSummary credential)
     {
         if (!_hardwareInfo.TryGetValue(credential.Id, out var info) || info is null)
-            return "Unavailable on this device — restore or generate a replacement key.";
+            return "Unavailable on this device — this non-exportable private key cannot be restored. Generate a replacement key and update the server.";
         return BackingLabel(info);
     }
 
