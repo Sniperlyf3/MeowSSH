@@ -8,7 +8,8 @@ public sealed class TailcatWorkspaceTests(TestHostFixture fixture)
     private async Task<IPage> OpenWorkspacesAsync()
     {
         var page = await fixture.NewPageAsync();
-        await page.GetByTestId("tab-tailcat").ClickAsync();
+        await page.GetByTestId("tab-tools").ClickAsync();
+        await page.GetByTestId("open-tool-tailcat").ClickAsync();
         await Assertions.Expect(page.GetByTestId("tailcat-page")).ToBeVisibleAsync();
         await page.GetByTestId("tailcat-section-workspaces").ClickAsync();
         await Assertions.Expect(page.GetByTestId("tailcat-workspaces")).ToBeVisibleAsync();
