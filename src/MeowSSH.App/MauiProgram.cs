@@ -51,6 +51,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<IActiveSessionLifetime, AndroidActiveSessionLifetime>();
         builder.Services.AddSingleton<ILocalFileTransferService, AndroidLocalFileTransferService>();
         builder.Services.AddSingleton<IExternalUriLauncher, AndroidExternalUriLauncher>();
+        builder.Services.AddSingleton<IThirdPartyNoticeProvider, PackagedThirdPartyNoticeProvider>();
         builder.Services.AddSingleton(LaunchBuildConfig.ExternalLinks);
         builder.Services.AddSingleton<IQrScanner, AndroidQrScanner>();
         builder.Services.AddSingleton<ISerialDeviceService, AndroidUsbSerialDeviceService>();

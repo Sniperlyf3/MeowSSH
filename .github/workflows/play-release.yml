@@ -63,9 +63,11 @@ jobs:
           LICENSING_PUBLIC_KEY: ${{ vars.LICENSING_PUBLIC_KEY_SUBJECT_PUBLIC_KEY_INFO_BASE64 }}
           PRIVACY_POLICY_URL: ${{ vars.PRIVACY_POLICY_URL }}
           SUPPORT_URL: ${{ vars.SUPPORT_URL }}
+          TERMS_OF_SERVICE_URL: ${{ vars.TERMS_OF_SERVICE_URL }}
+          TAILCAT_DERP_MAP_URL: ${{ vars.TAILCAT_DERP_MAP_URL }}
         run: |
           set -euo pipefail
-          required=(ANDROID_KEYSTORE_BASE64 ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD ANDROID_STORE_PASSWORD LICENSING_API_BASE_URL LICENSING_PUBLIC_KEY PRIVACY_POLICY_URL SUPPORT_URL)
+          required=(ANDROID_KEYSTORE_BASE64 ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD ANDROID_STORE_PASSWORD LICENSING_API_BASE_URL LICENSING_PUBLIC_KEY PRIVACY_POLICY_URL SUPPORT_URL TERMS_OF_SERVICE_URL TAILCAT_DERP_MAP_URL)
           for name in "${required[@]}"; do
             if [[ -z "${!name:-}" ]]; then
               echo "::error::$name is required for a production Play release."
@@ -83,7 +85,59 @@ jobs:
             done
           fi
 
-          for name in PRIVACY_POLICY_URL SUPPORT_URL; do
+          if [[ "$LICENSING_API_BASE_URL" != https://* ]]; then
+            echo "::error::LICENSING_API_BASE_URL must be a public HTTPS URL."
+            exit 1
+          fi
+          LICENSING_READY_URL="${LICENSING_API_BASE_URL%/}/readyz"
+          if ! curl --fail --location --silent --show-error --max-time 20 --retry 2 --retry-delay 1 "$LICENSING_READY_URL" -o /dev/null; then
+            echo "::error::The production licensing API must pass $LICENSING_READY_URL before a Play release."
+            exit 1
+          fi
+
+          LICENSING_PUBLIC_KEY_URL="${LICENSING_API_BASE_URL%/}/v1/entitlements/public-key"
+          LICENSING_PUBLIC_KEY_RESPONSE="$RUNNER_TEMP/licensing-public-key.json"
+          if ! curl --fail --location --silent --show-error --max-time 20 --retry 2 --retry-delay 1 "$LICENSING_PUBLIC_KEY_URL" -o "$LICENSING_PUBLIC_KEY_RESPONSE"; then
+            echo "::error::The production licensing public-key endpoint must be reachable before a Play release."
+            exit 1
+          fi
+          if ! python3 - "$LICENSING_PUBLIC_KEY_RESPONSE" "$LICENSING_PUBLIC_KEY" <<'PY'
+          import base64
+          import json
+          import sys
+
+          path, expected_key = sys.argv[1], sys.argv[2]
+          try:
+              with open(path, encoding="utf-8") as handle:
+                  payload = json.load(handle)
+          except (OSError, json.JSONDecodeError) as exc:
+              print(f"Licensing public-key endpoint returned invalid JSON: {exc}", file=sys.stderr)
+              raise SystemExit(1)
+
+          algorithm = payload.get("algorithm")
+          actual_key = payload.get("subjectPublicKeyInfoBase64")
+          if algorithm != "ECDSA_P256_SHA256":
+              print(f"Unexpected licensing signing algorithm: {algorithm!r}", file=sys.stderr)
+              raise SystemExit(1)
+          if not isinstance(actual_key, str) or not actual_key:
+              print("Licensing public-key endpoint did not return subjectPublicKeyInfoBase64.", file=sys.stderr)
+              raise SystemExit(1)
+          try:
+              base64.b64decode(actual_key, validate=True)
+              base64.b64decode(expected_key, validate=True)
+          except ValueError as exc:
+              print(f"Licensing public key is not valid Base64: {exc}", file=sys.stderr)
+              raise SystemExit(1)
+          if actual_key != expected_key:
+              print("Configured LICENSING_PUBLIC_KEY does not match the production licensing service signing key.", file=sys.stderr)
+              raise SystemExit(1)
+          PY
+          then
+            echo "::error::Production licensing signing-key verification failed."
+            exit 1
+          fi
+
+          for name in PRIVACY_POLICY_URL SUPPORT_URL TERMS_OF_SERVICE_URL; do
             if [[ "${!name}" != https://* ]]; then
               echo "::error::$name must be a public HTTPS URL."
               exit 1
@@ -94,10 +148,41 @@ jobs:
             fi
           done
 
+          if [[ "$TAILCAT_DERP_MAP_URL" != https://* ]]; then
+            echo "::error::TAILCAT_DERP_MAP_URL must be a public HTTPS URL."
+            exit 1
+          fi
+          DERP_MAP="$RUNNER_TEMP/tailcat-derp-map.json"
+          if ! curl --fail --location --silent --show-error --max-time 20 --retry 2 --retry-delay 1 "$TAILCAT_DERP_MAP_URL" -o "$DERP_MAP"; then
+            echo "::error::TAILCAT_DERP_MAP_URL must be publicly reachable before a production Play release."
+            exit 1
+          fi
+          if ! python3 -m json.tool "$DERP_MAP" >/dev/null; then
+            echo "::error::TAILCAT_DERP_MAP_URL did not return valid JSON."
+            exit 1
+          fi
+          if [[ "$TAILCAT_DERP_MAP_URL" != "https://tailcat.dev/derpmap.json" ]] && ! grep -Fq "$TAILCAT_DERP_MAP_URL" PRIVACY.md; then
+            echo "::error::A custom production DERP map must be named explicitly in PRIVACY.md before release."
+            exit 1
+          fi
+
           if grep -Fq 'A public support/privacy contact must be inserted here before the Play Store production listing is submitted.' PRIVACY.md; then
             echo "::error::PRIVACY.md still contains the unresolved public support/privacy contact placeholder."
             exit 1
           fi
+
+          terms_placeholders=(
+            '[LEGAL_ENTITY]'
+            '[LEGAL_REVIEW_REQUIRED:'
+            '[GOVERNING_LAW_AND_VENUE]'
+            '[PUBLIC_LEGAL_AND_SUPPORT_CONTACT]'
+          )
+          for placeholder in "${terms_placeholders[@]}"; do
+            if grep -Fq "$placeholder" TERMS.md; then
+              echo "::error::TERMS.md still contains unresolved production placeholder: $placeholder"
+              exit 1
+            fi
+          done
 
           if ! [[ "${{ inputs.version_code }}" =~ ^[1-9][0-9]*$ ]]; then
             echo "::error::version_code must be a positive integer."
@@ -125,6 +210,8 @@ jobs:
           LICENSING_PUBLIC_KEY: ${{ vars.LICENSING_PUBLIC_KEY_SUBJECT_PUBLIC_KEY_INFO_BASE64 }}
           PRIVACY_POLICY_URL: ${{ vars.PRIVACY_POLICY_URL }}
           SUPPORT_URL: ${{ vars.SUPPORT_URL }}
+          TERMS_OF_SERVICE_URL: ${{ vars.TERMS_OF_SERVICE_URL }}
+          TAILCAT_DERP_MAP_URL: ${{ vars.TAILCAT_DERP_MAP_URL }}
         run: |
           set -euo pipefail
           dotnet publish src/MeowSSH.App/MeowSSH.App.csproj \
@@ -141,14 +228,18 @@ jobs:
             "-p:ApplicationVersion=${{ inputs.version_code }}" \
             "-p:EnableTailcatVpn=${{ inputs.include_tailcat_vpn }}" \
             -p:EnableProCloudSales=false \
-            -p:TailcatDerpMapUrl=https://tailcat.dev/derpmap.json \
+            "-p:TailcatDerpMapUrl=$TAILCAT_DERP_MAP_URL" \
             "-p:LicensingApiBaseUrl=$LICENSING_API_BASE_URL" \
             "-p:LicensingPublicKeySubjectPublicKeyInfoBase64=$LICENSING_PUBLIC_KEY" \
             "-p:PrivacyPolicyUrl=$PRIVACY_POLICY_URL" \
-            "-p:SupportUrl=$SUPPORT_URL"
+            "-p:SupportUrl=$SUPPORT_URL" \
+            "-p:TermsOfServiceUrl=$TERMS_OF_SERVICE_URL"
 
       - name: Verify release bundle
         shell: bash
+        env:
+          TAILCAT_DERP_MAP_URL: ${{ vars.TAILCAT_DERP_MAP_URL }}
+          LICENSING_API_BASE_URL: ${{ vars.LICENSING_API_BASE_URL }}
         run: |
           set -euo pipefail
           AAB=$(find src/MeowSSH.App/bin/Release -name "*.aab" | head -1)
@@ -205,9 +296,12 @@ jobs:
           echo "Play ABIs: arm64-v8a, x86_64" >> "$GITHUB_STEP_SUMMARY"
           echo "16 KiB ELF alignment: verified for $native_count packaged shared libraries" >> "$GITHUB_STEP_SUMMARY"
           echo "Pro Cloud sales: disabled" >> "$GITHUB_STEP_SUMMARY"
-          echo "Tailcat DERP map: https://tailcat.dev/derpmap.json" >> "$GITHUB_STEP_SUMMARY"
+          echo "Licensing API: HTTPS and /readyz verified ($LICENSING_API_BASE_URL)" >> "$GITHUB_STEP_SUMMARY"
+          echo "Licensing signing key: active backend key matches embedded app verification key" >> "$GITHUB_STEP_SUMMARY"
+          echo "Tailcat DERP map: $TAILCAT_DERP_MAP_URL" >> "$GITHUB_STEP_SUMMARY"
           echo "Third-party notices: packaged" >> "$GITHUB_STEP_SUMMARY"
-          echo "Privacy/support links: configured and reachable" >> "$GITHUB_STEP_SUMMARY"
+          echo "Privacy/support/Terms links: configured and reachable" >> "$GITHUB_STEP_SUMMARY"
+          echo "Terms placeholders: cleared" >> "$GITHUB_STEP_SUMMARY"
           echo "Play bundle: $AAB ($(du -h "$AAB" | cut -f1))" >> "$GITHUB_STEP_SUMMARY"
           echo "Version: ${{ inputs.version_name }} (${{ inputs.version_code }})" >> "$GITHUB_STEP_SUMMARY"
           echo "Commit: ${{ github.sha }}" >> "$GITHUB_STEP_SUMMARY"

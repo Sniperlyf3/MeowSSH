@@ -1,0 +1,49 @@
+@inject IThirdPartyNoticeProvider Notices
+
+<button type="button" class="setting-card" data-testid="third-party-notices"
+        aria-expanded="@(_expanded ? "true" : "false")"
+        @onclick="ToggleAsync">
+    <span class="setting-card__copy">
+        <span class="setting-card__title">Third-party notices</span>
+        <span class="setting-card__body">View open-source licenses and attribution for components bundled with MeowSSH.</span>
+    </span>
+    <span class="setting-card__value">@(_expanded ? "Hide" : "View")</span>
+</button>
+
+@if (_expanded)
+{
+    @if (_error is not null)
+    {
+        <p class="setting-card__body" role="alert" data-testid="third-party-notices-error">@_error</p>
+    }
+    else if (_content is null)
+    {
+        <p class="setting-card__body" role="status">Loading notices…</p>
+    }
+    else
+    {
+        <pre class="field__input field__input--code mono" data-testid="third-party-notices-content">@_content</pre>
+    }
+}
+
+@code {
+    private bool _expanded;
+    private string? _content;
+    private string? _error;
+
+    private async Task ToggleAsync()
+    {
+        _expanded = !_expanded;
+        if (!_expanded || _content is not null) return;
+
+        _error = null;
+        try
+        {
+            _content = await Notices.GetNoticesAsync();
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or UnauthorizedAccessException)
+        {
+            _error = $"Third-party notices could not be loaded: {ex.Message}";
+        }
+    }
+}
