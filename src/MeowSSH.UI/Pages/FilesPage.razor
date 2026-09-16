@@ -457,7 +457,7 @@
 
         var destination = _moveDestination.Trim().TrimEnd('/');
         if (destination.Length == 0) destination = "/";
-        if (!destination.StartsWith('/', StringComparison.Ordinal))
+        if (!destination.StartsWith("/", StringComparison.Ordinal))
         {
             _moveError = "Use an absolute destination folder beginning with /.";
             return;
