@@ -85,8 +85,6 @@ public class TerminalTests(TestHostFixture fixture)
             "() => document.activeElement?.classList.contains('xterm-helper-textarea') === true");
         Assert.True(terminalStillFocused, "Tapping Ctrl moved focus away from xterm and would close the Android soft keyboard.");
 
-        // Deliberately type through the currently focused element. The old test
-        // explicitly targeted xterm after tapping Ctrl, which masked this bug.
         await page.Keyboard.PressAsync("c");
 
         await Assertions.Expect(page.Locator(".xterm-rows"))
@@ -153,15 +151,20 @@ public class TerminalTests(TestHostFixture fixture)
     {
         var page = await OpenSessionAsync();
 
-        // Explicitly focus xterm's input before typing. Opening a session can leave
-        // focus on the host-row click target under CI, which made this test race and
-        // occasionally send no command at all.
         var input = page.Locator(".xterm-helper-textarea");
         await input.FocusAsync();
         await page.Keyboard.TypeAsync("tput cols");
         await page.Keyboard.PressAsync("Enter");
         await Assertions.Expect(page.Locator(".xterm-rows"))
             .ToContainTextAsync("tput cols", new() { Timeout = 10_000 });
+
+        // The echoed command proves that input reached the PTY, but its output is a
+        // separate asynchronous terminal update. Wait for the numeric response itself
+        // so slow CI runners cannot race the assertion between those two updates.
+        await page.WaitForFunctionAsync(
+            "() => /(?:^|\\n)\\s*\\d{2,3}\\s*(?:\\n|$)/.test(document.querySelector('.xterm-rows')?.innerText ?? '')",
+            null,
+            new() { Timeout = 10_000 });
 
         var screen = await ScreenTextAsync(page);
         var reported = System.Text.RegularExpressions.Regex.Matches(screen, @"^\s*(\d{2,3})\s*$",
