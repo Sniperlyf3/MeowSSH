@@ -13,6 +13,10 @@ else if (_showAppearance)
 {
     <AppearanceSettingsPage OnClosed="CloseAppearance" />
 }
+else if (_showPrivacyDiagnostics)
+{
+    <PrivacyDiagnosticsPage OnClosed="ClosePrivacyDiagnostics" />
+}
 else if (_showPlan)
 {
     <AppShell Title="Plan" ActiveTab="settings" OnTabSelected="OnTabSelected">
@@ -224,6 +228,13 @@ else
 
                 <div class="settings__section">
                     <h2 class="section-label">Help</h2>
+                    <button type="button" class="setting-card" data-testid="open-privacy-diagnostics" @onclick="OpenPrivacyDiagnostics">
+                        <span class="setting-card__copy">
+                            <span class="setting-card__title">Privacy & diagnostics</span>
+                            <span class="setting-card__body">Report a problem and choose whether to attach anonymized crash details.</span>
+                        </span>
+                        <span class="setting-card__value">Open</span>
+                    </button>
                     <button type="button" class="setting-card" data-testid="open-about-settings" @onclick="OpenAbout">
                         <span class="setting-card__copy">
                             <span class="setting-card__title">About & support</span>
@@ -246,6 +257,7 @@ else
     private string? _launchMessage;
     private bool _showSessionLogs;
     private bool _showAppearance;
+    private bool _showPrivacyDiagnostics;
     private bool _showPlan;
     private bool _showSessionLogSettings;
     private bool _showAbout;
@@ -412,6 +424,8 @@ else
     private void ClosePlan() => _showPlan = false;
     private void OpenAppearance() => _showAppearance = true;
     private void CloseAppearance() => _showAppearance = false;
+    private void OpenPrivacyDiagnostics() => _showPrivacyDiagnostics = true;
+    private void ClosePrivacyDiagnostics() => _showPrivacyDiagnostics = false;
     private void OpenSessionLogSettings() => _showSessionLogSettings = true;
     private void CloseSessionLogSettings() => _showSessionLogSettings = false;
     private void OpenAbout() => _showAbout = true;
