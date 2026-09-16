@@ -1,0 +1,114 @@
+@implements IDisposable
+@inject TerminalBroadcastCoordinator Broadcast
+
+<div class="broadcast-control" data-testid="broadcast-control">
+    @if (Broadcast.IsArmed(SessionId))
+    {
+        <div class="notice notice--danger" data-testid="broadcast-armed">
+            <Icon Name="alert" />
+            <div>
+                <p class="notice__title">Broadcast Input armed</p>
+                <p class="notice__body">Keystrokes from this terminal are being sent to multiple open sessions.</p>
+            </div>
+            <button type="button" class="btn btn--danger" data-testid="disarm-broadcast" @onclick="Disarm">Disarm</button>
+        </div>
+    }
+    else
+    {
+        <button type="button" class="btn btn--ghost" data-testid="configure-broadcast" @onclick="Open">
+            Broadcast Input <span class="action-pro-badge">PRO</span>
+        </button>
+    }
+</div>
+
+@if (_editing)
+{
+    <div class="sheet" role="dialog" aria-label="Broadcast Input targets" data-testid="broadcast-dialog">
+        <p class="sheet__title">Broadcast Input</p>
+        <p class="sheet__body">Every keystroke from this terminal will also be sent to the selected open sessions until you disarm it.</p>
+
+        <div class="stack">
+            @foreach (var session in AvailableTargets)
+            {
+                <label class="forward-option" data-testid="broadcast-target-@session.Id">
+                    <input type="checkbox"
+                           checked="@_selected.Contains(session.Id)"
+                           @onchange="args => Toggle(session.Id, args)" />
+                    <span><strong>@session.Label</strong></span>
+                </label>
+            }
+
+            @if (AvailableTargets.Count == 0)
+            {
+                <p class="action-muted">Open at least one additional terminal session first.</p>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(_message))
+            {
+                <p class="action-message" role="alert" data-testid="broadcast-message">@_message</p>
+            }
+
+            <button type="button" class="btn btn--danger btn--block"
+                    data-testid="arm-broadcast"
+                    disabled="@(AvailableTargets.Count == 0)"
+                    @onclick="Arm">
+                Arm broadcast
+            </button>
+            <button type="button" class="btn btn--ghost btn--block" @onclick="Cancel">Cancel</button>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public Guid SessionId { get; set; }
+
+    private readonly HashSet<Guid> _selected = [];
+    private bool _editing;
+    private string? _message;
+
+    private IReadOnlyList<BroadcastSessionInfo> AvailableTargets =>
+        [.. Broadcast.Sessions(SessionId).Where(session => !session.IsSource)];
+
+    protected override void OnInitialized() => Broadcast.Changed += OnChanged;
+
+    private void Open()
+    {
+        _selected.Clear();
+        _message = null;
+        _editing = true;
+    }
+
+    private void Toggle(Guid id, ChangeEventArgs args)
+    {
+        var selected = args.Value is bool value && value;
+        if (selected) _selected.Add(id);
+        else _selected.Remove(id);
+    }
+
+    private void Arm()
+    {
+        _message = null;
+        try
+        {
+            Broadcast.Arm(SessionId, _selected);
+            _editing = false;
+        }
+        catch (InvalidOperationException exception)
+        {
+            _message = exception.Message;
+        }
+    }
+
+    private void Disarm() => Broadcast.Disarm();
+
+    private void Cancel()
+    {
+        _selected.Clear();
+        _message = null;
+        _editing = false;
+    }
+
+    private void OnChanged(object? sender, EventArgs e) => _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Broadcast.Changed -= OnChanged;
+}
