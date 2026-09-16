@@ -5,6 +5,9 @@ on:
     branches: ["claude/beautiful-bohr-im81me"]
   pull_request:
 
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -58,10 +61,10 @@ jobs:
         run: dotnet workload install maui-android
       - name: Build the APK
         env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          CI_ANDROID_KEYSTORE_BASE64: ${{ secrets.CI_ANDROID_KEYSTORE_BASE64 }}
+          CI_ANDROID_KEY_ALIAS: ${{ secrets.CI_ANDROID_KEY_ALIAS }}
+          CI_ANDROID_KEY_PASSWORD: ${{ secrets.CI_ANDROID_KEY_PASSWORD }}
+          CI_ANDROID_STORE_PASSWORD: ${{ secrets.CI_ANDROID_STORE_PASSWORD }}
         run: |
           args=(
             dotnet publish src/MeowSSH.App/MeowSSH.App.csproj
@@ -72,19 +75,19 @@ jobs:
             -p:ApplicationDisplayVersion=0.1.${{ github.run_number }}
             -p:ApplicationVersion=${{ github.run_number }}
           )
-          if [[ -n "$ANDROID_KEYSTORE_BASE64" ]]; then
+          if [[ -n "$CI_ANDROID_KEYSTORE_BASE64" ]]; then
             KEYSTORE="$RUNNER_TEMP/meowssh-ci.keystore"
-            printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
+            printf '%s' "$CI_ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
             chmod 600 "$KEYSTORE"
             args+=(
               -p:AndroidKeyStore=true
               "-p:AndroidSigningKeyStore=$KEYSTORE"
-              "-p:AndroidSigningKeyAlias=$ANDROID_KEY_ALIAS"
-              "-p:AndroidSigningKeyPass=$ANDROID_KEY_PASSWORD"
-              "-p:AndroidSigningStorePass=$ANDROID_STORE_PASSWORD"
+              "-p:AndroidSigningKeyAlias=$CI_ANDROID_KEY_ALIAS"
+              "-p:AndroidSigningKeyPass=$CI_ANDROID_KEY_PASSWORD"
+              "-p:AndroidSigningStorePass=$CI_ANDROID_STORE_PASSWORD"
             )
           else
-            echo "::warning::Persistent Android signing secrets are not configured; APK signatures may change between runners and require uninstall/reinstall."
+            echo "::warning::Dedicated CI Android signing secrets are not configured; APK signatures may change between runners and require uninstall/reinstall. Production upload-key secrets are intentionally not read by this workflow."
           fi
           "${args[@]}"
       - name: Check packaged native binaries and notices
