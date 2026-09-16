@@ -18,6 +18,7 @@ public enum PremiumFeature
     AdvancedSftp,
     MultiHostActions,
     CommandMonitoring,
+    PortForwardProfiles,
     SessionLogs,
     PremiumCustomization,
     EncryptedLocalBackup,
