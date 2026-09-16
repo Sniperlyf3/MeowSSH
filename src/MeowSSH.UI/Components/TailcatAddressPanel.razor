@@ -135,7 +135,6 @@
     {
         var scanned = await QrScanner.ScanAsync();
         if (string.IsNullOrWhiteSpace(scanned)) { _notice = "QR scan cancelled."; return; }
-        // Validate before accepting it. Inspect resolves DNS names too, but QR import intentionally accepts only real Tailcat addresses.
         if (!scanned.Trim().StartsWith("tc", StringComparison.Ordinal)) throw new InvalidOperationException("The scanned QR code is not a Tailcat address.");
         var details = await Hub.InspectAddressAsync(scanned.Trim(), Empty(_derpMapUrl));
         _address = scanned.Trim();
@@ -147,9 +146,13 @@
     });
     private async Task ResolveAsync() => await RunAsync(async () =>
     {
-        _resolvedAddress = await Hub.ResolveAddressAsync(_address, Empty(_derpMapUrl));
-        _details = await Hub.InspectAddressAsync(_resolvedAddress, Empty(_derpMapUrl));
-        _relayClassification = Classify(_details);
+        var selectedMap = Empty(_derpMapUrl);
+        _resolvedAddress = await Hub.ResolveAddressAsync(_address, selectedMap);
+        _details = await Hub.InspectAddressAsync(_resolvedAddress, selectedMap);
+        _relayClassification = TailcatRelayClassifier.Classify(
+            _details,
+            selectedMap ?? TailcatRelayClassifierOptions.TailcatDefaultDerpMapUrl,
+            RelayClassifierOptions);
         ClearQr();
         _notice = "Expanded address ready. Keep it secret like the original address.";
     });
