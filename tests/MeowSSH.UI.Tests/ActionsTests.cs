@@ -33,6 +33,7 @@ public sealed class ActionsTests(TestHostFixture fixture)
         await Assertions.Expect(page.GetByTestId("action-results")).ToContainTextAsync("Completed successfully");
         await Assertions.Expect(page.GetByTestId("action-results")).ToContainTextAsync("uptime on");
 
+        await OpenManageAsync(card);
         await card.Locator("[data-testid^='edit-action-']").ClickAsync();
         await page.GetByTestId("action-name").FillAsync("Check load");
         await page.GetByTestId("action-command").FillAsync("cat /proc/loadavg");
@@ -40,8 +41,31 @@ public sealed class ActionsTests(TestHostFixture fixture)
 
         card = page.Locator("[data-testid^='action-card-']").Filter(new LocatorFilterOptions { HasTextString = "Check load" });
         await Assertions.Expect(card).ToBeVisibleAsync();
+        await OpenManageAsync(card);
         await card.Locator("[data-testid^='delete-action-']").ClickAsync();
         await Assertions.Expect(page.GetByTestId("actions-empty")).ToBeVisibleAsync();
+    }
+
+    [Fact]
+    public async Task ActionCardKeepsManagementOutOfTheDefaultSurface()
+    {
+        var page = await OpenActionsAsync();
+        await page.GetByTestId("add-action").ClickAsync();
+        await page.GetByTestId("action-name").FillAsync("Compact action");
+        await page.GetByTestId("action-command").FillAsync("uptime");
+        await SelectHostAsync(page, "prod-web-01");
+        await page.GetByTestId("save-action").ClickAsync();
+
+        var card = page.Locator("[data-testid^='action-card-']").Filter(new LocatorFilterOptions { HasTextString = "Compact action" });
+        await Assertions.Expect(card.Locator("[data-testid^='run-action-']")).ToBeVisibleAsync();
+        await Assertions.Expect(card.Locator("[data-testid^='edit-action-']")).Not.ToBeVisibleAsync();
+        await Assertions.Expect(card.Locator("[data-testid^='delete-action-']")).Not.ToBeVisibleAsync();
+        await Assertions.Expect(card.GetByTestId("configure-action-sequence")).Not.ToBeVisibleAsync();
+
+        await OpenManageAsync(card);
+        await Assertions.Expect(card.Locator("[data-testid^='edit-action-']")).ToBeVisibleAsync();
+        await Assertions.Expect(card.Locator("[data-testid^='delete-action-']")).ToBeVisibleAsync();
+        await Assertions.Expect(card.GetByTestId("configure-action-sequence")).ToBeVisibleAsync();
     }
 
     [Fact]
@@ -103,6 +127,7 @@ public sealed class ActionsTests(TestHostFixture fixture)
         await page.GetByTestId("save-action").ClickAsync();
 
         var card = page.Locator("[data-testid^='action-card-']").Filter(new LocatorFilterOptions { HasTextString = "Deploy sequence" });
+        await OpenManageAsync(card);
         await card.GetByTestId("configure-action-sequence").ClickAsync();
         await page.GetByTestId("action-sequence-commands").FillAsync("echo deploy\necho verify");
         await page.GetByTestId("save-action-sequence").ClickAsync();
@@ -117,6 +142,9 @@ public sealed class ActionsTests(TestHostFixture fixture)
         await Assertions.Expect(results).ToContainTextAsync("echo deploy on");
         await Assertions.Expect(results).ToContainTextAsync("echo verify on");
     }
+
+    private static async Task OpenManageAsync(ILocator card) =>
+        await card.Locator("details.action-card__manage > summary").ClickAsync();
 
     private static async Task SelectHostAsync(IPage page, string label)
     {
