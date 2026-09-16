@@ -13,16 +13,26 @@ public static class VaultFile
     private const string HostSection = "hosts";
     private const string CredentialSection = "credentials";
 
-    public static byte[] Write(VaultDocument document, VaultKeyRing keyRing)
+    public static byte[] Write(VaultDocument document, VaultKeyRing keyRing) =>
+        Write(document, keyRing, VaultDocument.SchemaVersion);
+
+    /// <summary>
+    /// Produces an older schema using the exact encryption/context path used by
+    /// production files. Kept internal so migration tests can exercise genuine
+    /// historical bytes without shipping fixtures containing long-lived keys.
+    /// </summary>
+    internal static byte[] Write(VaultDocument document, VaultKeyRing keyRing, int schemaVersion)
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(keyRing);
+        if (schemaVersion is < 1 or > VaultDocument.SchemaVersion)
+            throw new ArgumentOutOfRangeException(nameof(schemaVersion));
 
         using var secretsKey = keyRing.DerivePurposeKey(VaultKeyPurpose.Secrets);
 
         using var hosts = new VaultWriter();
         hosts.WriteInt32(document.Hosts.Count);
-        foreach (var host in document.Hosts) WriteHost(hosts, host);
+        foreach (var host in document.Hosts) WriteHost(hosts, host, schemaVersion);
 
         using var credentials = new VaultWriter();
         credentials.WriteInt32(document.Credentials.Count);
@@ -30,7 +40,7 @@ public static class VaultFile
 
         using var file = new VaultWriter();
         file.WriteRaw(Magic);
-        file.WriteInt32(VaultDocument.SchemaVersion);
+        file.WriteInt32(schemaVersion);
         file.WriteString(document.DeviceId);
         file.WriteInt64(document.Revision);
 
@@ -40,11 +50,11 @@ public static class VaultFile
         file.WriteBytes(VaultCrypto.Seal(
             secretsKey.ReadOnlySpan,
             hosts.ToArray(),
-            SectionContext(HostSection, document.Revision, VaultDocument.SchemaVersion)));
+            SectionContext(HostSection, document.Revision, schemaVersion)));
         file.WriteBytes(VaultCrypto.Seal(
             secretsKey.ReadOnlySpan,
             credentials.ToArray(),
-            SectionContext(CredentialSection, document.Revision, VaultDocument.SchemaVersion)));
+            SectionContext(CredentialSection, document.Revision, schemaVersion)));
         return file.ToArray();
     }
 
@@ -130,7 +140,7 @@ public static class VaultFile
             revision.ToString(CultureInfo.InvariantCulture),
             schemaVersion);
 
-    private static void WriteHost(VaultWriter writer, HostRecord host)
+    private static void WriteHost(VaultWriter writer, HostRecord host, int schemaVersion)
     {
         writer.WriteGuid(host.Id);
         writer.WriteString(host.Label);
@@ -146,16 +156,28 @@ public static class VaultFile
         writer.WriteTimestamp(host.UpdatedAt);
         writer.WriteNullableString(host.OriginDeviceId);
         writer.WriteNullableTimestamp(host.DeletedAt);
-        writer.WriteInt32((int)host.Protocol);
-        writer.WriteBoolean(host.AutoReconnect);
-        writer.WriteInt32(host.SerialBaudRate);
-        writer.WriteInt32(host.SerialDataBits);
-        writer.WriteInt32((int)host.SerialStopBits);
-        writer.WriteInt32((int)host.SerialParity);
-        writer.WriteNullableString(host.ProxyUrl);
-        writer.WriteBoolean(host.ForwardAgent);
-        writer.WriteNullableString(host.Group);
-        writer.WriteBoolean(host.IsFavorite);
+
+        if (schemaVersion >= 2)
+        {
+            writer.WriteInt32((int)host.Protocol);
+            writer.WriteBoolean(host.AutoReconnect);
+            writer.WriteInt32(host.SerialBaudRate);
+            writer.WriteInt32(host.SerialDataBits);
+            writer.WriteInt32((int)host.SerialStopBits);
+            writer.WriteInt32((int)host.SerialParity);
+        }
+
+        if (schemaVersion >= 3)
+        {
+            writer.WriteNullableString(host.ProxyUrl);
+            writer.WriteBoolean(host.ForwardAgent);
+        }
+
+        if (schemaVersion >= 4)
+        {
+            writer.WriteNullableString(host.Group);
+            writer.WriteBoolean(host.IsFavorite);
+        }
     }
 
     private static HostRecord ReadHost(ref VaultReader reader, int schemaVersion)
