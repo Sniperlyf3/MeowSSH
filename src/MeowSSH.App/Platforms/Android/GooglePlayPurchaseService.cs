@@ -185,7 +185,7 @@ public sealed class GooglePlayPurchaseService : Java.Lang.Object, IStorePurchase
             return result.ProductDetailsList
                 .Select(details => new StoreProduct(
                     details.ProductId,
-                    details.Name,
+                    StoreProductPresentation.BuyerFacingName(details.ProductId, details.Name),
                     details.GetOneTimePurchaseOfferDetails()?.FormattedPrice ?? string.Empty,
                     details.ProductType))
                 .ToArray();
