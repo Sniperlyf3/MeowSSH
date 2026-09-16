@@ -5,6 +5,8 @@ on:
     paths:
       - ".github/workflows/dependency-evidence.yml"
       - "scripts/generate-dependency-inventory.sh"
+      - "scripts/validate-dependency-inventory.sh"
+      - "scripts/test-validate-dependency-inventory.sh"
       - "MeowSSH.slnx"
       - "Directory.Build.props"
       - "**/*.csproj"
@@ -24,6 +26,10 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
+      - name: Test dependency evidence validator
+        shell: bash
+        run: bash scripts/test-validate-dependency-inventory.sh
+
       - name: Install the Android workload
         run: dotnet workload install maui-android
 
@@ -33,19 +39,7 @@ jobs:
 
       - name: Validate evidence
         shell: bash
-        run: |
-          set -euo pipefail
-          EVIDENCE=artifacts/dependency-inventory
-          for report in \
-            solution-nuget-dependencies.json \
-            solution-nuget-vulnerabilities.json \
-            android-app-nuget-dependencies.json \
-            android-app-nuget-vulnerabilities.json; do
-            python3 -m json.tool "$EVIDENCE/$report" >/dev/null
-          done
-          grep -Fq 'src/MeowSSH.App/MeowSSH.App.csproj' "$EVIDENCE/android-app-nuget-dependencies.json"
-          test "$(cat "$EVIDENCE/source-commit.txt")" = "$(git rev-parse HEAD)"
-          (cd "$EVIDENCE" && sha256sum -c SHA256SUMS)
+        run: bash scripts/validate-dependency-inventory.sh artifacts/dependency-inventory "${{ github.sha }}"
 
       - name: Upload dependency evidence
         uses: actions/upload-artifact@v7
