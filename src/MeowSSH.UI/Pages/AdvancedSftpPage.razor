@@ -1,4 +1,5 @@
 @inject IAdvancedSftpService Advanced
+@inject ISftpBookmarkService Bookmarks
 @inject ILocalFileTransferService LocalFiles
 @implements IDisposable
 
@@ -12,6 +13,16 @@
             <span class="session__host">Advanced SFTP <span class="action-pro-badge">PRO</span></span>
             <span class="session__address">@Host.Label</span>
         </span>
+        <button type="button" class="btn btn--icon" aria-label="Save current folder as bookmark"
+                data-testid="advanced-save-bookmark" disabled="@_busy"
+                @onclick="SaveCurrentBookmarkAsync">
+            <Icon Name="plus" />
+        </button>
+        <button type="button" class="btn btn--icon" aria-label="View remote bookmarks"
+                data-testid="advanced-show-bookmarks" disabled="@_busy"
+                @onclick="ShowBookmarksAsync">
+            <Icon Name="folder" />
+        </button>
         <button type="button" class="btn btn--icon" aria-label="Download this folder as ZIP"
                 data-testid="advanced-download-current" disabled="@_busy"
                 @onclick="InspectCurrentForDownloadAsync">
@@ -32,8 +43,8 @@
         <div class="notice">
             <Icon Name="shield" />
             <div>
-                <p class="notice__title">Recursive operations</p>
-                <p class="notice__body">Symbolic links are never followed. Downloads are capped at 5,000 entries, 32 levels and 2 GiB of file data.</p>
+                <p class="notice__title">Recursive operations + remote bookmarks</p>
+                <p class="notice__body">Symbolic links are never followed. Downloads are capped at 5,000 entries, 32 levels and 2 GiB of file data. Bookmarks store only this host ID and remote path on your device.</p>
             </div>
         </div>
 
@@ -105,6 +116,37 @@
     </div>
 }
 
+@if (_showBookmarks)
+{
+    <div class="sheet" role="dialog" aria-label="Remote bookmarks" data-testid="advanced-bookmarks-sheet">
+        <p class="sheet__title">Remote bookmarks</p>
+        @if (_bookmarks.Count == 0)
+        {
+            <p class="sheet__body" data-testid="advanced-bookmarks-empty">No bookmarks saved for @Host.Label yet.</p>
+        }
+        else
+        {
+            <div class="stack" data-testid="advanced-bookmarks-list">
+                @foreach (var bookmark in _bookmarks)
+                {
+                    <div class="setting-card" data-testid="advanced-bookmark" @key="bookmark.Id">
+                        <button type="button" class="setting-card__copy" data-testid="advanced-open-bookmark"
+                                @onclick="() => OpenBookmarkAsync(bookmark)">
+                            <span class="setting-card__title">@bookmark.Label</span>
+                            <span class="setting-card__body mono">@bookmark.Path</span>
+                        </button>
+                        <button type="button" class="btn btn--icon" aria-label="Delete @bookmark.Label bookmark"
+                                data-testid="advanced-delete-bookmark" @onclick="() => DeleteBookmarkAsync(bookmark)">
+                            <Icon Name="trash" />
+                        </button>
+                    </div>
+                }
+            </div>
+        }
+        <button type="button" class="btn btn--ghost btn--block" @onclick="() => _showBookmarks = false">Close</button>
+    </div>
+}
+
 @if (_candidate is not null && _summary is not null)
 {
     <div class="sheet" role="dialog" aria-label="Advanced SFTP action" data-testid="advanced-sftp-confirm">
@@ -157,10 +199,12 @@
 
 @code {
     private IReadOnlyList<RemoteFile>? _entries;
+    private IReadOnlyList<SftpBookmark> _bookmarks = [];
     private string _path = "/";
     private string? _error;
     private string? _notice;
     private bool _busy;
+    private bool _showBookmarks;
     private string _busyLabel = string.Empty;
     private AdvancedSftpProgress? _progress;
     private RemoteFile? _actionsTarget;
@@ -200,6 +244,61 @@
         _error = null;
         try { _entries = await Sftp.ListAsync(_path); }
         catch (SshException exception) { _error = exception.Message; }
+    }
+
+    private async Task LoadBookmarksAsync()
+    {
+        _bookmarks = await Bookmarks.GetForHostAsync(Host.Id);
+    }
+
+    private async Task SaveCurrentBookmarkAsync()
+    {
+        if (_busy) return;
+        try
+        {
+            var label = _path == "/" ? "Root" : RemotePath.NameOf(_path);
+            var bookmark = await Bookmarks.SaveAsync(Host.Id, label, _path);
+            await LoadBookmarksAsync();
+            _notice = $"Saved {bookmark.Label} bookmark.";
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or ArgumentException)
+        {
+            _error = exception.Message;
+        }
+    }
+
+    private async Task ShowBookmarksAsync()
+    {
+        if (_busy) return;
+        try
+        {
+            await LoadBookmarksAsync();
+            _showBookmarks = true;
+        }
+        catch (InvalidOperationException exception)
+        {
+            _error = exception.Message;
+        }
+    }
+
+    private async Task OpenBookmarkAsync(SftpBookmark bookmark)
+    {
+        _showBookmarks = false;
+        await NavigateAsync(bookmark.Path);
+    }
+
+    private async Task DeleteBookmarkAsync(SftpBookmark bookmark)
+    {
+        try
+        {
+            await Bookmarks.DeleteAsync(bookmark.Id);
+            await LoadBookmarksAsync();
+        }
+        catch (InvalidOperationException exception)
+        {
+            _showBookmarks = false;
+            _error = exception.Message;
+        }
     }
 
     private Task OpenActionsAsync(RemoteFile directory)

@@ -68,4 +68,28 @@ public sealed class AdvancedSftpTests(TestHostFixture fixture)
         await page.GetByTestId("advanced-sftp-back").ClickAsync();
         await Assertions.Expect(page.GetByTestId("files-host-list")).ToBeVisibleAsync();
     }
+
+    [Fact]
+    public async Task CurrentFolderCanBeBookmarkedReopenedAndDeleted()
+    {
+        var page = await OpenAdvancedAsync();
+
+        await Folder(page, "releases").ClickAsync();
+        await page.GetByTestId("advanced-save-bookmark").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("advanced-sftp-notice")).ToContainTextAsync("Saved releases bookmark");
+        await page.GetByTestId("advanced-sftp-notice").GetByRole(AriaRole.Button, new() { Name = "OK" }).ClickAsync();
+
+        await page.GetByTestId("advanced-crumb").First.ClickAsync();
+        await page.GetByTestId("advanced-show-bookmarks").ClickAsync();
+        var bookmark = page.GetByTestId("advanced-bookmark");
+        await Assertions.Expect(bookmark).ToContainTextAsync("releases");
+        await Assertions.Expect(bookmark).ToContainTextAsync("/releases");
+
+        await bookmark.GetByTestId("advanced-open-bookmark").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("advanced-crumbs")).ToContainTextAsync("releases");
+
+        await page.GetByTestId("advanced-show-bookmarks").ClickAsync();
+        await page.GetByTestId("advanced-delete-bookmark").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("advanced-bookmarks-empty")).ToBeVisibleAsync();
+    }
 }

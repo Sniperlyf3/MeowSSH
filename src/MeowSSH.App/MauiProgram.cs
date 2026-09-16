@@ -59,6 +59,9 @@ public static class MauiProgram
             Path.Combine(FileSystem.AppDataDirectory, "session-logs"),
             sp.GetRequiredService<IEntitlementService>()));
         builder.Services.AddSingleton<IAdvancedSftpService, AdvancedSftpService>();
+        builder.Services.AddSingleton<ISftpBookmarkStore>(_ => new FileSftpBookmarkStore(
+            Path.Combine(FileSystem.AppDataDirectory, "sftp-bookmarks.json")));
+        builder.Services.AddSingleton<ISftpBookmarkService, SftpBookmarkService>();
         builder.Services.AddSingleton<IEncryptedVaultBackupService, EncryptedVaultBackupService>();
 
         var nativeDirectory = global::Android.App.Application.Context.ApplicationInfo!.NativeLibraryDir!;
