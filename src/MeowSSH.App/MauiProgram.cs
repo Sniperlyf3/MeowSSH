@@ -60,6 +60,8 @@ public static class MauiProgram
             sp.GetRequiredService<IEntitlementService>()));
         builder.Services.AddSingleton<IAdvancedSftpService, AdvancedSftpService>();
         builder.Services.AddSingleton<ISftpRemoteSearchService, SftpRemoteSearchService>();
+        builder.Services.AddSingleton<ITerminalBroadcastService, TerminalBroadcastService>();
+        builder.Services.AddSingleton<TerminalBroadcastCoordinator>();
         builder.Services.AddSingleton<ISftpBookmarkStore>(_ => new FileSftpBookmarkStore(
             Path.Combine(FileSystem.AppDataDirectory, "sftp-bookmarks.json")));
         builder.Services.AddSingleton<ISftpBookmarkService, SftpBookmarkService>();

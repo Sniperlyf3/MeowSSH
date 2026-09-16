@@ -1,4 +1,6 @@
 @using MeowSSH.Core.Ssh
+@implements IAsyncDisposable
+@inject TerminalBroadcastCoordinator Broadcast
 
 <div class="session" data-testid="session">
     <header class="topbar">
@@ -24,7 +26,11 @@
                      ShowDot="true" />
     </header>
 
-    <TerminalView Shell="Shell" OnWriteFailed="OnWriteFailed" />
+    @if (_broadcastShell is not null)
+    {
+        <BroadcastTerminalControl SessionId="_broadcastShell.RegistrationId" />
+        <TerminalView Shell="_broadcastShell" OnWriteFailed="OnWriteFailed" />
+    }
 
     @if (!IsConnected)
     {
@@ -52,6 +58,17 @@
     [Parameter] public EventCallback OnClosed { get; set; }
     [Parameter] public EventCallback OnOpenFiles { get; set; }
 
+    private ITerminalSession? _sourceShell;
+    private BroadcastTerminalSession? _broadcastShell;
+
+    protected override void OnParametersSet()
+    {
+        if (ReferenceEquals(_sourceShell, Shell) && _broadcastShell is not null) return;
+        if (_broadcastShell is not null) _ = _broadcastShell.DisposeAsync();
+        _sourceShell = Shell;
+        _broadcastShell = new BroadcastTerminalSession(Host.Label, Shell, Broadcast);
+    }
+
     private string EffectiveDisconnectMessage =>
         DisconnectMessage is "_sessionStatus" or "session.Status"
             ? "The terminal session is no longer connected."
@@ -60,4 +77,9 @@
     private Task OnBack() => OnClosed.InvokeAsync();
     private Task ReconnectAsync() => OnReconnect.InvokeAsync();
     private Task OpenFilesAsync() => OnOpenFiles.InvokeAsync();
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_broadcastShell is not null) await _broadcastShell.DisposeAsync();
+    }
 }
