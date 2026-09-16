@@ -11,28 +11,25 @@ public sealed class PortForwardProfileServiceTests
     {
         var store = new MemoryPortForwardProfileStore();
         var service = new PortForwardProfileService(store, new FakeEntitlements(false));
-        var profile = Profile(Guid.NewGuid());
+        var profile = Profile();
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => service.GetForHostAsync(profile.HostId));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.GetAllAsync());
         await Assert.ThrowsAsync<InvalidOperationException>(() => service.SaveAsync(profile));
         Assert.Empty(await store.GetAllAsync());
     }
 
     [Fact]
-    public async Task ProfilesAreScopedToHostAndNormalized()
+    public async Task ProfilesAreReusableAndNormalized()
     {
         var store = new MemoryPortForwardProfileStore();
         var service = new PortForwardProfileService(store, new FakeEntitlements(true));
-        var one = Guid.NewGuid();
-        var two = Guid.NewGuid();
 
-        var saved = await service.SaveAsync(Profile(one) with { Label = " Web ", ListenAddress = " 127.0.0.1:8080 " });
-        await service.SaveAsync(Profile(two) with { Label = "Other" });
+        var saved = await service.SaveAsync(Profile() with { Label = " Web ", ListenAddress = " 127.0.0.1:8080 " });
+        await service.SaveAsync(Profile() with { Label = "Database", ListenAddress = "127.0.0.1:5432", Destination = "db.internal:5432" });
 
-        var result = Assert.Single(await service.GetForHostAsync(one));
-        Assert.Equal(saved.Id, result.Id);
-        Assert.Equal("Web", result.Label);
-        Assert.Equal("127.0.0.1:8080", result.ListenAddress);
+        var result = await service.GetAllAsync();
+        Assert.Equal(2, result.Count);
+        Assert.Contains(result, item => item.Id == saved.Id && item.Label == "Web" && item.ListenAddress == "127.0.0.1:8080");
     }
 
     [Fact]
@@ -40,7 +37,7 @@ public sealed class PortForwardProfileServiceTests
     {
         var store = new MemoryPortForwardProfileStore();
         var service = new PortForwardProfileService(store, new FakeEntitlements(true));
-        var profile = Profile(Guid.NewGuid()) with
+        var profile = Profile() with
         {
             Kind = SshForwardKind.Socks,
             Destination = null,
@@ -59,12 +56,11 @@ public sealed class PortForwardProfileServiceTests
     {
         var service = new PortForwardProfileService(new MemoryPortForwardProfileStore(), new FakeEntitlements(true));
         await Assert.ThrowsAsync<ArgumentException>(() => service.SaveAsync(
-            Profile(Guid.NewGuid()) with { Kind = SshForwardKind.Remote, UseUnixSocket = true }));
+            Profile() with { Kind = SshForwardKind.Remote, UseUnixSocket = true }));
     }
 
-    private static PortForwardProfile Profile(Guid hostId) => new(
+    private static PortForwardProfile Profile() => new(
         Guid.Empty,
-        hostId,
         "Web",
         SshForwardKind.Local,
         "127.0.0.1:8080",
