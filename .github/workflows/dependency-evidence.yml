@@ -1,0 +1,47 @@
+name: Dependency Evidence
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/dependency-evidence.yml"
+      - "scripts/generate-dependency-inventory.sh"
+      - "MeowSSH.slnx"
+      - "Directory.Build.props"
+      - "**/*.csproj"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Generate dependency evidence
+        shell: bash
+        run: bash scripts/generate-dependency-inventory.sh
+
+      - name: Validate evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          EVIDENCE=artifacts/dependency-inventory
+          python3 -m json.tool "$EVIDENCE/nuget-dependencies.json" >/dev/null
+          python3 -m json.tool "$EVIDENCE/nuget-vulnerabilities.json" >/dev/null
+          test "$(cat "$EVIDENCE/source-commit.txt")" = "$(git rev-parse HEAD)"
+          (cd "$EVIDENCE" && sha256sum -c SHA256SUMS)
+
+      - name: Upload dependency evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: dependency-evidence-${{ github.sha }}
+          path: artifacts/dependency-inventory/
+          if-no-files-found: error
+          retention-days: 30
