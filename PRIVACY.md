@@ -34,7 +34,9 @@ The VPN feature is user-initiated and can be stopped by the user. MeowSSH does n
 
 ## Tailcat and relay infrastructure
 
-MeowSSH uses the open-source Tailcat data plane for peer-to-peer networking. The reviewed Tailcat revision used by the app defaults to the upstream Tailcat DERP map at `https://tailcat.dev/derpmap.json`; MeowSSH pins that URL explicitly in its build configuration so a native dependency update cannot silently change the default relay provider.
+MeowSSH uses the open-source Tailcat data plane for peer-to-peer networking. The reviewed Tailcat revision and normal app-build default use the upstream Tailcat DERP map at `https://tailcat.dev/derpmap.json`. Production Play releases do not silently inherit that default: the release workflow requires an explicit `TAILCAT_DERP_MAP_URL`, validates that it is reachable HTTPS JSON, and records that selected endpoint in the release evidence.
+
+If the production release uses `https://tailcat.dev/derpmap.json`, Tailcat can use the upstream third-party relay infrastructure described below. If a different production DERP map is selected, this published policy must be updated before release to identify that exact endpoint and the corresponding relay operator/infrastructure; the release workflow rejects a custom map that is not named in this policy.
 
 Tailcat uses DERP to bootstrap connectivity and as a fallback relay when a direct peer-to-peer UDP path cannot be established. The upstream Tailcat project describes its default DERP relays as free and rate-limited. Connection metadata required to select and reach a relay, and encrypted tunnel packets when relay fallback is used, can therefore be processed by that third-party Tailcat/Tailscale infrastructure. Application payloads inside the Tailcat tunnel remain protected by Tailcat's WireGuard-based end-to-end encryption.
 
