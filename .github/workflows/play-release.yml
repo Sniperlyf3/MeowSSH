@@ -81,6 +81,10 @@ jobs:
               echo "::error::$name must be a public HTTPS URL."
               exit 1
             fi
+            if ! curl --fail --location --silent --show-error --max-time 20 --retry 2 --retry-delay 1 "${!name}" -o /dev/null; then
+              echo "::error::$name must be publicly reachable before a production Play release."
+              exit 1
+            fi
           done
 
           if grep -Fq 'A public support/privacy contact must be inserted here before the Play Store production listing is submitted.' PRIVACY.md; then
@@ -196,7 +200,7 @@ jobs:
           echo "Pro Cloud sales: disabled" >> "$GITHUB_STEP_SUMMARY"
           echo "Tailcat DERP map: https://tailcat.dev/derpmap.json" >> "$GITHUB_STEP_SUMMARY"
           echo "Third-party notices: packaged" >> "$GITHUB_STEP_SUMMARY"
-          echo "Privacy/support links: configured" >> "$GITHUB_STEP_SUMMARY"
+          echo "Privacy/support links: configured and reachable" >> "$GITHUB_STEP_SUMMARY"
           echo "Play bundle: $AAB ($(du -h "$AAB" | cut -f1))" >> "$GITHUB_STEP_SUMMARY"
           echo "Version: ${{ inputs.version_name }} (${{ inputs.version_code }})" >> "$GITHUB_STEP_SUMMARY"
           echo "Commit: ${{ github.sha }}" >> "$GITHUB_STEP_SUMMARY"
