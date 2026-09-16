@@ -18,6 +18,8 @@
     </header>
 
     <div class="forwards__body">
+        <ForwardProfilesPanel OnStart="OnStart" />
+
         @if (Forwards.Count == 0)
         {
             <div class="empty" data-testid="forwards-empty">

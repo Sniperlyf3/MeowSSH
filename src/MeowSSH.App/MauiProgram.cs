@@ -63,6 +63,9 @@ public static class MauiProgram
             Path.Combine(FileSystem.AppDataDirectory, "sftp-bookmarks.json")));
         builder.Services.AddSingleton<ISftpBookmarkService, SftpBookmarkService>();
         builder.Services.AddSingleton<IEncryptedVaultBackupService, EncryptedVaultBackupService>();
+        builder.Services.AddSingleton<IPortForwardProfileStore>(_ => new FilePortForwardProfileStore(
+            Path.Combine(FileSystem.AppDataDirectory, "port-forward-profiles.json")));
+        builder.Services.AddSingleton<IPortForwardProfileService, PortForwardProfileService>();
 
         var nativeDirectory = global::Android.App.Application.Context.ApplicationInfo!.NativeLibraryDir!;
         var engineOptions = new MeowshellSshEngineOptions(
