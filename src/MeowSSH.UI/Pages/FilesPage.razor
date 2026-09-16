@@ -168,6 +168,10 @@
                 </button>
             }
             <button type="button" class="btn btn--ghost btn--block"
+                    data-testid="rename-file" @onclick="() => StartRename(selected)">
+                Rename
+            </button>
+            <button type="button" class="btn btn--ghost btn--block"
                     data-testid="change-permissions" @onclick="() => StartPermissions(selected)">
                 Change permissions
             </button>
@@ -176,6 +180,27 @@
                 <Icon Name="trash" /> Delete
             </button>
             <button type="button" class="btn btn--ghost btn--block" @onclick="() => _selected = null">Cancel</button>
+        </div>
+    </div>
+}
+
+@if (_renameTarget is { } renameTarget)
+{
+    <div class="sheet" role="dialog" aria-label="Rename file" data-testid="rename-sheet">
+        <p class="sheet__title">Rename @renameTarget.Name</p>
+        <label class="field">
+            <span class="field__label">New name</span>
+            <input class="field__input" type="text" autocomplete="off" spellcheck="false"
+                   data-testid="rename-name" @bind="_renameText" @bind:event="oninput" />
+        </label>
+        @if (_renameError is not null)
+        {
+            <p class="field__error" role="alert" data-testid="rename-error">@_renameError</p>
+        }
+        <div class="form__actions">
+            <button type="button" class="btn btn--primary btn--block"
+                    data-testid="confirm-rename" @onclick="RenameAsync">Rename</button>
+            <button type="button" class="btn btn--ghost btn--block" @onclick="CancelRename">Cancel</button>
         </div>
     </div>
 }
@@ -250,6 +275,9 @@
     private bool _showHidden;
     private string? _newFolder;
     private RemoteFile? _selected;
+    private RemoteFile? _renameTarget;
+    private string _renameText = "";
+    private string? _renameError;
     private RemoteFile? _deleteTarget;
     private RemoteFile? _permissionsTarget;
     private string _permissionText = "";
@@ -294,6 +322,7 @@
         _path = path;
         _newFolder = null;
         _selected = null;
+        CancelRename();
         await LoadAsync();
     }
 
@@ -328,6 +357,53 @@
     {
         _selected = entry;
         _error = null;
+    }
+
+    private void StartRename(RemoteFile entry)
+    {
+        _selected = null;
+        _renameTarget = entry;
+        _renameText = entry.Name;
+        _renameError = null;
+    }
+
+    private void CancelRename()
+    {
+        _renameTarget = null;
+        _renameText = "";
+        _renameError = null;
+    }
+
+    private async Task RenameAsync()
+    {
+        if (_renameTarget is null) return;
+        var name = _renameText.Trim();
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            _renameError = "Enter a file or folder name.";
+            return;
+        }
+        if (name is "." or ".." || name.Contains('/') || name.Contains('\\'))
+        {
+            _renameError = "Use a single file or folder name without path separators.";
+            return;
+        }
+        if (string.Equals(name, _renameTarget.Name, StringComparison.Ordinal))
+        {
+            CancelRename();
+            return;
+        }
+
+        try
+        {
+            await Sftp.RenameAsync(_renameTarget.Path, RemotePath.Join(_path, name));
+            CancelRename();
+            await LoadAsync();
+        }
+        catch (SshException ex)
+        {
+            _renameError = ex.Message;
+        }
     }
 
     private void ConfirmDelete(RemoteFile entry)
