@@ -17,8 +17,10 @@ dotnet publish src/MeowSSH.App/MeowSSH.App.csproj \
   -p:LicensingPublicKeySubjectPublicKeyInfoBase64='<base64-spki>'
 ```
 
-If either property is omitted, the existing licensing provider remains fail-closed and does not mint or infer a paid entitlement locally.
+If either property is omitted, the existing licensing provider remains fail-closed and does not mint or infer a paid entitlement locally. The client also treats a non-HTTPS API URI as unconfigured, so paid entitlement verification cannot be sent over plaintext HTTP.
 
 After deploying MeowSSHAPI, obtain the public key from `GET /v1/entitlements/public-key` and use the returned `subjectPublicKeyInfoBase64` value for the app build. The API URL must be HTTPS.
+
+The production `Play Release` workflow applies a stricter release-time gate: `LICENSING_API_BASE_URL` must use HTTPS and `${LICENSING_API_BASE_URL}/readyz` must respond successfully before the signed AAB is built. This prevents a production bundle from being signed with a URL that the app would later reject or with a licensing service that is not ready at release time.
 
 For GitHub Actions release builds, store these values as repository/environment **variables**, not secrets: they are intentionally embedded in the APK and therefore are not confidential. The API signing private key and Google credentials must never be supplied to the app build.
