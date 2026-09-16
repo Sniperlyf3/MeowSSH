@@ -3,6 +3,8 @@
 @inject IEntitlementService Entitlements
 @inject IStorePurchaseService Store
 @inject ISessionLogService SessionLogs
+@inject IExternalUriLauncher ExternalLauncher
+@inject AppExternalLinks ExternalLinks
 
 @if (_showSessionLogs)
 {
@@ -171,6 +173,47 @@ else
                 </label>
             </div>
 
+            <div class="settings__section" data-testid="about-support-settings">
+                <h2 class="section-label">About & support</h2>
+
+                <div class="setting-card">
+                    <span class="setting-card__copy">
+                        <span class="setting-card__title">MeowSSH</span>
+                        <span class="setting-card__body">Installed build</span>
+                    </span>
+                    <span class="setting-card__value mono" data-testid="build-version">@MeowSSH.Core.BuildInfo.Version</span>
+                </div>
+
+                @if (ExternalLinks.PrivacyPolicy is { } privacyPolicy)
+                {
+                    <button type="button" class="setting-card" data-testid="privacy-policy"
+                            @onclick="() => OpenExternalAsync(privacyPolicy)">
+                        <span class="setting-card__copy">
+                            <span class="setting-card__title">Privacy policy</span>
+                            <span class="setting-card__body">Review how MeowSSH handles device, connection, purchase, and optional cloud data.</span>
+                        </span>
+                        <span class="setting-card__value">Open</span>
+                    </button>
+                }
+
+                @if (ExternalLinks.Support is { } support)
+                {
+                    <button type="button" class="setting-card" data-testid="support-link"
+                            @onclick="() => OpenExternalAsync(support)">
+                        <span class="setting-card__copy">
+                            <span class="setting-card__title">Support</span>
+                            <span class="setting-card__body">Get help with connections, purchases, restore, or account access.</span>
+                        </span>
+                        <span class="setting-card__value">Open</span>
+                    </button>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(_launchMessage))
+                {
+                    <p class="setting-card__body" role="status" data-testid="launch-link-message">@_launchMessage</p>
+                }
+            </div>
+
             <div class="settings__section">
                 <h2 class="section-label">Reset</h2>
                 <button type="button" class="btn btn--ghost btn--block"
@@ -200,6 +243,7 @@ else
     private string? _premiumMessage;
     private bool _sessionLogsBusy;
     private string? _sessionLogsMessage;
+    private string? _launchMessage;
     private bool _showSessionLogs;
 
     [Parameter] public EventCallback<string> OnTabSelected { get; set; }
@@ -363,6 +407,20 @@ else
         finally
         {
             _sessionLogsBusy = false;
+        }
+    }
+
+    private async Task OpenExternalAsync(Uri uri)
+    {
+        _launchMessage = null;
+        try
+        {
+            if (!await ExternalLauncher.OpenAsync(uri))
+                _launchMessage = "Android could not open that link.";
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException)
+        {
+            _launchMessage = ex.Message;
         }
     }
 
