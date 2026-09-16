@@ -18,6 +18,19 @@ public sealed class TailcatWorkspaceServiceTests
     }
 
     [Fact]
+    public async Task WorkspaceCanBeDeletedAfterEntitlementExpires()
+    {
+        var store = new MemoryTailcatWorkspaceStore();
+        var workspace = Workspace();
+        await store.SaveAsync(workspace);
+        var service = new TailcatWorkspaceService(store, new FakeHub(), new MutableEntitlements(EntitlementTier.Free));
+
+        await service.DeleteAsync(workspace.Id);
+
+        Assert.Empty(await store.GetAllAsync());
+    }
+
+    [Fact]
     public async Task ProWorkspaceStartsAndStopRemainsAvailableAfterEntitlementExpires()
     {
         var store = new MemoryTailcatWorkspaceStore();
