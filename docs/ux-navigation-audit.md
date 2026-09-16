@@ -20,16 +20,16 @@ This document is the working contract for the commercial-polish pass across the 
 
 | Area | Current direction | Commercial-polish target | Priority |
 | --- | --- | --- | --- |
-| Session workspace | Session tabs plus separate/morphing Files and Forwards buttons | One active-view drop-down showing Terminal / Files / Forwards; session tabs only select/close sessions | P0 |
-| New/Edit connection | Core connection fields mixed with Group, Tags, Favorite, jump host, agent forwarding, proxy and reconnect | Keep the normal connect path visible; group organisation metadata and advanced connection options behind focused disclosure/sub-pages | P0 |
-| Settings | Improved: Appearance already has a previewable sub-page; some plan/session/support controls still live together | Category-oriented root with concise state summaries; appearance, session data/logging, plan/billing and support/diagnostics as focused destinations | P1 |
-| Files / SFTP | Compact item actions, but top bar and growing Pro functionality can accumulate controls | Keep browse/upload primary; move uncommon display/search/transfer management into a compact overflow or focused transfer/history surface | P1 |
-| Keys / credentials | Feature-rich page combines several credential/key workflows | Separate browse/manage from Create/Import/Hardware/backup flows; contextual item actions rather than a permanent action wall | P1 |
-| Actions | Creation, templates, multi-step behavior and execution can become dense | Separate library, editor and run/result states; one obvious Run action; advanced step behavior disclosed in editor only | P1 |
-| Port forwarding | Dedicated page is appropriate, but profiles and add/edit state share space | Preserve fast “start a forward” path; profiles/history/configuration use focused disclosure without extra permanent toolbar actions | P1 |
-| Tailcat | Large capability surface spread across panels | Group by user intent (Connect, Devices/Keys, Network/VPN, Transfers, Diagnostics) and avoid exposing implementation concepts as equal top-level actions | P1 |
+| Session workspace | Reviewed: one active-view selector controls Terminal / Files / Forwards | Preserve one stable selector; session tabs only select/close sessions | P0 |
+| New/Edit connection | Reviewed: normal connection path plus Organisation and Advanced connection disclosure | Keep the normal connect path visible; keep metadata and specialist connection controls progressively disclosed | P0 |
+| Settings | Reviewed: category/status root with focused plan, logs, appearance and support/detail pages | Keep the root concise and route rich configuration to focused destinations | P1 |
+| Files / SFTP | Reviewed: normal host browsing is primary; Advanced SFTP is contextual per host | Keep browse/upload primary; keep search/bookmarks/recursive tooling contextual | P1 |
+| Keys / credentials | Reviewed: focused Generate / Import / Device / Public / Password flows and contextual saved-key management | Keep creation concerns separate from day-to-day key management | P1 |
+| Actions | Reviewed: Run remains primary; management and sequence configuration are contextual | Keep result viewing separate from the library state and specialist editing controls out of the run path | P1 |
+| Port forwarding | In review: common route fields stay immediate; saved profiles and specialist listener tuning move behind disclosure | Preserve fast “start a forward” path; profiles/history/configuration remain secondary | P1 |
+| Tailcat | In review: feature panels grouped by user intent | Group by Connect, Devices/Keys, Network/VPN, Transfers and Diagnostics without removing capability | P1 |
 | Session logs / monitoring | Already separate specialist pages | Keep them out of root screens except concise entry/status cards | P2 |
-| Crash / bug reports | Privacy-first local snapshot/store and consent work in progress | Prompt only when relevant; two default choices; inspectable details; diagnostics/support destination for manual bug reports | P0 launch quality |
+| Crash / bug reports | Reviewed: privacy-first local crash capture with explicit review/export/discard and manual diagnostics entry | Preserve consent-first local-only behavior unless the user explicitly chooses an export | P0 launch quality |
 | Vault setup/unlock | Focused flows | Preserve minimal unlock path; recovery/security detail appears only when required | P2 |
 
 ## Interaction budgets for critical flows
@@ -42,26 +42,26 @@ These are targets used during the audit, not arbitrary hard limits when security
 - Upload a file from an open SFTP directory: **1 tap**, followed by the platform file picker.
 - Run an already-configured Action: **1 tap** (plus required parameter confirmation only when the action actually has parameters).
 - Change terminal theme: Settings → Appearance, then **1 theme selection**, with preview visible before leaving.
-- Dismiss/defer a crash report: **1 tap**.
-- Send an already-reviewed anonymized crash report: **1 tap** from the consent surface.
+- Dismiss/discard a crash report: **1 tap**.
+- Save an already-reviewed sanitized crash report: **1 tap** from the consent surface.
 
 ## Implementation order
 
 ### P0 — remove inconsistent navigation semantics
 
 - [x] Dedicated Appearance settings/page with previews instead of a growing Settings form.
-- [ ] Replace Session Terminal/Files/Forwards morphing buttons with one active-view selector.
-- [ ] Simplify New/Edit Connection into a short common path plus Organisation and Advanced Connection disclosure.
-- [ ] Finish consent-driven crash-report capture/review/send flow and add manual Bug report entry under Support/Diagnostics.
+- [x] Replace Session Terminal/Files/Forwards morphing buttons with one active-view selector. (PR #90)
+- [x] Simplify New/Edit Connection into a short common path plus Organisation and Advanced Connection disclosure. (PR #93)
+- [x] Finish consent-driven local crash-report capture/review/export flow and add manual Privacy & diagnostics entry. (PRs #96–#97)
 
 ### P1 — reduce toolbar and root-screen density
 
-- [ ] Review Files/SFTP toolbar and Pro transfer/search controls; keep browse/upload primary and move secondary tools behind an overflow/focused page.
-- [ ] Review Keys/Credentials navigation; split create/import/hardware/backup concerns from day-to-day key management.
-- [ ] Review Actions library/editor/run-result navigation and remove peer controls that are only relevant while editing.
-- [ ] Review Settings root information architecture; move detailed toggles to their owning sub-pages and keep concise status summaries.
-- [ ] Review Port Forwarding profile management and creation flow.
-- [ ] Review Tailcat panels and group by user intent instead of feature implementation.
+- [x] Review Files/SFTP toolbar and Pro transfer/search controls; keep browse/upload primary and move secondary tools behind contextual disclosure. (PR #99)
+- [x] Review Keys/Credentials navigation; split Generate / Import / Device / Public / Password concerns from day-to-day key management. (PR #98)
+- [x] Review Actions library/editor/run-result navigation and remove peer controls that are only relevant while editing. (PR #95)
+- [x] Review Settings root information architecture; move detailed toggles to their owning sub-pages and keep concise status summaries. (PR #94)
+- [ ] Review Port Forwarding profile management and creation flow. (PR #100 in validation)
+- [ ] Review Tailcat panels and group by user intent instead of feature implementation. (PR #101 in validation)
 
 ### P2 — consistency and polish pass
 
