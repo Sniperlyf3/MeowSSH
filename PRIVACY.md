@@ -1,6 +1,6 @@
 # MeowSSH Privacy Policy
 
-_Last updated: 15 September 2026_
+_Last updated: 16 September 2026_
 
 MeowSSH is an Android SSH/SFTP and remote-operations client. This policy describes what the app handles, what leaves the device, and which features may involve third-party services.
 
@@ -30,11 +30,15 @@ The optional camera permission is used only when the user invokes QR-code scanni
 
 If the user explicitly enables MeowSSH's full-device Tailcat VPN feature, Android routes selected device network traffic through the user-configured tunnel. This can expose destination addressing and traffic metadata to the network infrastructure used by that tunnel. MeowSSH does not claim that enabling a VPN makes third-party destinations anonymous.
 
-The VPN feature is user-initiated and can be stopped by the user. MeowSSH does not use VPN traffic for advertising, profiling or sale of personal information.
+The VPN feature is user-initiated and can be stopped by the user. MeowSSH does not use VPN traffic for advertising, profiling or sale of personal information. The first public Play release is configured to exclude this full-device VPN capability unless it is deliberately enabled for a later release after the applicable policy review.
 
 ## Tailcat and relay infrastructure
 
-Tailcat functionality may rely on external coordination or relay infrastructure in order to connect peers when direct connectivity is unavailable. Network metadata required to establish or relay those connections may therefore be processed by the infrastructure involved. The exact infrastructure model must be finalized before public launch and the published policy must be updated if MeowSSH operates or contracts hosted relays of its own.
+MeowSSH uses the open-source Tailcat data plane for peer-to-peer networking. The reviewed Tailcat revision used by the app defaults to the upstream Tailcat DERP map at `https://tailcat.dev/derpmap.json`; MeowSSH pins that URL explicitly in its build configuration so a native dependency update cannot silently change the default relay provider.
+
+Tailcat uses DERP to bootstrap connectivity and as a fallback relay when a direct peer-to-peer UDP path cannot be established. The upstream Tailcat project describes its default DERP relays as free and rate-limited. Connection metadata required to select and reach a relay, and encrypted tunnel packets when relay fallback is used, can therefore be processed by that third-party Tailcat/Tailscale infrastructure. Application payloads inside the Tailcat tunnel remain protected by Tailcat's WireGuard-based end-to-end encryption.
+
+Users can supply an alternate DERP map for supported Tailcat operations, including a map for self-hosted relay infrastructure. When an alternate map is used, that map and its listed relay operators process the corresponding connection metadata instead of the default map/relays.
 
 ## Local session logs and monitoring
 
@@ -42,7 +46,7 @@ Session logging and command-monitoring features are local features unless a futu
 
 ## Backups and cloud features
 
-The current backup feature is local and encrypted. MeowSSH Pro Cloud must not be marketed as available until cloud backup/sync is implemented and this policy has been updated to document what is uploaded, retention, deletion and account recovery behavior.
+The current backup feature is local and encrypted. MeowSSH Pro Cloud is not offered for new purchase in the production build until cloud backup/sync is implemented and this policy has been updated to document what is uploaded, retention, deletion and account recovery behavior.
 
 Any future cloud-sync design should encrypt user configuration on the client before upload where practical, and must not require the service to receive plaintext private SSH keys.
 
@@ -62,7 +66,7 @@ No software can guarantee the security of a compromised device, remote host, thi
 
 ## Retention and deletion
 
-Local MeowSSH data remains on the device until the user deletes it, clears the relevant history, removes the app, or restores/replaces the local vault as applicable. Google Play and any future hosted MeowSSH services may have separate retention requirements that must be documented before those services are publicly launched.
+Local MeowSSH data remains on the device until the user deletes it, clears the relevant history, removes the app, or restores/replaces the local vault as applicable. Google Play, the MeowSSH licensing service, and third-party relay infrastructure may have separate operational log or retention practices. MeowSSH does not intentionally send terminal contents, passwords or private SSH keys to the licensing service.
 
 ## Children
 
