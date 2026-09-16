@@ -1,5 +1,6 @@
 using MeowSSH.Android;
 using MeowSSH.App.Services;
+using MeowSSH.Core.Diagnostics;
 using MeowSSH.Core.Licensing;
 using MeowSSH.Core.Security;
 using MeowSSH.Core.Services;
@@ -52,6 +53,8 @@ public static class MauiProgram
         builder.Services.AddSingleton<ILocalFileTransferService, AndroidLocalFileTransferService>();
         builder.Services.AddSingleton<IExternalUriLauncher, AndroidExternalUriLauncher>();
         builder.Services.AddSingleton<IThirdPartyNoticeProvider, PackagedThirdPartyNoticeProvider>();
+        builder.Services.AddSingleton<IPendingDiagnosticReportStore>(_ => new FilePendingDiagnosticReportStore(
+            Path.Combine(FileSystem.AppDataDirectory, "diagnostics")));
         builder.Services.AddSingleton(LaunchBuildConfig.ExternalLinks);
         builder.Services.AddSingleton<IQrScanner, AndroidQrScanner>();
         builder.Services.AddSingleton<ISerialDeviceService, AndroidUsbSerialDeviceService>();
