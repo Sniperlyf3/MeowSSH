@@ -47,6 +47,7 @@ else
         else
         {
             <h2 class="section-label">Choose a host</h2>
+            <p class="files-landing__hint">Tap a host to browse files. Specialist recursive, search and bookmark tools are available from More.</p>
             <div class="host-list" data-testid="files-host-list">
                 @foreach (var status in _hosts)
                 {
@@ -54,12 +55,18 @@ else
                         <HostRow Status="status" OnSelected="OnHostSelected" />
                         @if (status.Host.Protocol == HostProtocol.Ssh)
                         {
-                            <button type="button" class="btn btn--ghost files-host-option__advanced"
-                                    data-testid="advanced-sftp-host" data-host-label="@status.Host.Label"
-                                    disabled="@_advancedBusy"
-                                    @onclick="() => OpenAdvancedAsync(status.Host)">
-                                Advanced SFTP <span class="action-pro-badge">PRO</span>
-                            </button>
+                            <details class="files-host-option__more" data-testid="files-host-more" data-host-label="@status.Host.Label">
+                                <summary>More</summary>
+                                <div class="files-host-option__menu">
+                                    <button type="button" class="btn btn--ghost btn--block"
+                                            data-testid="advanced-sftp-host" data-host-label="@status.Host.Label"
+                                            disabled="@_advancedBusy"
+                                            @onclick="() => OpenAdvancedAsync(status.Host)">
+                                        Advanced SFTP <span class="action-pro-badge">PRO</span>
+                                    </button>
+                                    <p>Remote search, bookmarks, recursive downloads and recursive delete.</p>
+                                </div>
+                            </details>
                         }
                     </div>
                 }
