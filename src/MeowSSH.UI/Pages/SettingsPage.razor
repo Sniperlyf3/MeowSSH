@@ -13,162 +13,228 @@ else if (_showAppearance)
 {
     <AppearanceSettingsPage OnClosed="CloseAppearance" />
 }
-else
+else if (_showPlan)
 {
-<AppShell Title="Settings" ActiveTab="settings" OnTabSelected="OnTabSelected">
-    <ChildContent>
-        <section class="settings" data-testid="settings-page">
-            <div class="settings__section" data-testid="plan-settings">
-                <h2 class="section-label">MeowSSH plan</h2>
+    <AppShell Title="Plan" ActiveTab="settings" OnTabSelected="OnTabSelected">
+        <Actions>
+            <button type="button" class="btn btn--icon" aria-label="Back to Settings"
+                    data-testid="plan-settings-back" @onclick="ClosePlan">
+                <Icon Name="back" />
+            </button>
+        </Actions>
+        <ChildContent>
+            <section class="settings" data-testid="plan-settings">
+                <div class="settings__section">
+                    <h2 class="section-label">MeowSSH plan</h2>
+                    <div class="setting-card">
+                        <span class="setting-card__copy">
+                            <span class="setting-card__title" data-testid="plan-tier">@PlanName</span>
+                            <span class="setting-card__body">@PlanDescription</span>
+                        </span>
+                        <span class="setting-card__value mono">@PlanStatus</span>
+                    </div>
 
-                <div class="setting-card">
-                    <span class="setting-card__copy">
-                        <span class="setting-card__title" data-testid="plan-tier">@PlanName</span>
-                        <span class="setting-card__body">@PlanDescription</span>
-                    </span>
-                    <span class="setting-card__value mono">@PlanStatus</span>
-                </div>
-
-                @if (_products.Count > 0 && Entitlements.Current.Tier == EntitlementTier.Free)
-                {
-                    @foreach (var product in _products)
+                    @if (_products.Count > 0 && Entitlements.Current.Tier == EntitlementTier.Free)
                     {
-                        <button type="button" class="setting-card"
-                                data-testid="purchase-@PurchaseTestId(product)"
-                                disabled="@_premiumBusy"
-                                @onclick="() => PurchaseAsync(product)">
-                            <span class="setting-card__copy">
-                                <span class="setting-card__title">@ProductName(product)</span>
-                                <span class="setting-card__body">Purchased through Google Play. Paid access is enabled only after server verification.</span>
+                        @foreach (var product in _products)
+                        {
+                            <button type="button" class="setting-card"
+                                    data-testid="purchase-@PurchaseTestId(product)"
+                                    disabled="@_premiumBusy"
+                                    @onclick="() => PurchaseAsync(product)">
+                                <span class="setting-card__copy">
+                                    <span class="setting-card__title">@ProductName(product)</span>
+                                    <span class="setting-card__body">Purchased through Google Play. Paid access is enabled only after server verification.</span>
+                                </span>
+                                @if (!string.IsNullOrWhiteSpace(product.FormattedPrice))
+                                {
+                                    <span class="setting-card__value mono">@product.FormattedPrice</span>
+                                }
+                            </button>
+                        }
+                    }
+
+                    <div class="settings__actions">
+                        <button type="button" class="btn btn--ghost"
+                                data-testid="refresh-entitlement"
+                                disabled="@_premiumBusy" @onclick="RefreshPlanAsync">
+                            Refresh plan
+                        </button>
+                        <button type="button" class="btn btn--ghost"
+                                data-testid="restore-purchases"
+                                disabled="@_premiumBusy" @onclick="RestorePurchasesAsync">
+                            Restore purchases
+                        </button>
+                    </div>
+
+                    @if (!string.IsNullOrWhiteSpace(_premiumMessage))
+                    {
+                        <p class="setting-card__body" role="status" data-testid="plan-message">@_premiumMessage</p>
+                    }
+                </div>
+            </section>
+        </ChildContent>
+    </AppShell>
+}
+else if (_showSessionLogSettings)
+{
+    <AppShell Title="Session logs" ActiveTab="settings" OnTabSelected="OnTabSelected">
+        <Actions>
+            <button type="button" class="btn btn--icon" aria-label="Back to Settings"
+                    data-testid="session-log-settings-back" @onclick="CloseSessionLogSettings">
+                <Icon Name="back" />
+            </button>
+        </Actions>
+        <ChildContent>
+            <section class="settings" data-testid="session-log-settings">
+                <div class="settings__section">
+                    <h2 class="section-label">Recording <span class="action-pro-badge">PRO</span></h2>
+                    <label class="setting-card setting-card--toggle" for="session-log-auto-record">
+                        <span class="setting-card__copy">
+                            <span class="setting-card__title">Automatically record terminal output</span>
+                            <span class="setting-card__body">
+                                Saves output only. MeowSSH deliberately does not record what you type, so passwords and passphrases entered at a terminal are not persisted.
                             </span>
-                            @if (!string.IsNullOrWhiteSpace(product.FormattedPrice))
-                            {
-                                <span class="setting-card__value mono">@product.FormattedPrice</span>
-                            }
+                        </span>
+                        <input id="session-log-auto-record" type="checkbox" class="settings__toggle"
+                               data-testid="session-log-auto-record"
+                               checked="@SessionLogs.AutoRecord"
+                               disabled="@_sessionLogsBusy"
+                               @onchange="OnSessionLogRecordingChangedAsync" />
+                    </label>
+
+                    <button type="button" class="setting-card" data-testid="open-session-logs"
+                            @onclick="OpenSessionLogs">
+                        <span class="setting-card__copy">
+                            <span class="setting-card__title">Session log history</span>
+                            <span class="setting-card__body">Search output, inspect exit status, copy transcripts, export logs, or delete local history.</span>
+                        </span>
+                        <span class="setting-card__value">View</span>
+                    </button>
+
+                    @if (!string.IsNullOrWhiteSpace(_sessionLogsMessage))
+                    {
+                        <p class="setting-card__body" role="status" data-testid="session-log-settings-message">@_sessionLogsMessage</p>
+                    }
+                </div>
+            </section>
+        </ChildContent>
+    </AppShell>
+}
+else if (_showAbout)
+{
+    <AppShell Title="About & support" ActiveTab="settings" OnTabSelected="OnTabSelected">
+        <Actions>
+            <button type="button" class="btn btn--icon" aria-label="Back to Settings"
+                    data-testid="about-settings-back" @onclick="CloseAbout">
+                <Icon Name="back" />
+            </button>
+        </Actions>
+        <ChildContent>
+            <section class="settings" data-testid="about-support-settings">
+                <div class="settings__section">
+                    <div class="setting-card">
+                        <span class="setting-card__copy">
+                            <span class="setting-card__title">MeowSSH</span>
+                            <span class="setting-card__body">Installed build</span>
+                        </span>
+                        <span class="setting-card__value mono" data-testid="build-version">@MeowSSH.Core.BuildInfo.Version</span>
+                    </div>
+
+                    @if (ExternalLinks.PrivacyPolicy is { } privacyPolicy)
+                    {
+                        <button type="button" class="setting-card" data-testid="privacy-policy"
+                                @onclick="() => OpenExternalAsync(privacyPolicy)">
+                            <span class="setting-card__copy">
+                                <span class="setting-card__title">Privacy policy</span>
+                                <span class="setting-card__body">How MeowSSH handles device, connection, purchase, and optional cloud data.</span>
+                            </span>
+                            <span class="setting-card__value">Open</span>
                         </button>
                     }
-                }
 
-                <div class="settings__actions">
-                    <button type="button" class="btn btn--ghost"
-                            data-testid="refresh-entitlement"
-                            disabled="@_premiumBusy" @onclick="RefreshPlanAsync">
-                        Refresh plan
-                    </button>
-                    <button type="button" class="btn btn--ghost"
-                            data-testid="restore-purchases"
-                            disabled="@_premiumBusy" @onclick="RestorePurchasesAsync">
-                        Restore purchases
+                    @if (ExternalLinks.TermsOfService is { } termsOfService)
+                    {
+                        <button type="button" class="setting-card" data-testid="terms-of-service"
+                                @onclick="() => OpenExternalAsync(termsOfService)">
+                            <span class="setting-card__copy">
+                                <span class="setting-card__title">Terms of Service</span>
+                                <span class="setting-card__body">Terms governing MeowSSH use and paid features.</span>
+                            </span>
+                            <span class="setting-card__value">Open</span>
+                        </button>
+                    }
+
+                    @if (ExternalLinks.Support is { } support)
+                    {
+                        <button type="button" class="setting-card" data-testid="support-link"
+                                @onclick="() => OpenExternalAsync(support)">
+                            <span class="setting-card__copy">
+                                <span class="setting-card__title">Support</span>
+                                <span class="setting-card__body">Get help with connections, purchases, restore, or account access.</span>
+                            </span>
+                            <span class="setting-card__value">Open</span>
+                        </button>
+                    }
+
+                    <ThirdPartyNoticesSetting />
+
+                    @if (!string.IsNullOrWhiteSpace(_launchMessage))
+                    {
+                        <p class="setting-card__body" role="status" data-testid="launch-link-message">@_launchMessage</p>
+                    }
+                </div>
+            </section>
+        </ChildContent>
+    </AppShell>
+}
+else
+{
+    <AppShell Title="Settings" ActiveTab="settings" OnTabSelected="OnTabSelected">
+        <ChildContent>
+            <section class="settings" data-testid="settings-page">
+                <div class="settings__section">
+                    <h2 class="section-label">Account</h2>
+                    <button type="button" class="setting-card" data-testid="open-plan-settings" @onclick="OpenPlan">
+                        <span class="setting-card__copy">
+                            <span class="setting-card__title">@PlanName</span>
+                            <span class="setting-card__body">Purchases, restore and entitlement status.</span>
+                        </span>
+                        <span class="setting-card__value mono">@PlanStatus</span>
                     </button>
                 </div>
 
-                @if (!string.IsNullOrWhiteSpace(_premiumMessage))
-                {
-                    <p class="setting-card__body" role="status" data-testid="plan-message">@_premiumMessage</p>
-                }
-            </div>
-
-            <div class="settings__section">
-                <h2 class="section-label">Personalization</h2>
-                <button type="button" class="setting-card" data-testid="open-appearance-settings"
-                        @onclick="OpenAppearance">
-                    <span class="setting-card__copy">
-                        <span class="setting-card__title">Terminal appearance</span>
-                        <span class="setting-card__body">Theme previews, text size, cursor and scrollback.</span>
-                    </span>
-                    <span class="setting-card__value">Customize</span>
-                </button>
-            </div>
-
-            <div class="settings__section" data-testid="session-log-settings">
-                <h2 class="section-label">Session logs <span class="action-pro-badge">PRO</span></h2>
-
-                <label class="setting-card setting-card--toggle" for="session-log-auto-record">
-                    <span class="setting-card__copy">
-                        <span class="setting-card__title">Automatically record terminal output</span>
-                        <span class="setting-card__body">
-                            Saves output only. MeowSSH deliberately does not record what you type, so passwords and passphrases entered at a terminal are not persisted.
+                <div class="settings__section">
+                    <h2 class="section-label">Experience</h2>
+                    <button type="button" class="setting-card" data-testid="open-appearance-settings" @onclick="OpenAppearance">
+                        <span class="setting-card__copy">
+                            <span class="setting-card__title">Terminal appearance</span>
+                            <span class="setting-card__body">Theme previews, text size, cursor and scrollback.</span>
                         </span>
-                    </span>
-                    <input id="session-log-auto-record" type="checkbox" class="settings__toggle"
-                           data-testid="session-log-auto-record"
-                           checked="@SessionLogs.AutoRecord"
-                           disabled="@_sessionLogsBusy"
-                           @onchange="OnSessionLogRecordingChangedAsync" />
-                </label>
-
-                <button type="button" class="setting-card" data-testid="open-session-logs"
-                        @onclick="OpenSessionLogs">
-                    <span class="setting-card__copy">
-                        <span class="setting-card__title">Session log history</span>
-                        <span class="setting-card__body">Search recorded output, inspect exit status, copy transcripts, export .log files, or delete local history.</span>
-                    </span>
-                    <span class="setting-card__value">View</span>
-                </button>
-
-                @if (!string.IsNullOrWhiteSpace(_sessionLogsMessage))
-                {
-                    <p class="setting-card__body" role="status" data-testid="session-log-settings-message">@_sessionLogsMessage</p>
-                }
-            </div>
-
-            <div class="settings__section" data-testid="about-support-settings">
-                <h2 class="section-label">About & support</h2>
-
-                <div class="setting-card">
-                    <span class="setting-card__copy">
-                        <span class="setting-card__title">MeowSSH</span>
-                        <span class="setting-card__body">Installed build</span>
-                    </span>
-                    <span class="setting-card__value mono" data-testid="build-version">@MeowSSH.Core.BuildInfo.Version</span>
+                        <span class="setting-card__value">Customize</span>
+                    </button>
+                    <button type="button" class="setting-card" data-testid="open-session-log-settings" @onclick="OpenSessionLogSettings">
+                        <span class="setting-card__copy">
+                            <span class="setting-card__title">Session logs <span class="action-pro-badge">PRO</span></span>
+                            <span class="setting-card__body">Recording preference and local terminal history.</span>
+                        </span>
+                        <span class="setting-card__value">@(SessionLogs.AutoRecord ? "On" : "Off")</span>
+                    </button>
                 </div>
 
-                @if (ExternalLinks.PrivacyPolicy is { } privacyPolicy)
-                {
-                    <button type="button" class="setting-card" data-testid="privacy-policy"
-                            @onclick="() => OpenExternalAsync(privacyPolicy)">
+                <div class="settings__section">
+                    <h2 class="section-label">Help</h2>
+                    <button type="button" class="setting-card" data-testid="open-about-settings" @onclick="OpenAbout">
                         <span class="setting-card__copy">
-                            <span class="setting-card__title">Privacy policy</span>
-                            <span class="setting-card__body">Review how MeowSSH handles device, connection, purchase, and optional cloud data.</span>
+                            <span class="setting-card__title">About & support</span>
+                            <span class="setting-card__body">Build information, support, privacy, terms and licenses.</span>
                         </span>
                         <span class="setting-card__value">Open</span>
                     </button>
-                }
-
-                @if (ExternalLinks.TermsOfService is { } termsOfService)
-                {
-                    <button type="button" class="setting-card" data-testid="terms-of-service"
-                            @onclick="() => OpenExternalAsync(termsOfService)">
-                        <span class="setting-card__copy">
-                            <span class="setting-card__title">Terms of Service</span>
-                            <span class="setting-card__body">Review the terms governing MeowSSH use and paid features.</span>
-                        </span>
-                        <span class="setting-card__value">Open</span>
-                    </button>
-                }
-
-                @if (ExternalLinks.Support is { } support)
-                {
-                    <button type="button" class="setting-card" data-testid="support-link"
-                            @onclick="() => OpenExternalAsync(support)">
-                        <span class="setting-card__copy">
-                            <span class="setting-card__title">Support</span>
-                            <span class="setting-card__body">Get help with connections, purchases, restore, or account access.</span>
-                        </span>
-                        <span class="setting-card__value">Open</span>
-                    </button>
-                }
-
-                <ThirdPartyNoticesSetting />
-
-                @if (!string.IsNullOrWhiteSpace(_launchMessage))
-                {
-                    <p class="setting-card__body" role="status" data-testid="launch-link-message">@_launchMessage</p>
-                }
-            </div>
-        </section>
-    </ChildContent>
-</AppShell>
+                </div>
+            </section>
+        </ChildContent>
+    </AppShell>
 }
 
 @code {
@@ -180,6 +246,9 @@ else
     private string? _launchMessage;
     private bool _showSessionLogs;
     private bool _showAppearance;
+    private bool _showPlan;
+    private bool _showSessionLogSettings;
+    private bool _showAbout;
 
     [Parameter] public EventCallback<string> OnTabSelected { get; set; }
 
@@ -339,16 +408,27 @@ else
         }
     }
 
+    private void OpenPlan() => _showPlan = true;
+    private void ClosePlan() => _showPlan = false;
+    private void OpenAppearance() => _showAppearance = true;
+    private void CloseAppearance() => _showAppearance = false;
+    private void OpenSessionLogSettings() => _showSessionLogSettings = true;
+    private void CloseSessionLogSettings() => _showSessionLogSettings = false;
+    private void OpenAbout() => _showAbout = true;
+    private void CloseAbout() => _showAbout = false;
+
     private void OpenSessionLogs()
     {
+        _showSessionLogSettings = false;
         _showSessionLogs = true;
         _sessionLogsMessage = null;
     }
 
-    private void CloseSessionLogs() => _showSessionLogs = false;
-
-    private void OpenAppearance() => _showAppearance = true;
-    private void CloseAppearance() => _showAppearance = false;
+    private void CloseSessionLogs()
+    {
+        _showSessionLogs = false;
+        _showSessionLogSettings = true;
+    }
 
     private static string ProductName(StoreProduct product) =>
         string.IsNullOrWhiteSpace(product.DisplayName) ? product.ProductId : product.DisplayName;
