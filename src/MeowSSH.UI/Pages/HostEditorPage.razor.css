@@ -1,0 +1,66 @@
+.host-editor {
+    gap: 1rem;
+}
+
+.host-editor__section {
+    border: 1px solid var(--border-subtle);
+    border-radius: 16px;
+    background: var(--surface-raised);
+    overflow: hidden;
+}
+
+.host-editor__section > summary {
+    min-height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: .9rem 1rem;
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+}
+
+.host-editor__section > summary::-webkit-details-marker {
+    display: none;
+}
+
+.host-editor__section > summary span {
+    display: grid;
+    gap: .2rem;
+    min-width: 0;
+}
+
+.host-editor__section > summary strong {
+    font-size: .95rem;
+}
+
+.host-editor__section > summary small {
+    color: var(--text-muted);
+    line-height: 1.35;
+}
+
+.host-editor__section > summary .icon {
+    flex: 0 0 auto;
+    transition: transform 140ms ease;
+}
+
+.host-editor__section[open] > summary .icon {
+    transform: rotate(90deg);
+}
+
+.host-editor__section-body {
+    display: grid;
+    gap: 1rem;
+    padding: 0 1rem 1rem;
+}
+
+@media (max-width: 480px) {
+    .host-editor__section > summary {
+        padding-inline: .9rem;
+    }
+
+    .host-editor__section-body {
+        padding-inline: .9rem;
+    }
+}
