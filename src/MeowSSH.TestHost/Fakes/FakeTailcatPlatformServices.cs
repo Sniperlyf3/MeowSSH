@@ -15,6 +15,7 @@ public sealed class FakeTailcatVpnController : ITailcatVpnController
 {
     private TailcatVpnSnapshot _snapshot = new(false, null, []);
 
+    public bool IsAvailable => true;
     public TailcatVpnSnapshot Snapshot => _snapshot;
     public event EventHandler? Changed;
 
