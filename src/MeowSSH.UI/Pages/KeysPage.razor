@@ -8,7 +8,7 @@
     <Actions>
         @if (!_adding)
         {
-            <button type="button" class="btn btn--icon" aria-label="Add key"
+            <button type="button" class="btn btn--icon" aria-label="Add credential"
                     data-testid="add-credential" @onclick="StartAdding">
                 <Icon Name="plus" />
             </button>
@@ -20,164 +20,198 @@
             @if (_adding)
             {
                 <div class="keys-editor">
-                    <div class="keys-editor__intro">
-                        <span class="keys-editor__glyph" aria-hidden="true"><Icon Name="key" /></span>
-                        <span>
-                            <strong>Add credential</strong>
-                            <small>Stored encrypted in your vault and reusable across hosts.</small>
-                        </span>
-                    </div>
-
-                    <div class="form" data-testid="credential-editor">
-                        <label class="field">
-                            <span class="field__label">Name</span>
-                            <input class="field__input" type="text" data-testid="credential-label"
-                                   placeholder="deploy key" autocomplete="off"
-                                   @bind="_label" @bind:event="oninput" />
-                        </label>
-
-                        <fieldset class="field">
-                            <legend class="field__label">Kind</legend>
-                            <div class="segmented" role="radiogroup" aria-label="Credential kind">
-                                <button type="button"
-                                        class="segmented__option @(_kind == CredentialKind.PrivateKey ? "segmented__option--on" : "")"
-                                        role="radio" aria-checked="@(_kind == CredentialKind.PrivateKey ? "true" : "false")"
-                                        data-testid="kind-key" @onclick="() => SetKindAsync(CredentialKind.PrivateKey)">Private key</button>
-                                <button type="button"
-                                        class="segmented__option @(_kind == CredentialKind.HardwareKey ? "segmented__option--on" : "")"
-                                        role="radio" aria-checked="@(_kind == CredentialKind.HardwareKey ? "true" : "false")"
-                                        data-testid="kind-hardware-key" @onclick="() => SetKindAsync(CredentialKind.HardwareKey)">Device key</button>
-                                <button type="button"
-                                        class="segmented__option @(_kind == CredentialKind.PublicKey ? "segmented__option--on" : "")"
-                                        role="radio" aria-checked="@(_kind == CredentialKind.PublicKey ? "true" : "false")"
-                                        data-testid="kind-public-key" @onclick="() => SetKindAsync(CredentialKind.PublicKey)">Public key</button>
-                                <button type="button"
-                                        class="segmented__option @(_kind == CredentialKind.Password ? "segmented__option--on" : "")"
-                                        role="radio" aria-checked="@(_kind == CredentialKind.Password ? "true" : "false")"
-                                        data-testid="kind-password" @onclick="() => SetKindAsync(CredentialKind.Password)">Password</button>
-                            </div>
-                        </fieldset>
-
-                        <label class="field">
-                            <span class="field__label">Username</span>
-                            <input class="field__input mono" type="text" data-testid="credential-username"
-                                   placeholder="deploy" autocomplete="off" autocapitalize="none" spellcheck="false"
-                                   @bind="_username" @bind:event="oninput" />
-                            <span class="field__hint">Optional. Used when a host does not name its own.</span>
-                        </label>
-
-                        @if (_kind == CredentialKind.PrivateKey)
-                        {
-                            <button type="button" class="btn btn--ghost btn--block"
-                                    data-testid="generate-ssh-key" @onclick="GenerateSshKey">
-                                <Icon Name="key" /> Generate SSH key
-                            </button>
-                            <span class="field__hint">Generates a 3072-bit RSA key pair locally. The private key is stored in the vault; the public key can be copied for authorized_keys.</span>
-
-                            <label class="field">
-                                <span class="field__label">Private key</span>
-                                <textarea class="field__input field__input--code mono" rows="6"
-                                          data-testid="credential-secret"
-                                          placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"
-                                          autocomplete="off" autocapitalize="none" spellcheck="false"
-                                          @bind="_secret" @bind:event="oninput"></textarea>
-                                <span class="field__hint">Pasted as-is and sealed immediately inside the vault.</span>
-                            </label>
-
-                            @if (!string.IsNullOrWhiteSpace(_publicKey))
-                            {
-                                <label class="field">
-                                    <span class="field__label">Public key</span>
-                                    <textarea class="field__input field__input--code mono" rows="4"
-                                              data-testid="generated-public-key" readonly>@_publicKey</textarea>
-                                    <button type="button" class="btn btn--ghost"
-                                            data-testid="copy-generated-public-key"
-                                            @onclick="() => CopyPublicKeyAsync(_publicKey)">Copy public key</button>
-                                </label>
-                            }
-
-                            <label class="field">
-                                <span class="field__label">Key passphrase</span>
-                                <input class="field__input mono" type="password" data-testid="credential-passphrase"
-                                       autocomplete="off" @bind="_passphrase" @bind:event="oninput" />
-                                <span class="field__hint">Leave blank if the key has none.</span>
-                            </label>
-                        }
-                        else if (_kind == CredentialKind.HardwareKey)
-                        {
-                            <div class="keys-security-note" role="note" data-testid="hardware-key-explanation">
-                                <span class="keys-security-note__icon" aria-hidden="true"><Icon Name="shield" /></span>
-                                <span>
-                                    <strong>Non-exportable device key</strong>
-                                    <small>Android generates the P-256 private key inside Android Keystore. MeowSSH can ask it to sign, but cannot read or export the private key.</small>
-                                </span>
-                            </div>
-
-                            <button type="button" class="btn btn--primary btn--block"
-                                    disabled="@_busy" data-testid="generate-hardware-key"
-                                    @onclick="GenerateHardwareKeyAsync">
-                                <Icon Name="shield" /> @(_pendingHardwareKey is null ? "Generate device key" : "Replace generated key")
-                            </button>
-
-                            @if (_pendingHardwareKey is { } generated)
-                            {
-                                <p class="note" data-testid="generated-hardware-key-status">
-                                    <Icon Name="shield" /> @BackingLabel(generated)
-                                </p>
-                                <label class="field">
-                                    <span class="field__label">Public key</span>
-                                    <textarea class="field__input field__input--code mono" rows="4"
-                                              data-testid="generated-hardware-public-key" readonly>@generated.PublicKey</textarea>
-                                    <button type="button" class="btn btn--ghost"
-                                            data-testid="copy-generated-public-key"
-                                            @onclick="() => CopyPublicKeyAsync(generated.PublicKey)">Copy public key</button>
-                                    <span class="field__hint">Add this public key to the server. Only the public half is copyable.</span>
-                                </label>
-                            }
-
-                            @if (_hardwareError is not null)
-                            {
-                                <p class="lock__error" role="alert" data-testid="hardware-key-error">@_hardwareError</p>
-                            }
-                        }
-                        else if (_kind == CredentialKind.PublicKey)
-                        {
-                            <label class="field">
-                                <span class="field__label">Public key</span>
-                                <textarea class="field__input field__input--code mono" rows="5"
-                                          data-testid="credential-public-key"
-                                          placeholder="ssh-ed25519 AAAA... user@host"
-                                          autocomplete="off" autocapitalize="none" spellcheck="false"
-                                          @bind="_publicKey" @bind:event="oninput"></textarea>
-                                <span class="field__hint">Authorization-only key. Useful for Tailcat shell allowlists; no private key is stored.</span>
-                            </label>
-                        }
-                        else
-                        {
-                            <label class="field">
-                                <span class="field__label">Password</span>
-                                <div class="field__with-action">
-                                    <input class="field__input mono" data-testid="credential-secret"
-                                           type="@(_revealed ? "text" : "password")"
-                                           autocomplete="off" autocapitalize="none" spellcheck="false"
-                                           @bind="_secret" @bind:event="oninput" />
-                                    <button type="button" class="btn btn--icon"
-                                            aria-label="@(_revealed ? "Hide password" : "Show password")"
-                                            data-testid="reveal-secret" @onclick="() => _revealed = !_revealed">
-                                        <Icon Name="@(_revealed ? "eye-off" : "eye")" />
-                                    </button>
-                                </div>
-                            </label>
-                        }
-
-                        <div class="form__actions">
-                            <button type="button" class="btn btn--primary btn--block"
-                                    disabled="@(_busy || !IsComplete)" data-testid="save-credential"
-                                    @onclick="SaveAsync">@(_busy ? "Saving…" : "Save to vault")</button>
-                            <button type="button" class="btn btn--ghost btn--block"
-                                    disabled="@_busy" data-testid="cancel-credential" @onclick="CancelAsync">Cancel</button>
+                    @if (_creationFlow is null)
+                    {
+                        <div class="keys-editor__intro">
+                            <span class="keys-editor__glyph" aria-hidden="true"><Icon Name="key" /></span>
+                            <span>
+                                <strong>Add credential</strong>
+                                <small>Choose what you want to add. Each path only shows the fields it needs.</small>
+                            </span>
                         </div>
-                    </div>
+
+                        <div class="credential-flow-picker" data-testid="credential-flow-picker">
+                            <button type="button" class="credential-flow" data-testid="flow-generate-key"
+                                    @onclick="() => ChooseFlowAsync(CredentialCreationFlow.GeneratePrivateKey)">
+                                <span class="credential-flow__icon"><Icon Name="key" /></span>
+                                <span><strong>Generate SSH key</strong><small>Create a new RSA key pair locally and copy its public key to your server.</small></span>
+                                <Icon Name="chevron-right" />
+                            </button>
+                            <button type="button" class="credential-flow" data-testid="flow-import-key"
+                                    @onclick="() => ChooseFlowAsync(CredentialCreationFlow.ImportPrivateKey)">
+                                <span class="credential-flow__icon"><Icon Name="download" /></span>
+                                <span><strong>Import private key</strong><small>Paste an existing private key and optional passphrase into the encrypted vault.</small></span>
+                                <Icon Name="chevron-right" />
+                            </button>
+                            <button type="button" class="credential-flow" data-testid="flow-device-key"
+                                    @onclick="() => ChooseFlowAsync(CredentialCreationFlow.HardwareKey)">
+                                <span class="credential-flow__icon"><Icon Name="shield" /></span>
+                                <span><strong>Device key</strong><small>Generate a non-exportable P-256 key inside Android Keystore.</small></span>
+                                <Icon Name="chevron-right" />
+                            </button>
+                            <button type="button" class="credential-flow" data-testid="flow-public-key"
+                                    @onclick="() => ChooseFlowAsync(CredentialCreationFlow.PublicKey)">
+                                <span class="credential-flow__icon"><Icon Name="key" /></span>
+                                <span><strong>Public key only</strong><small>Save an authorization-only key for Tailcat allowlists; no private key is stored.</small></span>
+                                <Icon Name="chevron-right" />
+                            </button>
+                            <button type="button" class="credential-flow" data-testid="flow-password"
+                                    @onclick="() => ChooseFlowAsync(CredentialCreationFlow.Password)">
+                                <span class="credential-flow__icon"><Icon Name="lock" /></span>
+                                <span><strong>Password</strong><small>Save a reusable username/password credential in the encrypted vault.</small></span>
+                                <Icon Name="chevron-right" />
+                            </button>
+                        </div>
+
+                        <button type="button" class="btn btn--ghost btn--block" data-testid="cancel-credential"
+                                @onclick="CancelAsync">Cancel</button>
+                    }
+                    else
+                    {
+                        <div class="keys-editor__intro">
+                            <span class="keys-editor__glyph" aria-hidden="true"><Icon Name="@FlowIcon" /></span>
+                            <span>
+                                <strong>@FlowTitle</strong>
+                                <small>@FlowDescription</small>
+                            </span>
+                        </div>
+
+                        <button type="button" class="keys-editor__change-type" data-testid="change-credential-type"
+                                disabled="@_busy" @onclick="BackToFlowPickerAsync">
+                            <Icon Name="back" /> Choose another type
+                        </button>
+
+                        <div class="form" data-testid="credential-editor">
+                            <label class="field">
+                                <span class="field__label">Name</span>
+                                <input class="field__input" type="text" data-testid="credential-label"
+                                       placeholder="deploy key" autocomplete="off"
+                                       @bind="_label" @bind:event="oninput" />
+                            </label>
+
+                            <label class="field">
+                                <span class="field__label">Username</span>
+                                <input class="field__input mono" type="text" data-testid="credential-username"
+                                       placeholder="deploy" autocomplete="off" autocapitalize="none" spellcheck="false"
+                                       @bind="_username" @bind:event="oninput" />
+                                <span class="field__hint">Optional. Used when a host does not name its own.</span>
+                            </label>
+
+                            @if (_creationFlow == CredentialCreationFlow.GeneratePrivateKey)
+                            {
+                                <button type="button" class="btn btn--primary btn--block"
+                                        data-testid="generate-ssh-key" @onclick="GenerateSshKey">
+                                    <Icon Name="key" /> @(string.IsNullOrWhiteSpace(_secret) ? "Generate key pair" : "Generate replacement key")
+                                </button>
+                                <span class="field__hint">Generates a 3072-bit RSA key pair locally. The private key goes directly into your encrypted vault.</span>
+
+                                @if (!string.IsNullOrWhiteSpace(_publicKey))
+                                {
+                                    <div class="keys-generated" data-testid="generated-key-ready">
+                                        <span class="keys-generated__status"><Icon Name="shield" /> Private key ready and kept local</span>
+                                        <label class="field">
+                                            <span class="field__label">Public key</span>
+                                            <textarea class="field__input field__input--code mono" rows="4"
+                                                      data-testid="generated-public-key" readonly>@_publicKey</textarea>
+                                            <button type="button" class="btn btn--ghost"
+                                                    data-testid="copy-generated-public-key"
+                                                    @onclick="() => CopyPublicKeyAsync(_publicKey)">Copy public key</button>
+                                            <span class="field__hint">Add this public key to the server's authorized_keys file.</span>
+                                        </label>
+                                    </div>
+                                }
+                            }
+                            else if (_creationFlow == CredentialCreationFlow.ImportPrivateKey)
+                            {
+                                <label class="field">
+                                    <span class="field__label">Private key</span>
+                                    <textarea class="field__input field__input--code mono" rows="7"
+                                              data-testid="credential-secret"
+                                              placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"
+                                              autocomplete="off" autocapitalize="none" spellcheck="false"
+                                              @bind="_secret" @bind:event="oninput"></textarea>
+                                    <span class="field__hint">Pasted as-is and sealed inside the vault when you save.</span>
+                                </label>
+                                <label class="field">
+                                    <span class="field__label">Key passphrase</span>
+                                    <input class="field__input mono" type="password" data-testid="credential-passphrase"
+                                           autocomplete="off" @bind="_passphrase" @bind:event="oninput" />
+                                    <span class="field__hint">Leave blank if the key has none.</span>
+                                </label>
+                            }
+                            else if (_creationFlow == CredentialCreationFlow.HardwareKey)
+                            {
+                                <div class="keys-security-note" role="note" data-testid="hardware-key-explanation">
+                                    <span class="keys-security-note__icon" aria-hidden="true"><Icon Name="shield" /></span>
+                                    <span>
+                                        <strong>Non-exportable device key</strong>
+                                        <small>Android generates the P-256 private key inside Android Keystore. MeowSSH can ask it to sign, but cannot read or export the private key.</small>
+                                    </span>
+                                </div>
+                                <button type="button" class="btn btn--primary btn--block"
+                                        disabled="@_busy" data-testid="generate-hardware-key"
+                                        @onclick="GenerateHardwareKeyAsync">
+                                    <Icon Name="shield" /> @(_pendingHardwareKey is null ? "Generate device key" : "Replace generated key")
+                                </button>
+                                @if (_pendingHardwareKey is { } generated)
+                                {
+                                    <p class="note" data-testid="generated-hardware-key-status">
+                                        <Icon Name="shield" /> @BackingLabel(generated)
+                                    </p>
+                                    <label class="field">
+                                        <span class="field__label">Public key</span>
+                                        <textarea class="field__input field__input--code mono" rows="4"
+                                                  data-testid="generated-hardware-public-key" readonly>@generated.PublicKey</textarea>
+                                        <button type="button" class="btn btn--ghost"
+                                                data-testid="copy-generated-public-key"
+                                                @onclick="() => CopyPublicKeyAsync(generated.PublicKey)">Copy public key</button>
+                                        <span class="field__hint">Add this public key to the server. Only the public half is copyable.</span>
+                                    </label>
+                                }
+                                @if (_hardwareError is not null)
+                                {
+                                    <p class="lock__error" role="alert" data-testid="hardware-key-error">@_hardwareError</p>
+                                }
+                            }
+                            else if (_creationFlow == CredentialCreationFlow.PublicKey)
+                            {
+                                <label class="field">
+                                    <span class="field__label">Public key</span>
+                                    <textarea class="field__input field__input--code mono" rows="5"
+                                              data-testid="credential-public-key"
+                                              placeholder="ssh-ed25519 AAAA... user@host"
+                                              autocomplete="off" autocapitalize="none" spellcheck="false"
+                                              @bind="_publicKey" @bind:event="oninput"></textarea>
+                                    <span class="field__hint">Authorization-only key. Useful for Tailcat shell allowlists; no private key is stored.</span>
+                                </label>
+                            }
+                            else if (_creationFlow == CredentialCreationFlow.Password)
+                            {
+                                <label class="field">
+                                    <span class="field__label">Password</span>
+                                    <div class="field__with-action">
+                                        <input class="field__input mono" data-testid="credential-secret"
+                                               type="@(_revealed ? "text" : "password")"
+                                               autocomplete="off" autocapitalize="none" spellcheck="false"
+                                               @bind="_secret" @bind:event="oninput" />
+                                        <button type="button" class="btn btn--icon"
+                                                aria-label="@(_revealed ? "Hide password" : "Show password")"
+                                                data-testid="reveal-secret" @onclick="() => _revealed = !_revealed">
+                                            <Icon Name="@(_revealed ? "eye-off" : "eye")" />
+                                        </button>
+                                    </div>
+                                </label>
+                            }
+
+                            <div class="form__actions">
+                                <button type="button" class="btn btn--primary btn--block"
+                                        disabled="@(_busy || !IsComplete)" data-testid="save-credential"
+                                        @onclick="SaveAsync">@(_busy ? "Saving…" : "Save to vault")</button>
+                                <button type="button" class="btn btn--ghost btn--block"
+                                        disabled="@_busy" data-testid="cancel-credential" @onclick="CancelAsync">Cancel</button>
+                            </div>
+                        </div>
+                    }
                 </div>
             }
             else if (_credentials.Count == 0)
@@ -185,8 +219,8 @@
                 <div class="empty keys-empty" data-testid="keys-empty">
                     <span class="empty__glyph"><Icon Name="key" /></span>
                     <p class="empty__title">No saved credentials</p>
-                    <p class="empty__body">Save a private key, non-exportable device key or password once, then reuse it across any number of hosts.</p>
-                    <button type="button" class="btn btn--primary" @onclick="StartAdding"><Icon Name="plus" /> Add credential</button>
+                    <p class="empty__body">Generate or import a key, add a device key, or save a password once and reuse it across hosts.</p>
+                    <button type="button" class="btn btn--primary" data-testid="add-first-credential" @onclick="StartAdding"><Icon Name="plus" /> Add credential</button>
                 </div>
             }
             else
@@ -196,7 +230,7 @@
                         <h2>Saved credentials</h2>
                         <p>@_credentials.Count credential@(_credentials.Count == 1 ? "" : "s") in this vault</p>
                     </div>
-                    <button type="button" class="btn btn--ghost keys-header__add" @onclick="StartAdding">
+                    <button type="button" class="btn btn--ghost keys-header__add" data-testid="add-credential-list" @onclick="StartAdding">
                         <Icon Name="plus" /> Add
                     </button>
                 </div>
@@ -219,29 +253,31 @@
                                     <span class="credential-card__hint" data-testid="hardware-key-status">@SavedHardwareStatus(credential)</span>
                                 }
                             </span>
-                            <span class="credential-card__actions">
-                                @if (!string.IsNullOrWhiteSpace(credential.PublicKey))
-                                {
-                                    <button type="button" class="btn btn--icon"
-                                            aria-label="@($"Show public key for {credential.Label}")"
-                                            data-testid="show-public-key"
-                                            @onclick="() => TogglePublicKey(credential.Id)">
-                                        <Icon Name="key" />
+
+                            <details class="credential-card__manage" data-testid="manage-credential">
+                                <summary>Manage</summary>
+                                <div class="credential-card__manage-actions">
+                                    @if (!string.IsNullOrWhiteSpace(credential.PublicKey))
+                                    {
+                                        <button type="button" class="btn btn--ghost"
+                                                data-testid="show-public-key"
+                                                @onclick="() => TogglePublicKey(credential.Id)">
+                                            <Icon Name="key" /> @(_expandedPublicKeyId == credential.Id ? "Hide public key" : "Show public key")
+                                        </button>
+                                        <button type="button" class="btn btn--ghost"
+                                                data-testid="copy-public-key"
+                                                @onclick="() => CopyPublicKeyAsync(credential.PublicKey!)">
+                                            <Icon Name="copy" /> Copy public key
+                                        </button>
+                                    }
+                                    <button type="button" class="btn btn--danger"
+                                            data-testid="delete-credential"
+                                            @onclick="() => DeleteAsync(credential)">
+                                        <Icon Name="trash" /> Delete credential
                                     </button>
-                                    <button type="button" class="btn btn--icon"
-                                            aria-label="@($"Copy public key for {credential.Label}")"
-                                            data-testid="copy-public-key"
-                                            @onclick="() => CopyPublicKeyAsync(credential.PublicKey!)">
-                                        <Icon Name="copy" />
-                                    </button>
-                                }
-                                <button type="button" class="btn btn--icon credential-card__delete"
-                                        aria-label="@($"Delete {credential.Label}")"
-                                        data-testid="delete-credential"
-                                        @onclick="() => DeleteAsync(credential)">
-                                    <Icon Name="trash" />
-                                </button>
-                            </span>
+                                </div>
+                            </details>
+
                             @if (_expandedPublicKeyId == credential.Id && !string.IsNullOrWhiteSpace(credential.PublicKey))
                             {
                                 <textarea class="field__input field__input--code mono credential-card__public-key"
@@ -254,8 +290,8 @@
                 <div class="keys-security-note" role="note" data-testid="keys-delete-note">
                     <span class="keys-security-note__icon" aria-hidden="true"><Icon Name="shield" /></span>
                     <span>
-                        <strong>Deletion is immediate.</strong>
-                        <small>Deleting a credential wipes vault material immediately. For device keys, MeowSSH also removes the Android Keystore key from this device.</small>
+                        <strong>Credential material stays local.</strong>
+                        <small>Deleting a credential from Manage wipes its vault material immediately. Device-key deletion also removes the Android Keystore key from this device.</small>
                     </span>
                 </div>
             }
@@ -264,6 +300,15 @@
 </AppShell>
 
 @code {
+    private enum CredentialCreationFlow
+    {
+        GeneratePrivateKey,
+        ImportPrivateKey,
+        HardwareKey,
+        PublicKey,
+        Password,
+    }
+
     private IReadOnlyList<CredentialSummary> _credentials = [];
     private readonly Dictionary<Guid, SshHardwareKeyInfo?> _hardwareInfo = [];
     private bool _adding;
@@ -278,11 +323,39 @@
     private Guid? _expandedPublicKeyId;
     private Guid? _pendingHardwareCredentialId;
     private SshHardwareKeyInfo? _pendingHardwareKey;
+    private CredentialCreationFlow? _creationFlow;
     private CredentialKind _kind = CredentialKind.PrivateKey;
 
     [Parameter] public EventCallback<string> OnTabSelected { get; set; }
 
-    private bool IsComplete => !string.IsNullOrWhiteSpace(_label) && (_kind switch
+    private string FlowTitle => _creationFlow switch
+    {
+        CredentialCreationFlow.GeneratePrivateKey => "Generate SSH key",
+        CredentialCreationFlow.ImportPrivateKey => "Import private key",
+        CredentialCreationFlow.HardwareKey => "Device key",
+        CredentialCreationFlow.PublicKey => "Public key only",
+        CredentialCreationFlow.Password => "Password",
+        _ => "Add credential",
+    };
+
+    private string FlowDescription => _creationFlow switch
+    {
+        CredentialCreationFlow.GeneratePrivateKey => "Create a key pair locally without exposing the private key in the editor.",
+        CredentialCreationFlow.ImportPrivateKey => "Store an existing private key in your encrypted vault.",
+        CredentialCreationFlow.HardwareKey => "Create a non-exportable key backed by Android Keystore.",
+        CredentialCreationFlow.PublicKey => "Store an authorization-only public key without private material.",
+        CredentialCreationFlow.Password => "Store reusable username/password authentication.",
+        _ => "Stored encrypted in your vault and reusable across hosts.",
+    };
+
+    private string FlowIcon => _creationFlow switch
+    {
+        CredentialCreationFlow.HardwareKey => "shield",
+        CredentialCreationFlow.Password => "lock",
+        _ => "key",
+    };
+
+    private bool IsComplete => _creationFlow is not null && !string.IsNullOrWhiteSpace(_label) && (_kind switch
     {
         CredentialKind.PublicKey => !string.IsNullOrWhiteSpace(_publicKey),
         CredentialKind.HardwareKey => _pendingHardwareKey is not null,
@@ -310,6 +383,12 @@
     private void StartAdding()
     {
         _adding = true;
+        _creationFlow = null;
+        ResetDraft();
+    }
+
+    private void ResetDraft()
+    {
         _label = _username = _secret = _passphrase = _publicKey = "";
         _kind = CredentialKind.PrivateKey;
         _revealed = false;
@@ -321,17 +400,33 @@
     private void FinishAdding()
     {
         _adding = false;
+        _creationFlow = null;
         _secret = _passphrase = _publicKey = "";
         _hardwareError = null;
         _pendingHardwareCredentialId = null;
         _pendingHardwareKey = null;
     }
 
-    private async Task SetKindAsync(CredentialKind kind)
+    private async Task ChooseFlowAsync(CredentialCreationFlow flow)
     {
-        if (_kind == kind) return;
         if (_pendingHardwareKey is not null) await DeletePendingHardwareKeyAsync();
-        _kind = kind;
+        _creationFlow = flow;
+        _kind = flow switch
+        {
+            CredentialCreationFlow.HardwareKey => CredentialKind.HardwareKey,
+            CredentialCreationFlow.PublicKey => CredentialKind.PublicKey,
+            CredentialCreationFlow.Password => CredentialKind.Password,
+            _ => CredentialKind.PrivateKey,
+        };
+        _secret = _passphrase = _publicKey = "";
+        _revealed = false;
+        _hardwareError = null;
+    }
+
+    private async Task BackToFlowPickerAsync()
+    {
+        if (_pendingHardwareKey is not null) await DeletePendingHardwareKeyAsync();
+        _creationFlow = null;
         _secret = _passphrase = _publicKey = "";
         _hardwareError = null;
     }
@@ -386,7 +481,9 @@
                     CredentialKind.HardwareKey => Encoding.UTF8.GetBytes(_pendingHardwareKey!.KeyId),
                     _ => Encoding.UTF8.GetBytes(_secret),
                 },
-                Passphrase = _kind == CredentialKind.PrivateKey && _passphrase.Length > 0 ? Encoding.UTF8.GetBytes(_passphrase) : null,
+                Passphrase = _creationFlow == CredentialCreationFlow.ImportPrivateKey && _passphrase.Length > 0
+                    ? Encoding.UTF8.GetBytes(_passphrase)
+                    : null,
                 PublicKey = (_kind is CredentialKind.PrivateKey or CredentialKind.PublicKey or CredentialKind.HardwareKey)
                     && !string.IsNullOrWhiteSpace(_publicKey) ? _publicKey.Trim() : null,
             });
@@ -465,6 +562,7 @@
         await Editor.DeleteCredentialAsync(credential.Id);
         if (credential.Kind == CredentialKind.HardwareKey && !string.IsNullOrWhiteSpace(credential.HardwareKeyId))
             await HardwareKeys.DeleteAsync(credential.HardwareKeyId);
+        if (_expandedPublicKeyId == credential.Id) _expandedPublicKeyId = null;
         await ReloadAsync();
     }
 
