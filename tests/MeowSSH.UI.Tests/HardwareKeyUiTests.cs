@@ -38,7 +38,7 @@ public class HardwareKeyUiTests(TestHostFixture fixture)
         await Assertions.Expect(page.GetByTestId("hardware-key-status")).ToContainTextAsync("Hardware-backed");
         await Assertions.Expect(page.GetByText("BEGIN PRIVATE KEY")).ToHaveCountAsync(0);
 
-        await Assertions.Expect(page.GetByTestId("show-public-key")).ToHaveCountAsync(0);
+        await Assertions.Expect(page.GetByTestId("show-public-key")).Not.ToBeVisibleAsync();
         await page.GetByTestId("manage-credential").Locator("summary").ClickAsync();
         await page.GetByTestId("show-public-key").ClickAsync();
         await Assertions.Expect(page.GetByTestId("public-key-value"))
