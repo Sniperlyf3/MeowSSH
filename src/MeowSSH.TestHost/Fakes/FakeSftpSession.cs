@@ -103,13 +103,54 @@ public sealed class FakeSftpSession : ISftpSession
 
     public Task RenameAsync(string path, string newPath, CancellationToken cancellationToken = default)
     {
-        var parent = RemotePath.ParentOf(path) ?? "/";
-        if (!_tree.TryGetValue(parent, out var siblings)) throw new SshException(SshFailure.NotFound, path);
-        var index = siblings.FindIndex(e => e.Path == path);
-        if (index < 0) throw new SshException(SshFailure.NotFound, path);
+        var sourceParent = RemotePath.ParentOf(path) ?? "/";
+        var destinationParent = RemotePath.ParentOf(newPath) ?? "/";
+        if (!_tree.TryGetValue(sourceParent, out var sourceSiblings))
+            throw new SshException(SshFailure.NotFound, path);
+        if (!_tree.TryGetValue(destinationParent, out var destinationSiblings))
+            throw new SshException(SshFailure.NotFound, destinationParent);
 
-        siblings[index] = siblings[index] with { Name = RemotePath.NameOf(newPath), Path = newPath };
-        if (_contents.Remove(path, out var content)) _contents[newPath] = content;
+        var index = sourceSiblings.FindIndex(e => e.Path == path);
+        if (index < 0) throw new SshException(SshFailure.NotFound, path);
+        if (destinationSiblings.Any(e => e.Path == newPath))
+            throw new SshException(SshFailure.Unknown, $"already exists: {newPath}");
+
+        var source = sourceSiblings[index];
+        sourceSiblings.RemoveAt(index);
+        destinationSiblings.Add(source with { Name = RemotePath.NameOf(newPath), Path = newPath });
+
+        if (source.IsDirectory && _tree.ContainsKey(path))
+        {
+            var treeMoves = _tree
+                .Where(pair => pair.Key == path || pair.Key.StartsWith(path + "/", StringComparison.Ordinal))
+                .OrderBy(pair => pair.Key.Length)
+                .ToArray();
+
+            foreach (var pair in treeMoves)
+                _tree.Remove(pair.Key);
+
+            foreach (var pair in treeMoves)
+            {
+                var movedDirectoryPath = newPath + pair.Key[path.Length..];
+                _tree[movedDirectoryPath] =
+                [
+                    .. pair.Value.Select(entry =>
+                    {
+                        var movedEntryPath = newPath + entry.Path[path.Length..];
+                        return entry with { Path = movedEntryPath };
+                    })
+                ];
+            }
+        }
+
+        var contentMoves = _contents
+            .Where(pair => pair.Key == path || pair.Key.StartsWith(path + "/", StringComparison.Ordinal))
+            .ToArray();
+        foreach (var pair in contentMoves)
+            _contents.Remove(pair.Key);
+        foreach (var pair in contentMoves)
+            _contents[newPath + pair.Key[path.Length..]] = pair.Value;
+
         return Task.CompletedTask;
     }
 
