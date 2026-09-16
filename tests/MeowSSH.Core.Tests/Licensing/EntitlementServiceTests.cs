@@ -56,6 +56,26 @@ public class EntitlementServiceTests
     }
 
     [Fact]
+    public async Task RestoreAfterRefundReplacesCachedPaidGrantWithFree()
+    {
+        var cached = PaidGrant(Now.AddHours(6));
+        var cache = new FakeCache(cached);
+        var free = EntitlementSnapshot.Free(Now);
+        var provider = new FakeProvider { RestoreResult = free };
+        using var service = new EntitlementService(provider, cache, new FixedTimeProvider(Now));
+        await service.InitializeAsync();
+        Assert.True(service.Has(PremiumFeature.TailcatWorkspaces));
+
+        var restored = await service.RestorePurchasesAsync();
+
+        Assert.Equal(free, restored);
+        Assert.Equal(free, service.Current);
+        Assert.Equal(free, cache.Stored);
+        Assert.Equal(1, cache.SaveCount);
+        Assert.False(service.Has(PremiumFeature.TailcatWorkspaces));
+    }
+
+    [Fact]
     public async Task ExpiredCachedGrantDoesNotUnlockPaidFeatures()
     {
         var cache = new FakeCache(PaidGrant(Now.AddSeconds(-1)));
