@@ -11,6 +11,11 @@ on:
         description: Monotonically increasing Android versionCode
         required: true
         type: number
+      include_tailcat_vpn:
+        description: Include Android full-device VPN capability in the Play bundle
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -97,6 +102,7 @@ jobs:
             "-p:Version=${{ inputs.version_name }}" \
             "-p:ApplicationDisplayVersion=${{ inputs.version_name }}" \
             "-p:ApplicationVersion=${{ inputs.version_code }}" \
+            "-p:EnableTailcatVpn=${{ inputs.include_tailcat_vpn }}" \
             "-p:LicensingApiBaseUrl=$LICENSING_API_BASE_URL" \
             "-p:LicensingPublicKeySubjectPublicKeyInfoBase64=$LICENSING_PUBLIC_KEY"
 
@@ -109,7 +115,18 @@ jobs:
           unzip -t "$AAB" >/dev/null
           unzip -l "$AAB" | grep -q "base/lib/arm64-v8a/libmeowshell.so"
           unzip -l "$AAB" | grep -q "base/lib/arm64-v8a/libtailcat.so"
-          unzip -l "$AAB" | grep -q "base/lib/arm64-v8a/libhev-socks5-tunnel.so"
+
+          if [[ "${{ inputs.include_tailcat_vpn }}" == "true" ]]; then
+            unzip -l "$AAB" | grep -q "base/lib/arm64-v8a/libhev-socks5-tunnel.so"
+            echo "Tailcat VPN: included" >> "$GITHUB_STEP_SUMMARY"
+          else
+            if unzip -l "$AAB" | grep -q "libhev-socks5-tunnel.so"; then
+              echo "::error::VPN-excluded Play bundle unexpectedly contains the HEV tunnel native library."
+              exit 1
+            fi
+            echo "Tailcat VPN: excluded" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
           echo "AAB=$AAB" >> "$GITHUB_ENV"
           echo "Play bundle: $AAB ($(du -h "$AAB" | cut -f1))" >> "$GITHUB_STEP_SUMMARY"
           echo "Version: ${{ inputs.version_name }} (${{ inputs.version_code }})" >> "$GITHUB_STEP_SUMMARY"
