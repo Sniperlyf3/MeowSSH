@@ -8,29 +8,34 @@
                     @onclick="() => OnSelected.InvokeAsync(tab.Id)">
                 <span class="session-tabs__dot @(tab.IsConnected ? "is-connected" : "is-disconnected")" aria-hidden="true"></span>
                 <span class="session-tabs__label">@tab.Label</span>
-                <span class="session-tabs__kind">@ViewLabel(tab)</span>
+                @if (tab.Id != ActiveId || !HasMultipleViews(tab))
+                {
+                    <span class="session-tabs__kind">@ViewLabel(tab)</span>
+                }
             </button>
-            @if (tab.Id == ActiveId && tab.SupportsFiles)
+
+            @if (tab.Id == ActiveId && HasMultipleViews(tab))
             {
-                <button type="button" class="session-tabs__mode"
-                        aria-label="@(tab.View == SessionView.Terminal ? "Switch to files" : "Switch to terminal")"
-                        data-testid="toggle-session-view"
-                        disabled="@(!tab.IsConnected)"
-                        @onclick="() => OnToggleView.InvokeAsync(tab.Id)">
-                    <Icon Name="@(tab.View == SessionView.Terminal ? "folder" : "terminal")" />
-                </button>
+                <label class="session-tabs__view" aria-label="Session view">
+                    <span class="visually-hidden">Session view</span>
+                    <select class="session-tabs__view-select"
+                            data-testid="session-view-selector"
+                            value="@tab.View"
+                            disabled="@(!tab.IsConnected)"
+                            @onchange="args => ChangeViewAsync(tab, args.Value?.ToString())">
+                        <option value="@SessionView.Terminal">@TerminalLabel(tab)</option>
+                        @if (tab.SupportsFiles)
+                        {
+                            <option value="@SessionView.Files">Files</option>
+                        }
+                        @if (tab.SupportsForwards)
+                        {
+                            <option value="@SessionView.Forwards">Forwards</option>
+                        }
+                    </select>
+                </label>
             }
-            @if (tab.Id == ActiveId && tab.SupportsForwards)
-            {
-                <button type="button" class="session-tabs__mode"
-                        aria-label="Open port forwards"
-                        aria-pressed="@(tab.View == SessionView.Forwards ? "true" : "false")"
-                        data-testid="open-forwards"
-                        disabled="@(!tab.IsConnected || tab.View == SessionView.Forwards)"
-                        @onclick="() => OnOpenForwards.InvokeAsync(tab.Id)">
-                    <Icon Name="network" />
-                </button>
-            }
+
             <button type="button" class="session-tabs__close"
                     aria-label="Close @tab.Label"
                     data-testid="close-session-tab"
@@ -50,9 +55,54 @@
     [Parameter] public EventCallback<Guid> OnOpenForwards { get; set; }
     [Parameter] public EventCallback OnNew { get; set; }
 
+    private async Task ChangeViewAsync(SessionTabInfo tab, string? selected)
+    {
+        if (!Enum.TryParse<SessionView>(selected, out var target) || target == tab.View)
+            return;
+
+        if (target == SessionView.Forwards)
+        {
+            await OnOpenForwards.InvokeAsync(tab.Id);
+            return;
+        }
+
+        if (target == SessionView.Terminal)
+        {
+            if (tab.View != SessionView.Terminal)
+                await OnToggleView.InvokeAsync(tab.Id);
+            return;
+        }
+
+        if (target == SessionView.Files)
+        {
+            if (tab.View == SessionView.Terminal)
+            {
+                await OnToggleView.InvokeAsync(tab.Id);
+                return;
+            }
+
+            // The legacy host callback switches any non-terminal view back to
+            // Terminal. Keep that compatibility boundary internal to this
+            // component while presenting one stable selector to the user.
+            // The AppRoot callback can be simplified to a direct view request in
+            // a later internal refactor without changing the UX contract.
+            if (tab.View == SessionView.Forwards)
+            {
+                await OnToggleView.InvokeAsync(tab.Id);
+                await OnToggleView.InvokeAsync(tab.Id);
+            }
+        }
+    }
+
+    private static bool HasMultipleViews(SessionTabInfo tab) =>
+        tab.SupportsFiles || tab.SupportsForwards;
+
+    private static string TerminalLabel(SessionTabInfo tab) =>
+        tab.SupportsFiles ? "Terminal" : tab.TerminalLabel;
+
     private static string ViewLabel(SessionTabInfo tab) => tab.View switch
     {
-        SessionView.Terminal => tab.SupportsFiles ? "SSH" : tab.TerminalLabel,
+        SessionView.Terminal => TerminalLabel(tab),
         SessionView.Files => "Files",
         SessionView.Forwards => "Forwards",
         _ => tab.View.ToString(),
