@@ -1,0 +1,108 @@
+@inject IHostHealthDashboardService Health
+@inject IEntitlementService Entitlements
+
+<section class="settings" data-testid="host-health-dashboard">
+    <div class="settings__section">
+        <div class="section-heading">
+            <div>
+                <h2 class="section-label">Host Health <span class="action-pro-badge">PRO</span></h2>
+                <p class="setting-card__body">Run an on-demand SSH health check across your saved hosts. No background polling is performed.</p>
+            </div>
+        </div>
+
+        @if (!Entitlements.Has(PremiumFeature.HostHealthDashboard))
+        {
+            <div class="setting-card" data-testid="host-health-pro-gate">
+                <span class="setting-card__copy">
+                    <span class="setting-card__title">MeowSSH Pro required</span>
+                    <span class="setting-card__body">Fleet health checks are included with the local MeowSSH Pro license.</span>
+                </span>
+            </div>
+        }
+        else
+        {
+            <button type="button" class="btn btn--primary btn--block"
+                    data-testid="refresh-host-health"
+                    disabled="@_busy"
+                    @onclick="RefreshAsync">
+                @(_busy ? "Checking hosts…" : _results.Count == 0 ? "Run health check" : "Refresh health")
+            </button>
+
+            @if (!string.IsNullOrWhiteSpace(_message))
+            {
+                <p class="setting-card__body" role="status" data-testid="host-health-message">@_message</p>
+            }
+        }
+    </div>
+
+    @if (_results.Count > 0)
+    {
+        <div class="settings__section" data-testid="host-health-results">
+            @foreach (var result in _results)
+            {
+                <article class="setting-card" data-testid="host-health-result" @key="result.HostId">
+                    <span class="setting-card__copy">
+                        <span class="setting-card__title">@result.HostLabel</span>
+                        <span class="setting-card__body">@StateLabel(result.State) · @result.Message</span>
+                        @if (result.State is HostHealthState.Healthy or HostHealthState.Degraded)
+                        {
+                            <span class="setting-card__body mono">
+                                @Metric("OS", result.OperatingSystem)
+                                @Metric("Uptime", result.Uptime)
+                                @Metric("Load", result.Load)
+                                @Metric("Disk", result.Disk)
+                                @Metric("Memory", result.Memory)
+                            </span>
+                        }
+                    </span>
+                    <span class="setting-card__value mono">@DurationLabel(result.Duration)</span>
+                </article>
+            }
+        </div>
+    }
+</section>
+
+@code {
+    private IReadOnlyList<HostHealthSnapshot> _results = [];
+    private bool _busy;
+    private string? _message;
+
+    private async Task RefreshAsync()
+    {
+        if (_busy) return;
+        _busy = true;
+        _message = null;
+        try
+        {
+            _results = await Health.CheckAllAsync();
+            var reachable = _results.Count(result => result.State is HostHealthState.Healthy or HostHealthState.Degraded);
+            _message = _results.Count == 0
+                ? "No saved hosts are available to check."
+                : $"Checked {_results.Count} hosts; {reachable} responded over SSH.";
+        }
+        catch (InvalidOperationException exception)
+        {
+            _message = exception.Message;
+            _results = [];
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private static string StateLabel(HostHealthState state) => state switch
+    {
+        HostHealthState.Healthy => "Healthy",
+        HostHealthState.Degraded => "Degraded",
+        HostHealthState.Unreachable => "Unreachable",
+        HostHealthState.Unsupported => "Unsupported",
+        _ => state.ToString(),
+    };
+
+    private static string Metric(string label, string? value) =>
+        string.IsNullOrWhiteSpace(value) ? $"{label}: —  " : $"{label}: {value}  ";
+
+    private static string DurationLabel(TimeSpan duration) =>
+        duration <= TimeSpan.Zero ? "—" : $"{duration.TotalMilliseconds:0} ms";
+}
