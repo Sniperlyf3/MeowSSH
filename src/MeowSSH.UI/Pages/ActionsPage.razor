@@ -80,7 +80,7 @@
 
             <div class="action-editor__buttons">
                 <button type="button" class="btn btn--ghost" data-testid="cancel-action"
-                        @onclick="CancelEdit">Cancel</button>
+                        @onclick="RequestCancelEdit">Cancel</button>
                 <button type="button" class="btn btn--primary" data-testid="save-action"
                         disabled="@_saving" @onclick="SaveAsync">Save Action</button>
             </div>
@@ -214,6 +214,19 @@
     {
         <p class="action-message" role="alert" data-testid="action-message">@_message</p>
     }
+
+    @if (_confirmCancelEdit)
+    {
+        <div class="sheet" role="alertdialog" aria-modal="true" aria-labelledby="discard-action-draft-title"
+             data-testid="discard-action-draft">
+            <p class="sheet__title" id="discard-action-draft-title">Discard unsaved changes?</p>
+            <p class="sheet__body">Your Action draft will stay here unless you explicitly discard it.</p>
+            <button type="button" class="btn btn--primary btn--block" data-testid="keep-action-draft"
+                    @onclick="KeepEditing">Keep editing</button>
+            <button type="button" class="btn btn--danger btn--block" data-testid="discard-action-draft-confirm"
+                    @onclick="DiscardEdit">Discard changes</button>
+        </div>
+    }
 </section>
 
 @code {
@@ -222,6 +235,8 @@
     private readonly HashSet<Guid> _selectedHosts = [];
     private bool _editing;
     private Guid? _editingId;
+    private CommandAction? _editingOriginal;
+    private bool _confirmCancelEdit;
     private string _name = string.Empty;
     private string _command = string.Empty;
     private int _timeoutSeconds = 30;
@@ -252,6 +267,8 @@
     {
         _editing = true;
         _editingId = null;
+        _editingOriginal = null;
+        _confirmCancelEdit = false;
         _name = string.Empty;
         _command = string.Empty;
         _timeoutSeconds = 30;
@@ -263,6 +280,8 @@
     {
         _editing = true;
         _editingId = action.Id;
+        _editingOriginal = action;
+        _confirmCancelEdit = false;
         _name = action.Name;
         _command = action.Command;
         _timeoutSeconds = action.TimeoutSeconds;
@@ -271,10 +290,37 @@
         _message = null;
     }
 
-    private void CancelEdit()
+    private bool HasUnsavedChanges => _editingOriginal is null
+        ? !string.IsNullOrWhiteSpace(_name)
+          || !string.IsNullOrWhiteSpace(_command)
+          || _timeoutSeconds != 30
+          || _selectedHosts.Count > 0
+        : !string.Equals(_name, _editingOriginal.Name, StringComparison.Ordinal)
+          || !string.Equals(_command, _editingOriginal.Command, StringComparison.Ordinal)
+          || _timeoutSeconds != _editingOriginal.TimeoutSeconds
+          || !_selectedHosts.SetEquals(_editingOriginal.HostIds);
+
+    private void RequestCancelEdit()
+    {
+        if (HasUnsavedChanges)
+        {
+            _confirmCancelEdit = true;
+            return;
+        }
+
+        CompleteCancelEdit();
+    }
+
+    private void KeepEditing() => _confirmCancelEdit = false;
+
+    private void DiscardEdit() => CompleteCancelEdit();
+
+    private void CompleteCancelEdit()
     {
         _editing = false;
         _editingId = null;
+        _editingOriginal = null;
+        _confirmCancelEdit = false;
         _message = null;
     }
 
@@ -301,6 +347,8 @@
             await Actions.SaveAsync(action);
             _editing = false;
             _editingId = null;
+            _editingOriginal = null;
+            _confirmCancelEdit = false;
             await LoadAsync();
         }
         catch (ArgumentException exception)

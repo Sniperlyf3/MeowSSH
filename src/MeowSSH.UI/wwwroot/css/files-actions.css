@@ -230,6 +230,11 @@
 .session-tabs__mode:disabled { opacity: 0.4; cursor: default; }
 .session-resume { margin-bottom: var(--space-4); }
 
+/* Action confirmation sheets are modal to the editor, so they must remain
+   above persistent app chrome. Otherwise the bottom tab bar can intercept the
+   destructive confirmation target on phone-height viewports. */
+.actions-page .sheet[role="alertdialog"] { z-index: 60; }
+
 @media (max-width: 420px) {
   .fileitem__menu { width: 2.75rem; }
   .text-viewer .topbar { gap: var(--space-2); padding-inline: var(--space-3); }
