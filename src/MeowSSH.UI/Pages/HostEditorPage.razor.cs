@@ -4,10 +4,11 @@ using MeowSSH.Core.Model;
 
 namespace MeowSSH.UI.Pages;
 
-public partial class HostEditorPage
+public partial class HostEditorPage : IAsyncDisposable
 {
     private EventCallback _parentCancelled;
     private HostDraftSnapshot? _initialDraft;
+    private IJSObjectReference? _draftGuardModule;
 
     [Inject]
     private IJSRuntime DraftGuardJs { get; set; } = default!;
@@ -25,12 +26,12 @@ public partial class HostEditorPage
         OnCancelled = EventCallback.Factory.Create(this, RequestCancelAsync);
     }
 
-    protected override Task OnAfterRenderAsync(bool firstRender)
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender)
-            _initialDraft = CaptureDraft();
+        if (!firstRender) return;
 
-        return Task.CompletedTask;
+        _initialDraft = CaptureDraft();
+        await EnsureDraftGuardModuleAsync();
     }
 
     private async Task RequestCancelAsync()
@@ -41,13 +42,17 @@ public partial class HostEditorPage
             return;
         }
 
-        var discard = await DraftGuardJs.InvokeAsync<bool>(
-            "confirm",
-            "Discard unsaved connection changes?");
+        var module = await EnsureDraftGuardModuleAsync();
+        var discard = await module.InvokeAsync<bool>("confirmDiscard");
 
         if (discard)
             await _parentCancelled.InvokeAsync();
     }
+
+    private async Task<IJSObjectReference> EnsureDraftGuardModuleAsync() =>
+        _draftGuardModule ??= await DraftGuardJs.InvokeAsync<IJSObjectReference>(
+            "import",
+            "./_content/MeowSSH.UI/js/host-draft-guard.js");
 
     private HostDraftSnapshot CaptureDraft() => new(
         _label,
@@ -68,6 +73,14 @@ public partial class HostEditorPage
         _serialDataBits,
         _serialParity,
         _serialStopBits);
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_draftGuardModule is null) return;
+
+        try { await _draftGuardModule.DisposeAsync(); }
+        catch (JSDisconnectedException) { }
+    }
 
     private readonly record struct HostDraftSnapshot(
         string Label,
