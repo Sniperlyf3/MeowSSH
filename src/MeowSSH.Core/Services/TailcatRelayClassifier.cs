@@ -15,9 +15,10 @@ public sealed record TailcatRelayClassifierOptions(
     IReadOnlyCollection<string> MeowSshDerpMapUrls,
     IReadOnlyCollection<string> PublicDefaultRelayHosts)
 {
-    // Null is the normal Tailcat-default-map case. This constant exists for
-    // addresses/configurations that explicitly spell out the same provenance.
-    public const string TailcatDefaultDerpMapUrl = "https://derpmap.tailcat.dev/default";
+    // This matches the app's pinned upstream Tailcat DERP map. Null is also
+    // treated as default-map provenance because Tailcat uses its default map
+    // when no override is supplied.
+    public const string TailcatDefaultDerpMapUrl = "https://tailcat.dev/derpmap.json";
 }
 
 public sealed record TailcatRelayClassification(
