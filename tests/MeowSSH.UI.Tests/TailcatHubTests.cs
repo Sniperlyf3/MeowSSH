@@ -26,6 +26,9 @@ public class TailcatHubTests(TestHostFixture fixture)
     public async Task ExitNodeRequiresAnAllowedClientAndCanBeStopped()
     {
         var page = await OpenTailcatAsync();
+        // The exit node is off by default now, so a test that needs a service
+        // running turns one on rather than relying on the panel's initial state.
+        await page.GetByTestId("tailcat-exit-node").CheckAsync();
         await Assertions.Expect(page.GetByTestId("start-tailcat-server")).ToBeDisabledAsync();
         await page.GetByTestId("tailcat-allowed-clients").FillAsync("nodekey:test-client");
         await page.GetByTestId("start-tailcat-server").ClickAsync();
@@ -38,6 +41,9 @@ public class TailcatHubTests(TestHostFixture fixture)
     public async Task SavedTailcatIdentityCanBeSelectedAsAllowedClient()
     {
         var page = await OpenTailcatAsync();
+        // The exit node is off by default now, so a test that needs a service
+        // running turns one on rather than relying on the panel's initial state.
+        await page.GetByTestId("tailcat-exit-node").CheckAsync();
         await Assertions.Expect(page.GetByTestId("tailcat-saved-client-keys")).ToContainTextAsync("client-default");
         await page.GetByTestId("tailcat-saved-client-key").First.CheckAsync();
         await Assertions.Expect(page.GetByTestId("start-tailcat-server")).ToBeEnabledAsync();
@@ -49,6 +55,9 @@ public class TailcatHubTests(TestHostFixture fixture)
     public async Task ServerCanReuseSavedPersistentIdentity()
     {
         var page = await OpenTailcatAsync();
+        // The exit node is off by default now, so a test that needs a service
+        // running turns one on rather than relying on the panel's initial state.
+        await page.GetByTestId("tailcat-exit-node").CheckAsync();
         await page.GetByTestId("tailcat-allowed-clients").FillAsync("nodekey:test-client");
         await page.GetByTestId("tailcat-server-address-options").ClickAsync();
         await page.GetByTestId("tailcat-server-identity").SelectOptionAsync("client-default");
@@ -61,6 +70,9 @@ public class TailcatHubTests(TestHostFixture fixture)
     public async Task ServerCanPublishASelfContainedAddress()
     {
         var page = await OpenTailcatAsync();
+        // The exit node is off by default now, so a test that needs a service
+        // running turns one on rather than relying on the panel's initial state.
+        await page.GetByTestId("tailcat-exit-node").CheckAsync();
         await page.GetByTestId("tailcat-allowed-clients").FillAsync("nodekey:test-client");
         await page.GetByTestId("tailcat-server-address-options").ClickAsync();
         await page.GetByTestId("tailcat-full-address").CheckAsync();
@@ -72,6 +84,9 @@ public class TailcatHubTests(TestHostFixture fixture)
     public async Task InsecureExitNodeRequiresExplicitRiskAcknowledgement()
     {
         var page = await OpenTailcatAsync();
+        // The exit node is off by default now, so a test that needs a service
+        // running turns one on rather than relying on the panel's initial state.
+        await page.GetByTestId("tailcat-exit-node").CheckAsync();
         await page.GetByTestId("tailcat-insecure-exit-node").CheckAsync();
         await Assertions.Expect(page.GetByTestId("tailcat-insecure-warning")).ToBeVisibleAsync();
         await Assertions.Expect(page.GetByTestId("tailcat-insecure-warning")).ToContainTextAsync("removes Tailcat client authentication");

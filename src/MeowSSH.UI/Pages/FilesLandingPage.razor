@@ -46,29 +46,52 @@ else
         }
         else
         {
-            <h2 class="section-label">Choose a host</h2>
-            <p class="files-landing__hint">Tap a host to browse files. Specialist recursive, search and bookmark tools are available from More.</p>
+            @*
+                One entry point to the advanced tools, not one per host.
+
+                Each row used to carry its own "More" disclosure containing an
+                identical "Advanced SFTP" button: six hosts meant six identical
+                buttons and six half-height grey bands, which roughly doubled the
+                length of the list and read as an unfinished component. The tool
+                is the same tool whichever host it runs against, so it is offered
+                once and asks which host afterwards -- the list is already right
+                here to answer with.
+            *@
+            <h2 class="section-label">@(_advancedPicking ? "Advanced tools: choose a host" : "Choose a host")</h2>
+            <p class="files-landing__hint">
+                @(_advancedPicking
+                    ? "Pick the host to run remote search, bookmarks and recursive transfers against."
+                    : "Tap a host to browse its files.")
+            </p>
+
+            @if (_advancedPicking)
+            {
+                <button type="button" class="btn btn--ghost btn--block" data-testid="advanced-sftp-cancel"
+                        @onclick="() => _advancedPicking = false">
+                    Cancel
+                </button>
+            }
+            else if (_hosts.Any(h => h.Host.Protocol == HostProtocol.Ssh))
+            {
+                <button type="button" class="setting-card" data-testid="advanced-sftp-open"
+                        disabled="@_advancedBusy" @onclick="() => _advancedPicking = true">
+                    <span class="setting-card__copy">
+                        <span class="setting-card__title">Advanced SFTP <span class="tier-badge">Pro</span></span>
+                        <span class="setting-card__body">Remote search, bookmarks, recursive downloads and recursive delete.</span>
+                    </span>
+                    <span class="setting-card__value">Open</span>
+                </button>
+            }
+
             <div class="host-list" data-testid="files-host-list">
                 @foreach (var status in _hosts)
                 {
-                    <div class="files-host-option">
-                        <HostRow Status="status" OnSelected="OnHostSelected" />
-                        @if (status.Host.Protocol == HostProtocol.Ssh)
-                        {
-                            <details class="files-host-option__more" data-testid="files-host-more" data-host-label="@status.Host.Label">
-                                <summary>More</summary>
-                                <div class="files-host-option__menu">
-                                    <button type="button" class="btn btn--ghost btn--block"
-                                            data-testid="advanced-sftp-host" data-host-label="@status.Host.Label"
-                                            disabled="@_advancedBusy"
-                                            @onclick="() => OpenAdvancedAsync(status.Host)">
-                                        Advanced SFTP <span class="action-pro-badge">PRO</span>
-                                    </button>
-                                    <p>Remote search, bookmarks, recursive downloads and recursive delete.</p>
-                                </div>
-                            </details>
-                        }
-                    </div>
+                    @* While picking, a host that cannot run the advanced tools is
+                       not offered at all, rather than shown and then refused. *@
+                    @if (!_advancedPicking || status.Host.Protocol == HostProtocol.Ssh)
+                    {
+                        <HostRow Status="status" OnSelected="ChooseHostAsync" />
+                    }
                 }
             </div>
         }
@@ -82,6 +105,8 @@ else
     private ISshConnection? _advancedConnection;
     private ISftpSession? _advancedSftp;
     private bool _advancedBusy;
+    /// <summary>The host list is standing in as the picker for the advanced tools.</summary>
+    private bool _advancedPicking;
     private string? _advancedError;
     private string? _advancedTargetLabel;
     private bool _lifetimeStarted;
@@ -95,9 +120,23 @@ else
         _hosts = await Directory.GetHostsAsync();
     }
 
+    /// <summary>
+    /// What tapping a host row means right now: browse it, or run the advanced
+    /// tools against it.
+    /// </summary>
+    /// <remarks>
+    /// One handler rather than swapping the row's callback, because a
+    /// target-typed conditional cannot be converted to an
+    /// <see cref="EventCallback"/> and the branch belongs with the state that
+    /// decides it anyway.
+    /// </remarks>
+    private Task ChooseHostAsync(HostRecord host) =>
+        _advancedPicking ? OpenAdvancedAsync(host) : OnHostSelected.InvokeAsync(host);
+
     private async Task OpenAdvancedAsync(HostRecord host)
     {
         if (_advancedBusy || host.Protocol != HostProtocol.Ssh) return;
+        _advancedPicking = false;
         _advancedBusy = true;
         _advancedError = null;
         _advancedTargetLabel = host.Label;

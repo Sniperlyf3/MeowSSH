@@ -20,7 +20,12 @@
                 data-testid="upload-file" @onclick="UploadAsync">
             <Icon Name="upload" />
         </button>
-        <button type="button" class="btn btn--icon" aria-label="Show hidden files"
+        @* A crossed-out eye is genuinely ambiguous on a toggle: it could mean
+           "hidden files are hidden" or "press to hide". The label states the
+           current state rather than leaving it to the glyph. *@
+        <button type="button" class="btn btn--icon"
+                aria-label="@(_showHidden ? "Hidden files shown. Hide them." : "Hidden files hidden. Show them.")"
+                title="@(_showHidden ? "Hiding hidden files" : "Showing hidden files")"
                 aria-pressed="@(_showHidden ? "true" : "false")"
                 data-testid="toggle-hidden" @onclick="ToggleHidden">
             <Icon Name="@(_showHidden ? "eye" : "eye-off")" />

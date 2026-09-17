@@ -55,6 +55,7 @@ public sealed class PhoneWidthConsistencyTests(TestHostFixture fixture)
     {
         var page = await fixture.NewPageAsync("/?keys");
         await page.SetViewportSizeAsync(390, 844);
+
         await page.GetByTestId("add-credential").ClickAsync();
         await page.GetByTestId("flow-password").ClickAsync();
 

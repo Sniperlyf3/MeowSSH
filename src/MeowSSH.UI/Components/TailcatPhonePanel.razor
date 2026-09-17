@@ -37,7 +37,11 @@
             <label class="forward-option"><input type="checkbox" data-testid="tailcat-exit-node" @bind="_exitNode" /><span><strong>Exit node</strong><small>Allow approved Tailcat clients to route through this phone.</small></span></label>
             @if (_exitNode)
             {
-                <label class="forward-option"><input type="checkbox" data-testid="tailcat-insecure-exit-node" @bind="_allowAnyClient" /><span><strong>Insecure: allow any Tailcat client</strong><small>Disable the Tailcat client-key allowlist for this exit node.</small></span></label>
+                @* Security-reducing, so it does not get the same treatment as "Share a
+                   folder" two rows below it. is-risky paints the box in the danger
+                   colour once it is on, and forward-option--risky carries a matching
+                   rail so the row reads as different before it is even read. *@
+                <label class="forward-option forward-option--risky"><input type="checkbox" class="is-risky" data-testid="tailcat-insecure-exit-node" @bind="_allowAnyClient" /><span><strong>Insecure: allow any Tailcat client</strong><small>Anyone who learns this address can route traffic through your phone. Disables the client-key allowlist.</small></span></label>
                 @if (_allowAnyClient)
                 {
                     <div class="tailcat-danger-warning" role="alert" data-testid="tailcat-insecure-warning"><strong>Warning: this removes Tailcat client authentication.</strong><p>Anyone who obtains this Tailcat address can connect and route traffic through this phone. Other enabled services are also no longer protected by the Tailcat client-key allowlist.</p><label class="forward-option"><input type="checkbox" data-testid="tailcat-insecure-confirm" @bind="_insecureConfirmed" /><span><strong>I understand the risk</strong><small>Required before starting an insecure exit node.</small></span></label></div>
@@ -86,6 +90,15 @@
                 </div>
             </details>
             @if (_exitNode) { <p class="note"><Icon Name="alert" /> Only authorize client keys you trust.</p> }
+            @*
+                CanStart is eight conditions wide. Dimming the button and leaving
+                the user to work out which one they have missed is not a design;
+                the unmet one is named here.
+            *@
+            @if (!_busy && StartBlockedBecause is { } blocked)
+            {
+                <p class="form__hint" data-testid="start-tailcat-server-hint">@blocked</p>
+            }
             <button class="btn btn--primary btn--block" disabled="@(_busy || !CanStart)" data-testid="start-tailcat-server" @onclick="StartAsync">Start sharing</button>
         </article>
     }
@@ -97,7 +110,12 @@
     private IReadOnlyList<SavedTailcatClientKey> _savedTailcatClientKeys = [];
     private readonly HashSet<string> _selectedTailcatClientNames = new(StringComparer.Ordinal);
     private int _hours = 8;
-    private bool _exitNode = true;
+    /// <summary>
+    /// Off by default. An exit node routes other devices' traffic through this
+    /// phone -- its battery, its data allowance, its IP address -- which is not
+    /// something to switch on for someone who only opened the panel to look.
+    /// </summary>
+    private bool _exitNode;
     private bool _allowAnyClient;
     private bool _insecureConfirmed;
     private bool _shell;
@@ -120,6 +138,36 @@
     private string? _notice;
 
     private IReadOnlyList<string> ServeTargetList => [.. _serveTargets.Split([',', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Distinct(StringComparer.Ordinal)];
+    /// <summary>
+    /// The unmet condition keeping <c>Start sharing</c> disabled, worded for the
+    /// person configuring it — or null when it is ready to start.
+    /// </summary>
+    /// <remarks>
+    /// Kept in the same order as <see cref="CanStart"/>'s clauses so the two
+    /// cannot disagree about whether starting is possible.
+    /// </remarks>
+    private string? StartBlockedBecause
+    {
+        get
+        {
+            if (!_allowAnyClient && !HasAllowedTailcatClients)
+                return "Choose a saved Tailcat identity, or paste a client key, to say who may connect.";
+            if (!_exitNode && !_shell && !_files && ServeTargetList.Count == 0)
+                return "Turn on at least one service — exit node, remote shell, a shared folder, or a port.";
+            if (_allowAnyClient && !(_exitNode && _insecureConfirmed))
+                return "Insecure mode needs the exit node enabled and its warning confirmed.";
+            if (_useTailcatCredentialForShell && !(_shell && _insecureShellConfirmed))
+                return "Using the Tailcat address as the shell credential needs the remote shell enabled and confirmed.";
+            if (_shell && !_useTailcatCredentialForShell && !HasAuthorizedSshKeys)
+                return "A remote shell needs an authorized SSH key, or the Tailcat credential option.";
+            if (_files && string.IsNullOrWhiteSpace(_folder))
+                return "Choose which folder to share.";
+            if (_hours is < 1 or > 24)
+                return "Sharing can run for between 1 and 24 hours.";
+            return null;
+        }
+    }
+
     private bool CanStart => (_allowAnyClient || HasAllowedTailcatClients) && (_exitNode || _shell || _files || ServeTargetList.Count > 0)
         && (!_allowAnyClient || (_exitNode && _insecureConfirmed))
         && (!_useTailcatCredentialForShell || (_shell && _insecureShellConfirmed))
