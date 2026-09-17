@@ -1,0 +1,22 @@
+/*
+  App-wide touch-target floor for compact mobile controls.
+  Visual glyphs stay small; only the interactive hit area grows.
+*/
+.btn,
+.field__input,
+.tabbar__tab,
+.host,
+.keybar__key {
+  min-height: 2.75rem;
+}
+
+.btn--icon {
+  width: 2.75rem;
+  height: 2.75rem;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+}
+
+.tabbar__tab {
+  min-width: 2.75rem;
+}
