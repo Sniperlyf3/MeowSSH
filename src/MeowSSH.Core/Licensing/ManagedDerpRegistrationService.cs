@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Security;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace MeowSSH.Core.Licensing;
 
@@ -27,13 +28,17 @@ public interface IManagedDerpRegistrationService
         CancellationToken cancellationToken = default);
 }
 
+[JsonSourceGenerationOptions(JsonSerializerDefaults.Web)]
+[JsonSerializable(typeof(ManagedDerpRegistrationRequest))]
+internal sealed partial class ManagedDerpJsonContext : JsonSerializerContext
+{
+}
+
 public sealed class ManagedDerpRegistrationService(
     IManagedDerpGrantProvider grants,
     HttpClient httpClient,
     LicensingApiOptions options) : IManagedDerpRegistrationService
 {
-    private static readonly JsonSerializerOptions WebJson = new(JsonSerializerDefaults.Web);
-
     public Task RegisterClientAsync(string clientNodePublic, CancellationToken cancellationToken = default) =>
         RegisterAsync(clientNodePublic, clientNodePublic, ManagedDerpNodeKind.Client, null, cancellationToken);
 
@@ -59,7 +64,7 @@ public sealed class ManagedDerpRegistrationService(
         using var response = await httpClient.PostAsJsonAsync(
             new Uri(options.BaseUri!, "v1/derp/nodes/register"),
             request,
-            WebJson,
+            ManagedDerpJsonContext.Default.ManagedDerpRegistrationRequest,
             cancellationToken).ConfigureAwait(false);
 
         if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
