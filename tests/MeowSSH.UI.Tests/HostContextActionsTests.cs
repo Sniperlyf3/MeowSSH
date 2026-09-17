@@ -5,6 +5,8 @@ namespace MeowSSH.UI.Tests;
 [Collection(nameof(TestHostCollection))]
 public sealed class HostContextActionsTests(TestHostFixture fixture)
 {
+    private const string StagingHostLabel = "staging-db-replica-eu-west";
+
     [Fact]
     public async Task HostEditIsHiddenUntilManageIsOpened()
     {
@@ -32,11 +34,11 @@ public sealed class HostContextActionsTests(TestHostFixture fixture)
     public async Task ContextualEditStillOpensTheCorrectHost()
     {
         var page = await fixture.NewPageAsync("/");
-        var wrap = page.Locator(".host-wrap").Filter(new() { HasText = "staging-db-replica" });
+        var wrap = page.Locator(".host-wrap").Filter(new() { HasText = StagingHostLabel });
         await wrap.GetByTestId("manage-host").ClickAsync();
         await wrap.GetByTestId("edit-host").ClickAsync();
         await Assertions.Expect(page.GetByTestId("host-editor")).ToBeVisibleAsync();
-        await Assertions.Expect(page.GetByTestId("host-label")).ToHaveValueAsync("staging-db-replica");
+        await Assertions.Expect(page.GetByTestId("host-label")).ToHaveValueAsync(StagingHostLabel);
     }
 
     [Fact]
@@ -53,7 +55,7 @@ public sealed class HostContextActionsTests(TestHostFixture fixture)
     public async Task HostDeletionCanBeCancelledWithoutLosingTheConnection()
     {
         var page = await fixture.NewPageAsync("/");
-        var wrap = page.Locator(".host-wrap").Filter(new() { HasText = "staging-db-replica" });
+        var wrap = page.Locator(".host-wrap").Filter(new() { HasText = StagingHostLabel });
         await wrap.GetByTestId("manage-host").ClickAsync();
         await wrap.GetByTestId("edit-host").ClickAsync();
         await page.GetByTestId("delete-host").ClickAsync();
@@ -61,6 +63,6 @@ public sealed class HostContextActionsTests(TestHostFixture fixture)
         await page.GetByTestId("keep-host-connection").ClickAsync();
         await Assertions.Expect(page.GetByTestId("delete-host-confirmation")).ToHaveCountAsync(0);
         await Assertions.Expect(page.GetByTestId("host-editor")).ToBeVisibleAsync();
-        await Assertions.Expect(page.GetByTestId("host-label")).ToHaveValueAsync("staging-db-replica");
+        await Assertions.Expect(page.GetByTestId("host-label")).ToHaveValueAsync(StagingHostLabel);
     }
 }
