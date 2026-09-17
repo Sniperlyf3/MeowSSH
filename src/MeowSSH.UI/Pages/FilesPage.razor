@@ -157,6 +157,27 @@
     </div>
 }
 
+@if (_pendingUpload is { } pendingUpload)
+{
+    <div class="sheet sheet--danger" role="alertdialog" aria-label="Upload conflict"
+         data-testid="upload-conflict">
+        <p class="sheet__title">Replace @pendingUpload.File.Name?</p>
+        <p class="sheet__body">
+            A file with this name already exists in this folder. Replacing it will overwrite its contents and cannot be undone.
+        </p>
+        <div class="form__actions">
+            <button type="button" class="btn btn--danger btn--block"
+                    data-testid="replace-upload" @onclick="ReplacePendingUploadAsync">
+                Replace file
+            </button>
+            <button type="button" class="btn btn--ghost btn--block"
+                    data-testid="cancel-upload" @onclick="CancelPendingUpload">
+                Cancel
+            </button>
+        </div>
+    </div>
+}
+
 @if (_selected is { } selected)
 {
     <div class="sheet" role="dialog" aria-label="File actions" data-testid="file-actions-sheet">
@@ -323,12 +344,14 @@
     private string? _transferStatus;
     private double? _transferFraction;
     private string? _notice;
+    private PendingUpload? _pendingUpload;
 
     [Parameter, EditorRequired] public HostRecord Host { get; set; } = default!;
     [Parameter, EditorRequired] public ISftpSession Sftp { get; set; } = default!;
     [Parameter] public EventCallback OnClosed { get; set; }
 
     private sealed record ErrorNotice(string Title, string Body);
+    private sealed record PendingUpload(LocalFileSelection File, string Destination);
 
     private IReadOnlyList<RemoteFile> Visible =>
         _entries is null
@@ -353,6 +376,7 @@
 
     private async Task NavigateAsync(string path)
     {
+        CancelPendingUpload();
         _path = path;
         _newFolder = null;
         _selected = null;
@@ -573,10 +597,71 @@
             picked = await LocalFiles.PickFileAsync();
             if (picked is null) return;
 
+            var destination = RemotePath.Join(_path, picked.Name);
+            RemoteFile? existing = null;
+            try
+            {
+                existing = await Sftp.StatAsync(destination);
+            }
+            catch (SshException ex) when (ex.Failure == SshFailure.NotFound)
+            {
+                // No conflict: continue with the normal upload path.
+            }
+
+            if (existing is not null)
+            {
+                if (existing.IsDirectory || existing.IsSymlink)
+                {
+                    _error = new(
+                        "Upload conflict",
+                        existing.IsDirectory
+                            ? $"A folder named {picked.Name} already exists here. Choose a different file name."
+                            : $"A symbolic link named {picked.Name} already exists here. MeowSSH will not overwrite links from an upload.");
+                    return;
+                }
+
+                _pendingUpload = new PendingUpload(picked, destination);
+                picked = null; // The confirmation sheet now owns this temporary file.
+                return;
+            }
+
+            await UploadPickedAsync(picked, destination);
+            picked = null; // UploadPickedAsync cleaned up the temporary file.
+        }
+        catch (Exception ex) when (ex is SshException or IOException or UnauthorizedAccessException)
+        {
+            EndTransfer();
+            _error = new("Upload failed", ex.Message);
+        }
+        finally
+        {
+            if (picked is not null) LocalFiles.DeleteTemporaryFile(picked.TemporaryPath);
+        }
+    }
+
+    private async Task ReplacePendingUploadAsync()
+    {
+        if (_pendingUpload is null) return;
+        var pending = _pendingUpload;
+        _pendingUpload = null;
+        await UploadPickedAsync(pending.File, pending.Destination);
+    }
+
+    private void CancelPendingUpload()
+    {
+        if (_pendingUpload is null) return;
+        LocalFiles.DeleteTemporaryFile(_pendingUpload.File.TemporaryPath);
+        _pendingUpload = null;
+    }
+
+    private async Task UploadPickedAsync(LocalFileSelection picked, string destination)
+    {
+        try
+        {
             BeginTransfer($"Uploading {picked.Name}");
             await Sftp.UploadAsync(
                 picked.TemporaryPath,
-                RemotePath.Join(_path, picked.Name),
+                destination,
                 TransferProgressReporter());
             EndTransfer();
             await LoadAsync();
@@ -588,7 +673,7 @@
         }
         finally
         {
-            if (picked is not null) LocalFiles.DeleteTemporaryFile(picked.TemporaryPath);
+            LocalFiles.DeleteTemporaryFile(picked.TemporaryPath);
         }
     }
 
@@ -752,7 +837,11 @@
         };
     }
 
-    private Task OnClose() => OnClosed.InvokeAsync();
+    private Task OnClose()
+    {
+        CancelPendingUpload();
+        return OnClosed.InvokeAsync();
+    }
 
-    public void Dispose() { }
+    public void Dispose() => CancelPendingUpload();
 }
