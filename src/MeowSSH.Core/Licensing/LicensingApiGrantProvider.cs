@@ -150,8 +150,9 @@ public sealed class LicensingApiGrantProvider : IEntitlementGrantProvider, IMana
                 .ConfigureAwait(false)
                 ?? throw new SecurityException("The licensing server returned an empty entitlement grant.");
 
-            var claims = VerifyGrantClaims(grant, _timeProvider.GetUtcNow());
-            if (claims.ValidUntilUtc <= _timeProvider.GetUtcNow())
+            var now = _timeProvider.GetUtcNow();
+            var claims = VerifyGrantClaims(grant, now);
+            if (claims.ValidUntilUtc <= now)
                 throw new SecurityException("The managed relay entitlement grant has expired.");
             if (claims.Tier is < EntitlementTier.Free or > EntitlementTier.Team)
                 throw new SecurityException("The managed relay entitlement grant contains an invalid tier.");
@@ -284,10 +285,15 @@ public sealed class LicensingApiGrantProvider : IEntitlementGrantProvider, IMana
         ArgumentException.ThrowIfNullOrWhiteSpace(value);
         var normalized = value.Trim().ToLowerInvariant();
         if (!normalized.StartsWith("nodekey:", StringComparison.Ordinal) ||
-            normalized.Length != "nodekey:".Length + 64 ||
-            normalized.AsSpan("nodekey:".Length).ContainsAnyExcept("0123456789abcdef"))
+            normalized.Length != "nodekey:".Length + 64)
         {
             throw new ArgumentException("A canonical Tailcat node public key is required.", nameof(value));
+        }
+
+        foreach (var ch in normalized.AsSpan("nodekey:".Length))
+        {
+            if (!Uri.IsHexDigit(ch))
+                throw new ArgumentException("A canonical Tailcat node public key is required.", nameof(value));
         }
         return normalized;
     }
