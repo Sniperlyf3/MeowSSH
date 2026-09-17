@@ -19,10 +19,6 @@ public partial class HostEditorPage : IAsyncDisposable
             _parentCancelled = incomingCancelled;
 
         await base.SetParametersAsync(parameters);
-
-        // Keep the existing Razor markup untouched while routing its Cancel button
-        // through the draft guard. Parent re-renders can supply a fresh callback,
-        // so this assignment is intentionally repeated after every parameter set.
         OnCancelled = EventCallback.Factory.Create(this, RequestCancelAsync);
     }
 
@@ -31,7 +27,8 @@ public partial class HostEditorPage : IAsyncDisposable
         if (!firstRender) return;
 
         _initialDraft = CaptureDraft();
-        await EnsureDraftGuardModuleAsync();
+        var module = await EnsureDraftGuardModuleAsync();
+        await module.InvokeVoidAsync("installHostDeleteGuard");
     }
 
     private async Task RequestCancelAsync()
