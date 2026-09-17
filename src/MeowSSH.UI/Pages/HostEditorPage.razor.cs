@@ -76,10 +76,18 @@ public partial class HostEditorPage : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        if (_draftGuardModule is null) return;
-
-        try { await _draftGuardModule.DisposeAsync(); }
-        catch (JSDisconnectedException) { }
+        try
+        {
+            if (_draftGuardModule is not null)
+            {
+                try { await _draftGuardModule.DisposeAsync(); }
+                catch (JSDisconnectedException) { }
+            }
+        }
+        finally
+        {
+            GC.SuppressFinalize(this);
+        }
     }
 
     private readonly record struct HostDraftSnapshot(
