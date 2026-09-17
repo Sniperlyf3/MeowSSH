@@ -2,220 +2,229 @@
 @inject ICommandMonitoringService Monitoring
 @inject IHostDirectory Directory
 
-<AppShell Title="Monitoring" ActiveTab="monitoring" OnTabSelected="OnTabSelected">
-    <Actions>
-        <button type="button" class="btn btn--icon" aria-label="New monitor"
-                data-testid="add-monitor" @onclick="NewMonitor">
-            <Icon Name="plus" />
-        </button>
-    </Actions>
+@*
+    Content only, no <AppShell>. This page is rendered *by* AppShell as the
+    "monitoring" tool, so wrapping itself in a second shell produced two nested
+    shells: two tab bars, two headers, and an outer shell whose title and active
+    tool never changed -- after opening Monitoring, tapping Settings still showed
+    Monitoring. Every other tool page (Actions, Host health, Encrypted backup,
+    the Tailcat hub) is content-only for the same reason; this one was the
+    exception.
+*@
+<section class="monitoring-page" data-testid="monitoring-page">
+    @if (!_editing)
+    {
+        @* The shell's header cannot carry a per-tool action, so the primary
+           action lives in the content, exactly as ActionsPage does. *@
+        <div class="actions-page__toolbar">
+            <button type="button" class="btn btn--primary" data-testid="add-monitor" @onclick="NewMonitor">
+                <Icon Name="plus" /> New monitor
+            </button>
+        </div>
+    }
 
-    <ChildContent>
-        <section class="monitoring-page" data-testid="monitoring-page">
-            @if (_editing)
+    @if (_editing)
+    {
+        <div class="action-editor" data-testid="monitor-editor">
+            <div class="action-editor__header">
+                <div>
+                    <h2>@(_editingId is null ? "New monitor" : "Edit monitor")</h2>
+                    <p>Run a command periodically and alert when it fails, recovers, or changes output.</p>
+                </div>
+            </div>
+
+            <label class="field">
+                <span class="field__label">Name</span>
+                <input class="field__input" data-testid="monitor-name" maxlength="80"
+                       placeholder="Production health" @bind="_name" />
+            </label>
+
+            <label class="field">
+                <span class="field__label">Host</span>
+                <select class="field__input" data-testid="monitor-host" @bind="_hostIdText">
+                    <option value="">Choose a host</option>
+                    @foreach (var host in _hosts)
+                    {
+                        <option value="@host.Id">@host.Label · @host.DisplayAddress</option>
+                    }
+                </select>
+            </label>
+
+            <label class="field">
+                <span class="field__label">Command</span>
+                <textarea class="field__input action-editor__command" data-testid="monitor-command"
+                          rows="4" maxlength="16384" spellcheck="false"
+                          placeholder="systemctl is-active nginx" @bind="_command"></textarea>
+            </label>
+
+            <div class="monitoring-editor__numbers">
+                <label class="field">
+                    <span class="field__label">Every (seconds)</span>
+                    <input class="field__input" data-testid="monitor-interval" type="number"
+                           min="60" max="86400" @bind="_intervalSeconds" />
+                </label>
+                <label class="field">
+                    <span class="field__label">Timeout (seconds)</span>
+                    <input class="field__input" data-testid="monitor-timeout" type="number"
+                           min="1" max="600" @bind="_timeoutSeconds" />
+                </label>
+            </div>
+
+            <label class="setting-card setting-card--toggle" for="monitor-enabled">
+                <span class="setting-card__copy">
+                    <span class="setting-card__title">Enabled</span>
+                    <span class="setting-card__body">Checks run while the local MeowSSH process is active. Cloud/background monitoring is a separate Pro Cloud capability.</span>
+                </span>
+                <input id="monitor-enabled" type="checkbox" class="settings__toggle"
+                       data-testid="monitor-enabled" @bind="_enabled" />
+            </label>
+
+            <label class="setting-card setting-card--toggle" for="monitor-notify-change">
+                <span class="setting-card__copy">
+                    <span class="setting-card__title">Alert when output changes</span>
+                    <span class="setting-card__body">The first successful run establishes the baseline and does not alert.</span>
+                </span>
+                <input id="monitor-notify-change" type="checkbox" class="settings__toggle"
+                       data-testid="monitor-notify-change" @bind="_notifyOnChange" />
+            </label>
+
+            <label class="setting-card setting-card--toggle" for="monitor-notify-failure">
+                <span class="setting-card__copy">
+                    <span class="setting-card__title">Alert on failure</span>
+                    <span class="setting-card__body">A continuing failure alerts once instead of notifying on every interval.</span>
+                </span>
+                <input id="monitor-notify-failure" type="checkbox" class="settings__toggle"
+                       data-testid="monitor-notify-failure" @bind="_notifyOnFailure" />
+            </label>
+
+            <label class="setting-card setting-card--toggle" for="monitor-notify-recovery">
+                <span class="setting-card__copy">
+                    <span class="setting-card__title">Alert on recovery</span>
+                    <span class="setting-card__body">Notify when a previously failing check becomes healthy again.</span>
+                </span>
+                <input id="monitor-notify-recovery" type="checkbox" class="settings__toggle"
+                       data-testid="monitor-notify-recovery" @bind="_notifyOnRecovery" />
+            </label>
+
+            @if (!string.IsNullOrWhiteSpace(_message))
             {
-                <div class="action-editor" data-testid="monitor-editor">
-                    <div class="action-editor__header">
-                        <div>
-                            <h2>@(_editingId is null ? "New monitor" : "Edit monitor")</h2>
-                            <p>Run a command periodically and alert when it fails, recovers, or changes output.</p>
+                <p class="action-message" role="alert" data-testid="monitor-message">@_message</p>
+            }
+
+            <div class="action-editor__buttons">
+                <button type="button" class="btn btn--ghost" data-testid="cancel-monitor" @onclick="CancelEdit">Cancel</button>
+                <button type="button" class="btn btn--primary" data-testid="save-monitor" disabled="@_busy" @onclick="SaveAsync">Save monitor</button>
+            </div>
+        </div>
+    }
+    else if (_monitors is null)
+    {
+        <p class="visually-hidden" role="status">Loading monitors</p>
+    }
+    else if (_monitors.Count == 0)
+    {
+        <div class="empty" data-testid="monitoring-empty">
+            <span class="empty__glyph"><Icon Name="alert" /></span>
+            <p class="empty__title">No command monitors</p>
+            <p class="empty__body">Watch a command and let MeowSSH surface failures, recoveries, or meaningful output changes.</p>
+            <button type="button" class="btn btn--primary" data-testid="add-first-monitor" @onclick="NewMonitor">
+                <Icon Name="plus" /> Create a monitor
+            </button>
+        </div>
+    }
+    else
+    {
+        <div class="action-list" data-testid="monitor-list">
+            @foreach (var monitor in _monitors)
+            {
+                var status = StatusFor(monitor.Id);
+                <article class="action-card" data-testid="monitor-card-@monitor.Id">
+                    <div class="action-card__header">
+                        <div class="action-card__copy">
+                            <div class="action-card__title-row">
+                                <h2>@monitor.Name</h2>
+                                <span class="action-pro-badge">PRO</span>
+                            </div>
+                            <code class="action-card__command">@monitor.Command</code>
+                            <p class="action-muted">@HostLabel(monitor.HostId) · every @IntervalLabel(monitor.IntervalSeconds)</p>
+                            <p class="action-muted" data-testid="monitor-status-@monitor.Id">@StatusLabel(status)</p>
                         </div>
                     </div>
 
-                    <label class="field">
-                        <span class="field__label">Name</span>
-                        <input class="field__input" data-testid="monitor-name" maxlength="80"
-                               placeholder="Production health" @bind="_name" />
-                    </label>
-
-                    <label class="field">
-                        <span class="field__label">Host</span>
-                        <select class="field__input" data-testid="monitor-host" @bind="_hostIdText">
-                            <option value="">Choose a host</option>
-                            @foreach (var host in _hosts)
-                            {
-                                <option value="@host.Id">@host.Label · @host.DisplayAddress</option>
-                            }
-                        </select>
-                    </label>
-
-                    <label class="field">
-                        <span class="field__label">Command</span>
-                        <textarea class="field__input action-editor__command" data-testid="monitor-command"
-                                  rows="4" maxlength="16384" spellcheck="false"
-                                  placeholder="systemctl is-active nginx" @bind="_command"></textarea>
-                    </label>
-
-                    <div class="monitoring-editor__numbers">
-                        <label class="field">
-                            <span class="field__label">Every (seconds)</span>
-                            <input class="field__input" data-testid="monitor-interval" type="number"
-                                   min="60" max="86400" @bind="_intervalSeconds" />
-                        </label>
-                        <label class="field">
-                            <span class="field__label">Timeout (seconds)</span>
-                            <input class="field__input" data-testid="monitor-timeout" type="number"
-                                   min="1" max="600" @bind="_timeoutSeconds" />
-                        </label>
+                    <div class="action-card__buttons">
+                        <button type="button" class="btn btn--primary"
+                                data-testid="run-monitor-@monitor.Id" disabled="@_busy"
+                                @onclick="() => RunAsync(monitor.Id)">Run now</button>
+                        <button type="button" class="btn btn--ghost"
+                                data-testid="history-monitor-@monitor.Id" disabled="@_busy"
+                                @onclick="() => OpenHistoryAsync(monitor)">History</button>
+                        <button type="button" class="btn btn--ghost"
+                                data-testid="toggle-monitor-@monitor.Id" disabled="@_busy"
+                                @onclick="() => ToggleAsync(monitor)">@(monitor.Enabled ? "Disable" : "Enable")</button>
+                        <button type="button" class="btn btn--ghost"
+                                data-testid="edit-monitor-@monitor.Id" disabled="@_busy"
+                                @onclick="() => Edit(monitor)">Edit</button>
+                        <button type="button" class="btn btn--ghost"
+                                data-testid="delete-monitor-@monitor.Id" disabled="@_busy"
+                                @onclick="() => DeleteAsync(monitor.Id)">Delete</button>
                     </div>
-
-                    <label class="setting-card setting-card--toggle" for="monitor-enabled">
-                        <span class="setting-card__copy">
-                            <span class="setting-card__title">Enabled</span>
-                            <span class="setting-card__body">Checks run while the local MeowSSH process is active. Cloud/background monitoring is a separate Pro Cloud capability.</span>
-                        </span>
-                        <input id="monitor-enabled" type="checkbox" class="settings__toggle"
-                               data-testid="monitor-enabled" @bind="_enabled" />
-                    </label>
-
-                    <label class="setting-card setting-card--toggle" for="monitor-notify-change">
-                        <span class="setting-card__copy">
-                            <span class="setting-card__title">Alert when output changes</span>
-                            <span class="setting-card__body">The first successful run establishes the baseline and does not alert.</span>
-                        </span>
-                        <input id="monitor-notify-change" type="checkbox" class="settings__toggle"
-                               data-testid="monitor-notify-change" @bind="_notifyOnChange" />
-                    </label>
-
-                    <label class="setting-card setting-card--toggle" for="monitor-notify-failure">
-                        <span class="setting-card__copy">
-                            <span class="setting-card__title">Alert on failure</span>
-                            <span class="setting-card__body">A continuing failure alerts once instead of notifying on every interval.</span>
-                        </span>
-                        <input id="monitor-notify-failure" type="checkbox" class="settings__toggle"
-                               data-testid="monitor-notify-failure" @bind="_notifyOnFailure" />
-                    </label>
-
-                    <label class="setting-card setting-card--toggle" for="monitor-notify-recovery">
-                        <span class="setting-card__copy">
-                            <span class="setting-card__title">Alert on recovery</span>
-                            <span class="setting-card__body">Notify when a previously failing check becomes healthy again.</span>
-                        </span>
-                        <input id="monitor-notify-recovery" type="checkbox" class="settings__toggle"
-                               data-testid="monitor-notify-recovery" @bind="_notifyOnRecovery" />
-                    </label>
-
-                    @if (!string.IsNullOrWhiteSpace(_message))
-                    {
-                        <p class="action-message" role="alert" data-testid="monitor-message">@_message</p>
-                    }
-
-                    <div class="action-editor__buttons">
-                        <button type="button" class="btn btn--ghost" data-testid="cancel-monitor" @onclick="CancelEdit">Cancel</button>
-                        <button type="button" class="btn btn--primary" data-testid="save-monitor" disabled="@_busy" @onclick="SaveAsync">Save monitor</button>
-                    </div>
-                </div>
+                </article>
             }
-            else if (_monitors is null)
-            {
-                <p class="visually-hidden" role="status">Loading monitors</p>
-            }
-            else if (_monitors.Count == 0)
-            {
-                <div class="empty" data-testid="monitoring-empty">
-                    <span class="empty__glyph"><Icon Name="alert" /></span>
-                    <p class="empty__title">No command monitors</p>
-                    <p class="empty__body">Watch a command and let MeowSSH surface failures, recoveries, or meaningful output changes.</p>
-                    <button type="button" class="btn btn--primary" data-testid="add-first-monitor" @onclick="NewMonitor">
-                        <Icon Name="plus" /> Create a monitor
-                    </button>
+        </div>
+    }
+
+    @if (_historyMonitor is not null)
+    {
+        <section class="action-results" data-testid="monitor-history">
+            <div class="action-results__header">
+                <div>
+                    <h2>@_historyMonitor.Name</h2>
+                    <p class="action-muted">Recent checks</p>
                 </div>
+                <button type="button" class="btn btn--ghost" data-testid="close-monitor-history" @onclick="CloseHistory">Close</button>
+            </div>
+
+            @if (_history.Count == 0)
+            {
+                <p class="action-muted" data-testid="monitor-history-empty">No checks have run yet.</p>
             }
             else
             {
-                <div class="action-list" data-testid="monitor-list">
-                    @foreach (var monitor in _monitors)
-                    {
-                        var status = StatusFor(monitor.Id);
-                        <article class="action-card" data-testid="monitor-card-@monitor.Id">
-                            <div class="action-card__header">
-                                <div class="action-card__copy">
-                                    <div class="action-card__title-row">
-                                        <h2>@monitor.Name</h2>
-                                        <span class="action-pro-badge">PRO</span>
-                                    </div>
-                                    <code class="action-card__command">@monitor.Command</code>
-                                    <p class="action-muted">@HostLabel(monitor.HostId) · every @IntervalLabel(monitor.IntervalSeconds)</p>
-                                    <p class="action-muted" data-testid="monitor-status-@monitor.Id">@StatusLabel(status)</p>
-                                </div>
-                            </div>
-
-                            <div class="action-card__buttons">
-                                <button type="button" class="btn btn--primary"
-                                        data-testid="run-monitor-@monitor.Id" disabled="@_busy"
-                                        @onclick="() => RunAsync(monitor.Id)">Run now</button>
-                                <button type="button" class="btn btn--ghost"
-                                        data-testid="history-monitor-@monitor.Id" disabled="@_busy"
-                                        @onclick="() => OpenHistoryAsync(monitor)">History</button>
-                                <button type="button" class="btn btn--ghost"
-                                        data-testid="toggle-monitor-@monitor.Id" disabled="@_busy"
-                                        @onclick="() => ToggleAsync(monitor)">@(monitor.Enabled ? "Disable" : "Enable")</button>
-                                <button type="button" class="btn btn--ghost"
-                                        data-testid="edit-monitor-@monitor.Id" disabled="@_busy"
-                                        @onclick="() => Edit(monitor)">Edit</button>
-                                <button type="button" class="btn btn--ghost"
-                                        data-testid="delete-monitor-@monitor.Id" disabled="@_busy"
-                                        @onclick="() => DeleteAsync(monitor.Id)">Delete</button>
-                            </div>
-                        </article>
-                    }
-                </div>
-            }
-
-            @if (_historyMonitor is not null)
-            {
-                <section class="action-results" data-testid="monitor-history">
-                    <div class="action-results__header">
-                        <div>
-                            <h2>@_historyMonitor.Name</h2>
-                            <p class="action-muted">Recent checks</p>
+                @foreach (var run in _history)
+                {
+                    <article class="action-result @(run.State == CommandMonitorRunState.Healthy ? "is-success" : "is-failure")"
+                             data-testid="monitor-run-@run.Id">
+                        <div class="action-result__headline">
+                            <strong>@run.CheckedAtUtc.LocalDateTime.ToString("g")</strong>
+                            <span>@RunStateLabel(run)</span>
                         </div>
-                        <button type="button" class="btn btn--ghost" data-testid="close-monitor-history" @onclick="CloseHistory">Close</button>
-                    </div>
-
-                    @if (_history.Count == 0)
-                    {
-                        <p class="action-muted" data-testid="monitor-history-empty">No checks have run yet.</p>
-                    }
-                    else
-                    {
-                        @foreach (var run in _history)
+                        @if (run.AlertKind is { } alert)
                         {
-                            <article class="action-result @(run.State == CommandMonitorRunState.Healthy ? "is-success" : "is-failure")"
-                                     data-testid="monitor-run-@run.Id">
-                                <div class="action-result__headline">
-                                    <strong>@run.CheckedAtUtc.LocalDateTime.ToString("g")</strong>
-                                    <span>@RunStateLabel(run)</span>
-                                </div>
-                                @if (run.AlertKind is { } alert)
-                                {
-                                    <p class="action-muted">Alert: @AlertLabel(alert)</p>
-                                }
-                                @if (!string.IsNullOrWhiteSpace(run.Message))
-                                {
-                                    <p class="action-muted">@run.Message</p>
-                                }
-                                @if (!string.IsNullOrWhiteSpace(run.StandardOutput))
-                                {
-                                    <div class="action-output"><span>stdout</span><pre>@run.StandardOutput</pre></div>
-                                }
-                                @if (!string.IsNullOrWhiteSpace(run.StandardError))
-                                {
-                                    <div class="action-output"><span>stderr</span><pre>@run.StandardError</pre></div>
-                                }
-                            </article>
+                            <p class="action-muted">Alert: @AlertLabel(alert)</p>
                         }
-                    }
-                </section>
-            }
-
-            @if (!_editing && !string.IsNullOrWhiteSpace(_message))
-            {
-                <p class="action-message" role="status" data-testid="monitor-message">@_message</p>
+                        @if (!string.IsNullOrWhiteSpace(run.Message))
+                        {
+                            <p class="action-muted">@run.Message</p>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(run.StandardOutput))
+                        {
+                            <div class="action-output"><span>stdout</span><pre>@run.StandardOutput</pre></div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(run.StandardError))
+                        {
+                            <div class="action-output"><span>stderr</span><pre>@run.StandardError</pre></div>
+                        }
+                    </article>
+                }
             }
         </section>
-    </ChildContent>
-</AppShell>
+    }
+
+    @if (!_editing && !string.IsNullOrWhiteSpace(_message))
+    {
+<p class="action-message" role="status" data-testid="monitor-message">@_message</p>
+    }
+</section>
 
 @code {
     private IReadOnlyList<CommandMonitor>? _monitors;
@@ -236,8 +245,6 @@
     private bool _notifyOnRecovery = true;
     private bool _busy;
     private string? _message;
-
-    [Parameter] public EventCallback<string> OnTabSelected { get; set; }
 
     protected override async Task OnInitializedAsync()
     {

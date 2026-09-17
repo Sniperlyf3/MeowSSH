@@ -6,24 +6,52 @@
     <nav class="tailcat-intents" aria-label="Tailcat tools" data-testid="tailcat-intent-groups">
         @foreach (var group in IntentGroups)
         {
-            <section class="tailcat-intent-group" aria-labelledby="tailcat-intent-@group.Id">
-                <div class="tailcat-intent-group__heading">
-                    <strong id="tailcat-intent-@group.Id">@group.Label</strong>
-                    <small>@group.Description</small>
-                </div>
-                <div class="segmented tailcat-sections" role="tablist" aria-label="@group.Label">
-                    @foreach (var section in group.Sections)
-                    {
-                        <button type="button" role="tab"
-                                id="tailcat-tab-@section.Id"
-                                class="segmented__option @(_section == section.Id ? "segmented__option--on" : "")"
-                                aria-selected="@(_section == section.Id ? "true" : "false")"
-                                aria-controls="tailcat-panel-@section.Id"
-                                data-testid="tailcat-section-@section.Id"
-                                @onclick="() => _section = section.Id">@section.Label</button>
-                    }
-                </div>
-            </section>
+            @if (group.Sections.Length == 1)
+            {
+                @*
+                    A group with one section used to render as a bordered card
+                    holding a heading, a description, and a single button whose
+                    label repeated the heading word for word -- "Transfers /
+                    Browse and transfer files over Tailcat. / [Transfers]".
+                    Three lines of chrome to deliver one tap target. One section
+                    means one row.
+                *@
+                var only = group.Sections[0];
+                <button type="button" role="tab"
+                        id="tailcat-tab-@only.Id"
+                        class="tailcat-intent-row @(_section == only.Id ? "is-current" : "")"
+                        aria-selected="@(_section == only.Id ? "true" : "false")"
+                        aria-controls="tailcat-panel-@only.Id"
+                        data-testid="tailcat-section-@only.Id"
+                        @onclick="() => _section = only.Id">
+                    <span class="tailcat-intent-row__copy">
+                        <strong>@group.Label</strong>
+                        <small>@group.Description</small>
+                    </span>
+                    <Icon Name="chevron" />
+                </button>
+            }
+            else
+            {
+                <section class="tailcat-intent-group" aria-labelledby="tailcat-intent-@group.Id">
+                    <div class="tailcat-intent-group__heading">
+                        <strong id="tailcat-intent-@group.Id">@group.Label</strong>
+                        <small>@group.Description</small>
+                    </div>
+                    <div class="segmented tailcat-sections" role="tablist" aria-label="@group.Label">
+                        @foreach (var section in group.Sections)
+                        {
+                            <button type="button" role="tab"
+                                    id="tailcat-tab-@section.Id"
+                                    class="segmented__option @(_section == section.Id ? "segmented__option--on" : "")"
+                                    aria-selected="@(_section == section.Id ? "true" : "false")"
+                                    aria-controls="tailcat-panel-@section.Id"
+                                    data-testid="tailcat-section-@section.Id"
+                                    @onclick="() => _section = section.Id">@section.Label</button>
+                        }
+                    </div>
+                </section>
+            }
         }
     </nav>
 
@@ -90,7 +118,7 @@
         new("devices", "Devices & keys", "Configure this phone and manage Tailcat identities.",
         [
             new("phone", "This phone"),
-            new("keys", "Keys"),
+            new("keys", "Tailcat identities"),
         ]),
         new("network", "Network & VPN", "Route device traffic through Tailcat.",
         [

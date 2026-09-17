@@ -270,9 +270,22 @@
                 <p class="lock__error" role="alert" data-testid="host-error">@_error</p>
             }
 
+            @*
+                A dimmed primary button with nothing beside it is a dead end: the
+                user can see the thing they want and has no way to learn what
+                unlocks it. Whatever is missing is named here, above the button,
+                so the answer is on screen rather than guessed at.
+            *@
+            @if (!_busy && BlockingRequirement is { } requirement)
+            {
+                <p class="form__hint" data-testid="save-host-hint">@requirement</p>
+            }
+
             <div class="form__actions">
                 <button type="button" class="btn btn--primary btn--block"
-                        disabled="@(_busy || !IsComplete)" data-testid="save-host" @onclick="SaveAsync">
+                        disabled="@(_busy || !IsComplete)" data-testid="save-host"
+                        aria-describedby="@(BlockingRequirement is null ? null : "save-host-hint")"
+                        @onclick="SaveAsync">
                     @(_busy ? "Saving…" : "Save connection")
                 </button>
 
@@ -382,6 +395,39 @@
             if (!Uri.TryCreate(_proxyUrl.Trim(), UriKind.Absolute, out var uri)) return false;
             return uri.Scheme.Equals("socks5", StringComparison.OrdinalIgnoreCase)
                 || uri.Scheme.Equals("http", StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    /// <summary>
+    /// The one thing still standing between this form and a save, worded for the
+    /// person filling it in — or null when nothing is.
+    /// </summary>
+    /// <remarks>
+    /// Ordered the way the form is read, so the hint names the field nearest the
+    /// top that still needs attention rather than whichever check happens to run
+    /// first.
+    /// </remarks>
+    private string? BlockingRequirement
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(_label)) return "Give this connection a name to save it.";
+            if (_protocol == HostProtocol.Local) return null;
+
+            if (_protocol == HostProtocol.Serial)
+            {
+                if (string.IsNullOrWhiteSpace(_address)) return "Choose a serial device to save this connection.";
+                if (_serialBaudRate <= 0) return "Set a baud rate above zero.";
+                if (_serialDataBits is < 5 or > 8) return "Data bits must be between 5 and 8.";
+            }
+            else
+            {
+                if (string.IsNullOrWhiteSpace(_address)) return "Add a hostname or address to save this connection.";
+                if (_port is <= 0 or > 65535) return "Port must be between 1 and 65535.";
+            }
+
+            if (!ProxyIsValid) return "The proxy address must start with socks5:// or http://.";
+            return null;
         }
     }
 

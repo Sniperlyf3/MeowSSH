@@ -1,0 +1,287 @@
+/*
+  Native form controls, brought into the design system.
+
+  Every checkbox in the app used to render as the browser's own 13x13 control in
+  the platform's blue -- in an app whose accent is apricot -- at under a third of
+  the 44px touch minimum. The reason was not carelessness: `.check input` styled
+  the one checkbox that lived inside a `.check` label, and every other checkbox
+  was a bare `<input type="checkbox">` that matched no selector at all. A class
+  the markup has to remember is a class the markup will eventually forget.
+
+  So these rules are bound to the *element*, not to a class. A checkbox added
+  anywhere in the app tomorrow is styled and sized correctly without anyone
+  having to know this file exists.
+*/
+
+/* accent-color covers anything these rules do not repaint themselves
+   (indeterminate states, platform-drawn pickers). */
+:root { accent-color: var(--accent); }
+
+/* Checkboxes and radios --------------------------------------------------- */
+
+/*
+  The control is 44x44 for real -- that is what the element measures, what a
+  thumb hits, and what a guard test can assert. The box the user *sees* is 22px,
+  drawn by ::before and centred inside it. Growing only a decorative hit area
+  would leave the element itself measuring 22px, which is both untestable and a
+  lie about where the tap lands.
+
+  The negative margin keeps the 44px box from pushing label text away: the
+  control still occupies 22px of layout, and the extra 11px on each side overlaps
+  the padding that is already there.
+*/
+input[type="checkbox"],
+input[type="radio"] {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: none;
+  display: inline-grid;
+  place-content: center;
+  inline-size: 2.75rem;
+  block-size: 2.75rem;
+  margin: -0.6875rem;
+  border: 0;
+  background: none;
+  color: var(--text-on-accent);
+  cursor: pointer;
+  outline-offset: -0.5rem;
+}
+
+input[type="checkbox"]::before,
+input[type="radio"]::before {
+  content: "";
+  display: grid;
+  place-content: center;
+  inline-size: 1.375rem;
+  block-size: 1.375rem;
+  border: 1.5px solid var(--border-strong);
+  border-radius: var(--radius-sm, 4px);
+  background: var(--surface-sunken);
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+input[type="radio"]::before { border-radius: 50%; }
+
+input[type="checkbox"]:checked::before,
+input[type="radio"]:checked::before {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* The tick is drawn, not a glyph: a font-dependent character would shift
+   position between platforms and clip at some sizes. */
+input[type="checkbox"]:checked::after {
+  content: "";
+  position: absolute;
+  inline-size: 0.6875rem;
+  block-size: 0.375rem;
+  border-inline-start: 2px solid currentColor;
+  border-block-end: 2px solid currentColor;
+  transform: rotate(-45deg) translateY(-2px);
+}
+
+input[type="radio"]:checked::after {
+  content: "";
+  position: absolute;
+  inline-size: 0.5625rem;
+  block-size: 0.5625rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+input[type="checkbox"],
+input[type="radio"] { position: relative; }
+
+input[type="checkbox"]:focus-visible,
+input[type="radio"]:focus-visible { outline: none; }
+input[type="checkbox"]:focus-visible::before,
+input[type="radio"]:focus-visible::before { box-shadow: var(--ring); }
+
+input[type="checkbox"]:disabled,
+input[type="radio"]:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* A checkbox that reduces the user's security gets the danger colour, so it
+   cannot be mistaken for the benign toggle directly above it. */
+input[type="checkbox"].is-risky:checked::before {
+  background: var(--danger);
+  border-color: var(--danger);
+}
+input[type="checkbox"].is-risky:checked::after { color: #fff; }
+
+/* Selects ----------------------------------------------------------------- */
+
+select,
+select.field__input {
+  appearance: none;
+  -webkit-appearance: none;
+  /* Room for the chevron drawn below; without it a long option runs underneath. */
+  padding-inline-end: 2.25rem;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+                    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 1.125rem) 55%, calc(100% - 0.75rem) 55%;
+  background-size: 0.375rem 0.375rem, 0.375rem 0.375rem;
+  background-repeat: no-repeat;
+  color: var(--text);
+}
+
+/* The dropdown itself is drawn by the platform, so its colours have to be set
+   explicitly or a dark theme renders dark text on a dark list. */
+select option { background: var(--surface); color: var(--text); }
+
+/* Range ------------------------------------------------------------------- */
+
+input[type="range"] {
+  appearance: none;
+  -webkit-appearance: none;
+  inline-size: 100%;
+  /* The visible track stays slim; the control is padded to a 44px hit area so a
+     thumb can find it. */
+  block-size: 2.75rem;
+  padding-block: 1.25rem;
+  background: transparent;
+  cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+  block-size: 0.25rem;
+  border-radius: 999px;
+  background: var(--border-strong);
+}
+input[type="range"]::-moz-range-track {
+  block-size: 0.25rem;
+  border-radius: 999px;
+  background: var(--border-strong);
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  inline-size: 1.375rem;
+  block-size: 1.375rem;
+  margin-block-start: -0.5625rem;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+}
+input[type="range"]::-moz-range-thumb {
+  inline-size: 1.375rem;
+  block-size: 1.375rem;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+input[type="range"]:focus-visible { outline: none; box-shadow: var(--ring); }
+
+/* Disclosures ------------------------------------------------------------- */
+
+/*
+  A bare <summary> is as tall as its text -- 23 to 24px across the app. These are
+  the "Organisation", "Advanced connection", "More details" and "Review saved
+  report" rows, all of which are the only way to reach what is behind them.
+*/
+summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 0.5rem);
+  min-block-size: 2.75rem;
+  padding-block: var(--space-2, 0.5rem);
+  cursor: pointer;
+}
+
+summary:focus-visible { outline: none; box-shadow: var(--ring); border-radius: var(--radius-sm, 4px); }
+
+/* The default triangle sits on the text baseline and cannot be aligned; the
+   app draws its own, which also lets it animate on open. */
+summary { list-style: none; }
+summary::-webkit-details-marker { display: none; }
+summary::before {
+  content: "";
+  flex: none;
+  inline-size: 0.5rem;
+  block-size: 0.5rem;
+  border-inline-end: 2px solid var(--text-faint);
+  border-block-end: 2px solid var(--text-faint);
+  transform: rotate(-45deg);
+  transition: transform 140ms ease;
+}
+details[open] > summary::before { transform: rotate(45deg); }
+
+/* Segmented controls ------------------------------------------------------ */
+
+.segmented__option {
+  /* Was 36px tall. */
+  min-block-size: 2.75rem;
+}
+
+/*
+  The selected segment used to take the full accent fill -- the same treatment as
+  a primary button -- so on the Tailcat hub the loudest thing on screen was a tab
+  selection rather than an action. It now reads as selected without competing.
+*/
+.segmented__option--on {
+  background: var(--accent-wash);
+  color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent-line);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  input[type="checkbox"],
+  input[type="radio"],
+  .segmented__option,
+  summary::before { transition: none; }
+}
+
+/* Breadcrumbs -------------------------------------------------------------- */
+
+/* The SFTP path segments were 25px tall -- the primary way to move up a
+   directory tree, and too small to hit reliably. */
+.crumbs__crumb,
+.crumbs button,
+.crumbs a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* Both axes: "/" is one character wide, and a 23px-wide target is as hard to
+     hit as a 23px-tall one. */
+  min-block-size: 2.75rem;
+  min-inline-size: 2.75rem;
+  padding-inline: var(--space-2, 0.5rem);
+}
+
+/* Fieldsets ---------------------------------------------------------------- */
+
+/*
+  A <fieldset> still carries the browser's own 2px groove border and a legend
+  notched into it. On the Tailcat panel that gave "Saved Tailcat identities
+  allowed to connect" a boxed-in look that matched nothing else on the page and
+  broke the border around a legend too wide for it. The grouping is kept for
+  assistive technology; the chrome is not.
+*/
+fieldset {
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+fieldset > legend {
+  padding: 0;
+  float: left;      /* so the following content starts on its own line */
+  inline-size: 100%;
+}
+fieldset > legend + * { clear: both; }
+
+/* Risk-bearing options ------------------------------------------------------ */
+
+/*
+  A toggle that reduces the user's security should not look like the one above it
+  that shares a folder. The rail is visible before the label is read.
+*/
+.forward-option--risky {
+  border-inline-start: 3px solid var(--danger);
+  padding-inline-start: var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--danger-wash);
+}
+.forward-option--risky strong { color: var(--danger); }

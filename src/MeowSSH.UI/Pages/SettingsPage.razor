@@ -1,3 +1,4 @@
+@using System.Globalization
 @implements IDisposable
 @inject IEntitlementService Entitlements
 @inject IStorePurchaseService Store
@@ -35,7 +36,7 @@ else if (_showPlan)
                             <span class="setting-card__title" data-testid="plan-tier">@PlanName</span>
                             <span class="setting-card__body">@PlanDescription</span>
                         </span>
-                        <span class="setting-card__value mono">@PlanStatus</span>
+                        <span class="setting-card__status" data-testid="plan-status">@PlanStatus</span>
                     </div>
 
                     @if (_products.Count > 0 && Entitlements.Current.Tier == EntitlementTier.Free)
@@ -92,7 +93,7 @@ else if (_showSessionLogSettings)
         <ChildContent>
             <section class="settings" data-testid="session-log-settings">
                 <div class="settings__section">
-                    <h2 class="section-label">Recording <span class="action-pro-badge">PRO</span></h2>
+                    <h2 class="section-label">Recording <span class="tier-badge">Pro</span></h2>
                     <label class="setting-card setting-card--toggle" for="session-log-auto-record">
                         <span class="setting-card__copy">
                             <span class="setting-card__title">Automatically record terminal output</span>
@@ -113,7 +114,7 @@ else if (_showSessionLogSettings)
                             <span class="setting-card__title">Session log history</span>
                             <span class="setting-card__body">Search output, inspect exit status, copy transcripts, export logs, or delete local history.</span>
                         </span>
-                        <span class="setting-card__value">View</span>
+                        <Icon Name="chevron" />
                     </button>
 
                     @if (!string.IsNullOrWhiteSpace(_sessionLogsMessage))
@@ -142,7 +143,7 @@ else if (_showAbout)
                             <span class="setting-card__title">MeowSSH</span>
                             <span class="setting-card__body">Installed build</span>
                         </span>
-                        <span class="setting-card__value mono" data-testid="build-version">@MeowSSH.Core.BuildInfo.Version</span>
+                        <span class="setting-card__status mono" data-testid="build-version">@MeowSSH.Core.BuildInfo.Version</span>
                     </div>
 
                     @if (ExternalLinks.PrivacyPolicy is { } privacyPolicy)
@@ -153,7 +154,7 @@ else if (_showAbout)
                                 <span class="setting-card__title">Privacy policy</span>
                                 <span class="setting-card__body">How MeowSSH handles device, connection, purchase, and optional cloud data.</span>
                             </span>
-                            <span class="setting-card__value">Open</span>
+                            <Icon Name="chevron" />
                         </button>
                     }
 
@@ -165,7 +166,7 @@ else if (_showAbout)
                                 <span class="setting-card__title">Terms of Service</span>
                                 <span class="setting-card__body">Terms governing MeowSSH use and paid features.</span>
                             </span>
-                            <span class="setting-card__value">Open</span>
+                            <Icon Name="chevron" />
                         </button>
                     }
 
@@ -177,7 +178,7 @@ else if (_showAbout)
                                 <span class="setting-card__title">Support</span>
                                 <span class="setting-card__body">Get help with connections, purchases, restore, or account access.</span>
                             </span>
-                            <span class="setting-card__value">Open</span>
+                            <Icon Name="chevron" />
                         </button>
                     }
 
@@ -204,7 +205,7 @@ else
                             <span class="setting-card__title">@PlanName</span>
                             <span class="setting-card__body">Purchases, restore and entitlement status.</span>
                         </span>
-                        <span class="setting-card__value mono">@PlanStatus</span>
+                        <span class="setting-card__status" data-testid="plan-status">@PlanStatus</span>
                     </button>
                 </div>
 
@@ -219,10 +220,10 @@ else
                     </button>
                     <button type="button" class="setting-card" data-testid="open-session-log-settings" @onclick="OpenSessionLogSettings">
                         <span class="setting-card__copy">
-                            <span class="setting-card__title">Session logs <span class="action-pro-badge">PRO</span></span>
+                            <span class="setting-card__title">Session logs <span class="tier-badge">Pro</span></span>
                             <span class="setting-card__body">Recording preference and local terminal history.</span>
                         </span>
-                        <span class="setting-card__value">@(SessionLogs.AutoRecord ? "On" : "Off")</span>
+                        <span class="setting-card__status">@(SessionLogs.AutoRecord ? "On" : "Off")</span>
                     </button>
                 </div>
 
@@ -233,14 +234,14 @@ else
                             <span class="setting-card__title">Privacy & diagnostics</span>
                             <span class="setting-card__body">Report a problem and choose whether to attach anonymized crash details.</span>
                         </span>
-                        <span class="setting-card__value">Open</span>
+                        <Icon Name="chevron" />
                     </button>
                     <button type="button" class="setting-card" data-testid="open-about-settings" @onclick="OpenAbout">
                         <span class="setting-card__copy">
                             <span class="setting-card__title">About & support</span>
                             <span class="setting-card__body">Build information, support, privacy, terms and licenses.</span>
                         </span>
-                        <span class="setting-card__value">Open</span>
+                        <Icon Name="chevron" />
                     </button>
                 </div>
             </section>
@@ -280,9 +281,41 @@ else
         _ => "Core SSH, SFTP, keys, forwarding, and basic Tailcat remain free.",
     };
 
-    private string PlanStatus => Entitlements.Current.ValidUntilUtc is { } until
-        ? $"verified until {until.LocalDateTime:g}"
-        : Entitlements.Current.Tier == EntitlementTier.Free ? "free" : "verified";
+    /// <summary>
+    /// How long the current entitlement lasts, in words a person would use.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A lifetime grant carries a far-future expiry rather than a null one, and
+    /// formatting that literally printed <c>verified until 12/31/9999 23:59</c>
+    /// in accent monospace — the loudest thing on both screens whose whole job is
+    /// to make a purchase feel trustworthy. Anything beyond a human horizon is a
+    /// sentinel, not a date, and is reported as "Lifetime".
+    /// </para>
+    /// <para>
+    /// Real expiries are formatted with the device's own culture and a named
+    /// month. <c>:g</c> gave <c>12/31/9999</c> — month-first, which most of the
+    /// world reads the other way round, and ambiguous for the first twelve days
+    /// of every month.
+    /// </para>
+    /// </remarks>
+    private string PlanStatus
+    {
+        get
+        {
+            if (Entitlements.Current.Tier == EntitlementTier.Free) return "Free";
+            if (Entitlements.Current.ValidUntilUtc is not { } until) return "Active";
+            return until > DateTimeOffset.UtcNow.AddYears(SentinelHorizonYears)
+                ? "Lifetime"
+                : $"Until {until.LocalDateTime.ToString("d MMM yyyy", CultureInfo.CurrentCulture)}";
+        }
+    }
+
+    /// <summary>
+    /// Past this many years out, an expiry is a sentinel rather than a promise.
+    /// No subscription this app sells runs for a decade.
+    /// </summary>
+    private const int SentinelHorizonYears = 10;
 
     protected override void OnInitialized() => Entitlements.Changed += OnEntitlementChanged;
 

@@ -239,11 +239,26 @@ h1:focus, h2:focus, h3:focus, [tabindex="-1"]:focus { outline: none; box-shadow:
   white-space: nowrap;
 }
 
-/* Hide the latency/reason line before the badge would be squeezed off a narrow
-   row. The badge carries the state; the detail is an elaboration on it. */
-@media (max-width: 380px) {
+/*
+  Hide the latency/transport chip on phones, not just on very narrow ones.
+
+  The breakpoint used to be 380px, so at a normal 412px handset the row still
+  carried "18 ms" *and* a status badge, and between them they took enough of the
+  row that `prod-web-01` -- eleven characters -- was ellipsised. The badge
+  already carries the state; the millisecond count is an elaboration, and a
+  hostname the user cannot read is a worse trade than a latency they can get
+  from the session itself.
+
+  Above this width both fit, so both stay.
+*/
+@media (max-width: 460px) {
   .host__meta .transport { display: none; }
 }
+
+/* The badge must not win a fight with the name either: it shrinks before the
+   name does, and the name is what identifies the row. */
+.host__meta { min-width: 0; }
+.host__meta .badge { overflow: hidden; text-overflow: ellipsis; }
 
 /* Badges --------------------------------------------------------------- */
 
@@ -393,7 +408,21 @@ h1:focus, h2:focus, h3:focus, [tabindex="-1"]:focus { outline: none; box-shadow:
 
 .lock__copy { display: flex; flex-direction: column; gap: var(--space-2); }
 .lock__title { font-size: var(--text-2xl); font-weight: 600; letter-spacing: -0.02em; }
-.lock__body { color: var(--text-muted); font-size: var(--text-sm); line-height: 1.55; }
+/*
+  Left-aligned, though the heading and the button above and below it stay
+  centred. The setup screen's explanation runs to five lines, and centred text
+  gives the eye no consistent left edge to return to at the start of each one --
+  which is precisely the paragraph in the app that most needs to be read rather
+  than skimmed. Short one-line bodies elsewhere are unaffected: a single line
+  looks centred either way inside a centred column.
+*/
+.lock__body {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  text-align: left;
+  text-wrap: pretty;
+}
 
 .lock__error {
   width: 100%;
@@ -721,6 +750,29 @@ h1:focus, h2:focus, h3:focus, [tabindex="-1"]:focus { outline: none; box-shadow:
 .field--narrow { flex: 0 0 6.5rem; }
 .form__actions { display: flex; flex-direction: column; gap: var(--space-3); margin-top: var(--space-2); }
 
+/*
+  Why the primary action below is not available yet. Deliberately not the danger
+  colour: nothing has gone wrong, the form is simply not finished, and painting
+  that red teaches people to ignore red.
+*/
+.form__hint {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  margin-top: var(--space-4);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  text-align: left;
+}
+.form__hint::before {
+  content: "";
+  flex: none;
+  inline-size: 0.375rem;
+  block-size: 0.375rem;
+  border-radius: 50%;
+  background: var(--warn);
+}
+
 .field__with-action { display: flex; gap: var(--space-2); align-items: center; }
 .field__with-action .field__input { flex: 1 1 auto; min-width: 0; }
 
@@ -872,11 +924,25 @@ h1:focus, h2:focus, h3:focus, [tabindex="-1"]:focus { outline: none; box-shadow:
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--surface);
+
+  /* Explicit, because several of these cards are <button> elements, which
+     centre their text by default. Centred, wrapping descriptions gave the
+     settings list a ragged edge the eye cannot return to, and made it read as a
+     different app from the left-aligned host and file lists. */
+  text-align: left;
+
+  /* A long value used to push the copy column down to 55px, wrapping a
+     one-line description into six. Below the breakpoint the value drops to its
+     own line instead of competing for the row. */
+  flex-wrap: wrap;
+  row-gap: var(--space-2);
 }
 
 .setting-card__copy {
   display: flex;
-  flex: 1 1 auto;
+  /* basis 12rem, not auto: with an auto basis the copy column shrinks to
+     whatever the value leaves behind, however little that is. */
+  flex: 1 1 12rem;
   min-width: 0;
   flex-direction: column;
   gap: var(--space-1);
@@ -893,11 +959,68 @@ h1:focus, h2:focus, h3:focus, [tabindex="-1"]:focus { outline: none; box-shadow:
   line-height: 1.45;
 }
 
+/*
+  An *action* the card performs: "Customize", "Open". Accent-coloured, because
+  it is the thing to press.
+*/
 .setting-card__value {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-inline-start: auto;
   color: var(--accent);
   font-size: var(--text-sm);
   font-weight: 600;
+  text-align: end;
+}
+
+/*
+  The chevron that replaced a row of "Open" buttons. The whole card is already
+  the control, so a second nested affordance only invited the reader to wonder
+  what the rest of the card did.
+*/
+.setting-card > .icon {
+  flex: none;
+  margin-inline-start: auto;
+  color: var(--text-faint);
+}
+
+/*
+  A *status* the card reports: "Off", "Lifetime". Previously styled identically
+  to an action, so a piece of read-only text invited a press. Neutral, and
+  carried in a pill so it reads as a state rather than a link.
+*/
+.setting-card__status {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-inline-start: auto;
+  padding: 0.125rem var(--space-2);
+  border-radius: 999px;
+  background: var(--surface-raised);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-align: end;
+}
+
+/*
+  The tier marker. It used to be typed into the heading string ("Session logs
+  PRO"), so it inherited heading weight and read as part of the feature's name.
+*/
+.tier-badge {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  padding: 0 0.3125rem;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius-sm);
+  background: var(--accent-wash);
+  color: var(--accent);
+  font-family: var(--font-ui);
+  font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1.6;
 }
 
 .range {

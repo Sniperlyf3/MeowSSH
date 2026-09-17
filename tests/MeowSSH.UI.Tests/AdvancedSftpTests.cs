@@ -10,9 +10,12 @@ public sealed class AdvancedSftpTests(TestHostFixture fixture)
         var page = await fixture.NewPageAsync();
         await page.GetByTestId("tab-files").ClickAsync();
         await Assertions.Expect(page.GetByTestId("files-host-list")).ToBeVisibleAsync();
-        var more = page.Locator("[data-testid='files-host-more'][data-host-label='prod-web-01']");
-        await more.Locator("summary").ClickAsync();
-        await more.Locator("[data-testid='advanced-sftp-host']").ClickAsync();
+
+        // One entry point, then the host list answers "which host?". It used to
+        // be a per-row disclosure, which put six identical "Advanced SFTP"
+        // buttons on one screen.
+        await page.GetByTestId("advanced-sftp-open").ClickAsync();
+        await page.GetByTestId("files-host-list").GetByText("prod-web-01").ClickAsync();
         await Assertions.Expect(page.GetByTestId("advanced-sftp-page")).ToBeVisibleAsync();
         return page;
     }
@@ -24,16 +27,23 @@ public sealed class AdvancedSftpTests(TestHostFixture fixture)
         page.Locator($"[data-testid='advanced-folder'][data-file-name='{name}']");
 
     [Fact]
-    public async Task NormalFilesLandingKeepsAdvancedSftpContextual()
+    public async Task AdvancedSftpIsOfferedOnceAndAsksWhichHostAfterwards()
     {
+        // The tool is the same tool whichever host it runs against, so the
+        // landing page offers it once rather than repeating it on every row.
         var page = await fixture.NewPageAsync();
         await page.GetByTestId("tab-files").ClickAsync();
-        var more = page.Locator("[data-testid='files-host-more'][data-host-label='prod-web-01']");
 
-        await Assertions.Expect(more).ToBeVisibleAsync();
-        await Assertions.Expect(more.Locator("[data-testid='advanced-sftp-host']")).Not.ToBeVisibleAsync();
-        await more.Locator("summary").ClickAsync();
-        await Assertions.Expect(more.Locator("[data-testid='advanced-sftp-host']")).ToBeVisibleAsync();
+        await Assertions.Expect(page.GetByTestId("advanced-sftp-open")).ToBeVisibleAsync();
+        Assert.Equal(1, await page.GetByTestId("advanced-sftp-open").CountAsync());
+
+        // Tapping a host browses it, until the advanced entry point says otherwise.
+        await page.GetByTestId("advanced-sftp-open").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("advanced-sftp-cancel")).ToBeVisibleAsync();
+
+        // Cancelling puts the list back to plain browsing.
+        await page.GetByTestId("advanced-sftp-cancel").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("advanced-sftp-open")).ToBeVisibleAsync();
     }
 
     [Fact]

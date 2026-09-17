@@ -105,6 +105,19 @@
                     </div>
                 }
 
+                @*
+                    The card above says a report can still be exported without
+                    diagnostic data, and the button below was disabled anyway —
+                    the page told the user the action was available and then
+                    refused it. The real precondition is a description, so say so.
+                *@
+                @if (!_busy && string.IsNullOrWhiteSpace(_description))
+                {
+                    <p class="form__hint" data-testid="export-bug-report-hint">
+                        Describe what went wrong above to export a report.
+                    </p>
+                }
+
                 <button type="button" class="btn btn--primary btn--block"
                         data-testid="export-bug-report" disabled="@(_busy || string.IsNullOrWhiteSpace(_description))"
                         @onclick="ExportAsync">

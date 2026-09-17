@@ -1,12 +1,25 @@
+/*
+  The row owns the background, not its two children.
+
+  The overflow button is a .btn--icon, which is transparent, so the column it
+  sits in showed whatever was behind the list instead of the row's own surface.
+  Down a five-row list that read as one continuous lighter stripe pinned to the
+  right edge -- a scrollbar, or a rendering fault -- rather than as a menu
+  belonging to each row. Painting the row once and letting both children sit on
+  it keeps the separator running the full width and the column attached.
+*/
 .fileitem-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: stretch;
   border-bottom: 1px solid var(--border);
+  background: var(--surface);
 }
 
 .fileitem-row:last-child { border-bottom: 0; }
-.fileitem-row .fileitem { min-width: 0; border-bottom: 0; }
+.fileitem-row:hover { background: var(--surface-raised); }
+.fileitem-row .fileitem { min-width: 0; border-bottom: 0; background: transparent; }
+.fileitem-row .fileitem:hover { background: transparent; }
 
 .fileitem__menu {
   align-self: stretch;
@@ -14,6 +27,7 @@
   height: auto;
   border-left: 1px solid var(--border);
   border-radius: 0;
+  background: transparent;
 }
 
 .files-landing__hint {
