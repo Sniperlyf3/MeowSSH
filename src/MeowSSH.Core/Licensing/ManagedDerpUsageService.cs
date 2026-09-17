@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Security;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace MeowSSH.Core.Licensing;
