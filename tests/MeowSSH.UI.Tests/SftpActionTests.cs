@@ -19,6 +19,48 @@ public class SftpActionTests(TestHostFixture fixture)
         page.Locator($"[data-testid=file-actions][data-file-name='{name}']");
 
     [Fact]
+    public async Task UploadingAnExistingFileRequiresAnExplicitDecision()
+    {
+        var page = await OpenFilesAsync();
+
+        await page.GetByTestId("upload-file").ClickAsync();
+
+        await Assertions.Expect(page.GetByTestId("upload-conflict")).ToBeVisibleAsync();
+        await Assertions.Expect(page.GetByTestId("upload-conflict")).ToContainTextAsync("Replace start.sh?");
+        await Assertions.Expect(Entry(page, "start.sh")).ToContainTextAsync("402 B");
+    }
+
+    [Fact]
+    public async Task CancellingAnUploadConflictPreservesTheRemoteFile()
+    {
+        var page = await OpenFilesAsync();
+
+        await page.GetByTestId("upload-file").ClickAsync();
+        await page.GetByTestId("cancel-upload").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("upload-conflict")).ToHaveCountAsync(0);
+
+        await Actions(page, "start.sh").ClickAsync();
+        await page.GetByTestId("view-text").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("text-content"))
+            .ToHaveValueAsync("#!/bin/sh\necho hello from MeowSSH\n");
+    }
+
+    [Fact]
+    public async Task ReplacingAnUploadConflictOverwritesOnlyAfterConfirmation()
+    {
+        var page = await OpenFilesAsync();
+
+        await page.GetByTestId("upload-file").ClickAsync();
+        await page.GetByTestId("replace-upload").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("upload-conflict")).ToHaveCountAsync(0);
+
+        await Actions(page, "start.sh").ClickAsync();
+        await page.GetByTestId("view-text").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("text-content"))
+            .ToHaveValueAsync("#!/bin/sh\necho uploaded replacement\n");
+    }
+
+    [Fact]
     public async Task FileActionsCanDeleteAFile()
     {
         var page = await OpenFilesAsync();
