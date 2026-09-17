@@ -146,6 +146,13 @@
             <progress class="transfer-progress" max="1" value="@_transferFraction.Value"></progress>
             <p class="sheet__body">@($"{_transferFraction.Value:P0}")</p>
         }
+        @if (_transferCancellation is not null)
+        {
+            <button type="button" class="btn btn--ghost btn--block"
+                    data-testid="cancel-transfer" @onclick="CancelTransfer">
+                Cancel transfer
+            </button>
+        }
     </div>
 }
 
@@ -343,6 +350,7 @@
     private bool _textSaving;
     private string? _transferStatus;
     private double? _transferFraction;
+    private CancellationTokenSource? _transferCancellation;
     private string? _notice;
     private PendingUpload? _pendingUpload;
 
@@ -658,13 +666,18 @@
     {
         try
         {
-            BeginTransfer($"Uploading {picked.Name}");
+            var cancellationToken = BeginTransfer($"Uploading {picked.Name}");
             await Sftp.UploadAsync(
                 picked.TemporaryPath,
                 destination,
-                TransferProgressReporter());
+                TransferProgressReporter(),
+                cancellationToken);
             EndTransfer();
             await LoadAsync();
+        }
+        catch (OperationCanceledException)
+        {
+            EndTransfer();
         }
         catch (Exception ex) when (ex is SshException or IOException or UnauthorizedAccessException)
         {
@@ -683,11 +696,15 @@
         var temporaryPath = LocalFiles.CreateTemporaryPath(entry.Name);
         try
         {
-            BeginTransfer($"Downloading {entry.Name}");
-            await Sftp.DownloadAsync(entry.Path, temporaryPath, TransferProgressReporter());
-            var destination = await LocalFiles.PublishDownloadAsync(temporaryPath, entry.Name);
+            var cancellationToken = BeginTransfer($"Downloading {entry.Name}");
+            await Sftp.DownloadAsync(entry.Path, temporaryPath, TransferProgressReporter(), cancellationToken);
+            var destination = await LocalFiles.PublishDownloadAsync(temporaryPath, entry.Name, cancellationToken);
             EndTransfer();
             _notice = $"Saved to {destination}";
+        }
+        catch (OperationCanceledException)
+        {
+            EndTransfer();
         }
         catch (Exception ex) when (ex is SshException or IOException or UnauthorizedAccessException)
         {
@@ -712,9 +729,9 @@
         var temporaryPath = LocalFiles.CreateTemporaryPath(entry.Name);
         try
         {
-            BeginTransfer($"Opening {entry.Name}");
-            await Sftp.DownloadAsync(entry.Path, temporaryPath, TransferProgressReporter());
-            var bytes = await File.ReadAllBytesAsync(temporaryPath);
+            var cancellationToken = BeginTransfer($"Opening {entry.Name}");
+            await Sftp.DownloadAsync(entry.Path, temporaryPath, TransferProgressReporter(), cancellationToken);
+            var bytes = await File.ReadAllBytesAsync(temporaryPath, cancellationToken);
             if (bytes.Contains((byte)0))
                 throw new InvalidDataException("This file appears to be binary, so it cannot be shown as text.");
 
@@ -723,6 +740,10 @@
             _textTarget = entry;
             _textContent = text;
             _textOriginal = text;
+            EndTransfer();
+        }
+        catch (OperationCanceledException)
+        {
             EndTransfer();
         }
         catch (DecoderFallbackException)
@@ -749,12 +770,16 @@
         try
         {
             await File.WriteAllTextAsync(temporaryPath, _textContent, new UTF8Encoding(false));
-            BeginTransfer($"Saving {_textTarget.Name}");
-            await Sftp.UploadAsync(temporaryPath, _textTarget.Path, TransferProgressReporter());
+            var cancellationToken = BeginTransfer($"Saving {_textTarget.Name}");
+            await Sftp.UploadAsync(temporaryPath, _textTarget.Path, TransferProgressReporter(), cancellationToken);
             _textOriginal = _textContent;
             EndTransfer();
             _notice = "Saved.";
             await LoadAsync();
+        }
+        catch (OperationCanceledException)
+        {
+            EndTransfer();
         }
         catch (Exception ex) when (ex is SshException or IOException or UnauthorizedAccessException)
         {
@@ -782,17 +807,31 @@
             _ = InvokeAsync(StateHasChanged);
         });
 
-    private void BeginTransfer(string status)
+    private CancellationToken BeginTransfer(string status)
     {
+        _transferCancellation?.Dispose();
+        _transferCancellation = new CancellationTokenSource();
         _transferStatus = status;
         _transferFraction = null;
+        StateHasChanged();
+        return _transferCancellation.Token;
+    }
+
+    private void CancelTransfer()
+    {
+        if (_transferCancellation is null) return;
+        _transferStatus = "Cancelling…";
+        _transferCancellation.Cancel();
         StateHasChanged();
     }
 
     private void EndTransfer()
     {
+        var cancellation = _transferCancellation;
+        _transferCancellation = null;
         _transferStatus = null;
         _transferFraction = null;
+        cancellation?.Dispose();
         StateHasChanged();
     }
 
@@ -840,8 +879,15 @@
     private Task OnClose()
     {
         CancelPendingUpload();
+        _transferCancellation?.Cancel();
         return OnClosed.InvokeAsync();
     }
 
-    public void Dispose() => CancelPendingUpload();
+    public void Dispose()
+    {
+        CancelPendingUpload();
+        _transferCancellation?.Cancel();
+        _transferCancellation?.Dispose();
+        _transferCancellation = null;
+    }
 }

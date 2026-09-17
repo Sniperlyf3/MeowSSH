@@ -185,6 +185,11 @@ public sealed class FakeSftpSession : ISftpSession
     public async Task DownloadAsync(string remotePath, string localPath,
         IProgress<TransferProgress>? progress = null, CancellationToken cancellationToken = default)
     {
+        // app.log is deliberately slow so Playwright can prove that a user
+        // cancellation reaches the SFTP operation instead of merely hiding UI.
+        if (remotePath == RemotePath.Join(Home, "app.log"))
+            await Task.Delay(TimeSpan.FromSeconds(30), cancellationToken);
+
         if (!_contents.TryGetValue(remotePath, out var bytes))
             bytes = System.Text.Encoding.UTF8.GetBytes($"fake contents of {remotePath}\n");
         await File.WriteAllBytesAsync(localPath, bytes, cancellationToken);
