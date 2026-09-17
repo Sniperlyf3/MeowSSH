@@ -172,6 +172,8 @@ public class HostEditorTests(TestHostFixture fixture)
         await page.GetByTestId("host-label").FillAsync("never-saved");
 
         await page.GetByTestId("cancel-host").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("discard-host-draft")).ToBeVisibleAsync();
+        await page.GetByTestId("discard-host-draft-confirm").ClickAsync();
 
         await Assertions.Expect(page.GetByTestId("host-list").First).ToBeVisibleAsync();
         await Assertions.Expect(page.GetByText("never-saved")).ToHaveCountAsync(0);
