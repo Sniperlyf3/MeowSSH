@@ -61,6 +61,23 @@ public class SftpActionTests(TestHostFixture fixture)
     }
 
     [Fact]
+    public async Task ActiveDownloadCanBeCancelledWithoutShowingAnErrorOrPublishingAFile()
+    {
+        var page = await OpenFilesAsync();
+
+        await Actions(page, "app.log").ClickAsync();
+        await page.GetByTestId("download-file").ClickAsync();
+
+        await Assertions.Expect(page.GetByTestId("transfer-status")).ToContainTextAsync("Downloading app.log");
+        await Assertions.Expect(page.GetByTestId("cancel-transfer")).ToBeVisibleAsync();
+        await page.GetByTestId("cancel-transfer").ClickAsync();
+
+        await Assertions.Expect(page.GetByTestId("transfer-status")).ToHaveCountAsync(0);
+        await Assertions.Expect(page.GetByTestId("file-notice")).ToHaveCountAsync(0);
+        await Assertions.Expect(page.GetByTestId("files-error")).ToHaveCountAsync(0);
+    }
+
+    [Fact]
     public async Task FileActionsCanDeleteAFile()
     {
         var page = await OpenFilesAsync();
