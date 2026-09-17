@@ -26,8 +26,8 @@ This document is the working contract for the commercial-polish pass across the 
 | Files / SFTP | Reviewed: normal host browsing is primary; Advanced SFTP is contextual per host | Keep browse/upload primary; keep search/bookmarks/recursive tooling contextual | P1 |
 | Keys / credentials | Reviewed: focused Generate / Import / Device / Public / Password flows and contextual saved-key management | Keep creation concerns separate from day-to-day key management | P1 |
 | Actions | Reviewed: Run remains primary; management and sequence configuration are contextual | Keep result viewing separate from the library state and specialist editing controls out of the run path | P1 |
-| Port forwarding | In review: common route fields stay immediate; saved profiles and specialist listener tuning move behind disclosure | Preserve fast “start a forward” path; profiles/history/configuration remain secondary | P1 |
-| Tailcat | In review: feature panels grouped by user intent | Group by Connect, Devices/Keys, Network/VPN, Transfers and Diagnostics without removing capability | P1 |
+| Port forwarding | Reviewed: common route fields stay immediate; saved profiles and specialist listener tuning are disclosed | Preserve fast “start a forward” path; profiles/history/configuration remain secondary | P1 |
+| Tailcat | Reviewed: panels grouped by Connect, Devices/Keys, Network/VPN, Transfers and Diagnostics | Group by user intent without removing capability | P1 |
 | Session logs / monitoring | Already separate specialist pages | Keep them out of root screens except concise entry/status cards | P2 |
 | Crash / bug reports | Reviewed: privacy-first local crash capture with explicit review/export/discard and manual diagnostics entry | Preserve consent-first local-only behavior unless the user explicitly chooses an export | P0 launch quality |
 | Vault setup/unlock | Focused flows | Preserve minimal unlock path; recovery/security detail appears only when required | P2 |
@@ -60,16 +60,16 @@ These are targets used during the audit, not arbitrary hard limits when security
 - [x] Review Keys/Credentials navigation; split Generate / Import / Device / Public / Password concerns from day-to-day key management. (PR #98)
 - [x] Review Actions library/editor/run-result navigation and remove peer controls that are only relevant while editing. (PR #95)
 - [x] Review Settings root information architecture; move detailed toggles to their owning sub-pages and keep concise status summaries. (PR #94)
-- [ ] Review Port Forwarding profile management and creation flow. (PR #100 in validation)
-- [ ] Review Tailcat panels and group by user intent instead of feature implementation. (PR #101 in validation)
+- [x] Review Port Forwarding profile management and creation flow. (PR #100)
+- [x] Review Tailcat panels and group by user intent instead of feature implementation. (PR #101)
 
 ### P2 — consistency and polish pass
 
 - [ ] Audit every top bar, contextual action sheet, confirmation sheet and empty state for consistent action hierarchy and labels.
 - [ ] Ensure Back/Cancel semantics are consistent and never unexpectedly destroy draft state.
-- [ ] Verify all phone-width screens for overflow and minimum comfortable touch targets.
-- [ ] Add or extend Playwright regressions for control budgets and common-path interaction counts.
-- [ ] Accessibility pass for labels, selected/current state, keyboard focus and native control semantics.
+- [ ] Verify all phone-width screens for overflow and minimum comfortable touch targets. (PR #102 in validation)
+- [ ] Add or extend Playwright regressions for control budgets and common-path interaction counts. (PR #103 in validation)
+- [ ] Accessibility pass for labels, selected/current state, keyboard focus and native control semantics. (PR #104 in validation)
 
 ## Definition of done for a reviewed screen
 
