@@ -64,7 +64,7 @@ builder.Services.AddScoped(_ => new FakeVaultSession(
 builder.Services.AddScoped<IVaultSession>(sp => sp.GetRequiredService<FakeVaultSession>());
 
 builder.Services.AddScoped<IActiveSessionLifetime, NoOpActiveSessionLifetime>();
-builder.Services.AddScoped<ILocalFileTransferService, LocalFileTransferService>();
+builder.Services.AddScoped<ILocalFileTransferService, FakeLocalFileTransferService>();
 builder.Services.AddScoped<IExternalUriLauncher, NoOpExternalUriLauncher>();
 builder.Services.AddScoped<IThirdPartyNoticeProvider, FakeThirdPartyNoticeProvider>();
 builder.Services.AddScoped<IPendingDiagnosticReportStore>(_ => new FilePendingDiagnosticReportStore(
