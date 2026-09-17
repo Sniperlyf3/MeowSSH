@@ -38,7 +38,10 @@ public static class MauiProgram
             LicensingBuildConfig.PublicKeySubjectPublicKeyInfoBase64,
             "dev.sniperlyf3.meowssh"));
         builder.Services.AddSingleton(_ => new HttpClient());
-        builder.Services.AddSingleton<IEntitlementGrantProvider, LicensingApiGrantProvider>();
+        builder.Services.AddSingleton<LicensingApiGrantProvider>();
+        builder.Services.AddSingleton<IEntitlementGrantProvider>(sp => sp.GetRequiredService<LicensingApiGrantProvider>());
+        builder.Services.AddSingleton<IManagedDerpGrantProvider>(sp => sp.GetRequiredService<LicensingApiGrantProvider>());
+        builder.Services.AddSingleton<IManagedDerpRegistrationService, ManagedDerpRegistrationService>();
         builder.Services.AddSingleton<EntitlementService>();
         builder.Services.AddSingleton<IEntitlementService>(sp => sp.GetRequiredService<EntitlementService>());
 
