@@ -15,8 +15,10 @@
                     @foreach (var section in group.Sections)
                     {
                         <button type="button" role="tab"
+                                id="tailcat-tab-@section.Id"
                                 class="segmented__option @(_section == section.Id ? "segmented__option--on" : "")"
                                 aria-selected="@(_section == section.Id ? "true" : "false")"
+                                aria-controls="tailcat-panel-@section.Id"
                                 data-testid="tailcat-section-@section.Id"
                                 @onclick="() => _section = section.Id">@section.Label</button>
                     }
@@ -25,38 +27,44 @@
         }
     </nav>
 
-    @if (_section == "workspaces")
-    {
-        <TailcatWorkspacesPanel />
-    }
-    else if (_section == "phone")
-    {
-        <TailcatPhonePanel />
-    }
-    else if (_section == "connect")
-    {
-        <TailcatConnectPanel />
-    }
-    else if (_section == "vpn")
-    {
-        <TailcatVpnPanel />
-    }
-    else if (_section == "transfers")
-    {
-        <TailcatTransfersPanel />
-    }
-    else if (_section == "address")
-    {
-        <TailcatAddressPanel />
-    }
-    else if (_section == "keys")
-    {
-        <TailcatKeysPanel />
-    }
-    else
-    {
-        <TailcatDiagnosticsPanel />
-    }
+    <div role="tabpanel"
+         id="tailcat-panel-@_section"
+         aria-labelledby="tailcat-tab-@_section"
+         tabindex="0"
+         data-testid="tailcat-active-panel">
+        @if (_section == "workspaces")
+        {
+            <TailcatWorkspacesPanel />
+        }
+        else if (_section == "phone")
+        {
+            <TailcatPhonePanel />
+        }
+        else if (_section == "connect")
+        {
+            <TailcatConnectPanel />
+        }
+        else if (_section == "vpn")
+        {
+            <TailcatVpnPanel />
+        }
+        else if (_section == "transfers")
+        {
+            <TailcatTransfersPanel />
+        }
+        else if (_section == "address")
+        {
+            <TailcatAddressPanel />
+        }
+        else if (_section == "keys")
+        {
+            <TailcatKeysPanel />
+        }
+        else
+        {
+            <TailcatDiagnosticsPanel />
+        }
+    </div>
 
     @if (_snapshot.RecentLogLines.Count > 0)
     {
