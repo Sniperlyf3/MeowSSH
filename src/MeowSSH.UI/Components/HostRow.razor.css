@@ -12,9 +12,9 @@
 .host__manage-trigger {
     display: grid;
     place-items: center;
-    width: 2.75rem;
-    min-width: 2.75rem;
-    min-height: 2.75rem;
+    width: 44px;
+    min-width: 44px;
+    min-height: 44px;
     padding: 0;
     border: 0;
     background: var(--surface);
