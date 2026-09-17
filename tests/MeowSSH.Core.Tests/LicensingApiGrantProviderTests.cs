@@ -9,6 +9,8 @@ namespace MeowSSH.Core.Tests;
 
 public sealed class LicensingApiGrantProviderTests
 {
+    private const string ClientNode = "nodekey:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    private const string OtherNode = "nodekey:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
     private static readonly JsonSerializerOptions WebJson = new(JsonSerializerDefaults.Web);
 
     [Fact]
@@ -78,6 +80,73 @@ public sealed class LicensingApiGrantProviderTests
     }
 
     [Fact]
+    public async Task NodeBoundFreeGrantUsesFreeIntegrityFlow()
+    {
+        using var signer = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var now = DateTimeOffset.UtcNow;
+        var claims = new EntitlementGrantClaims(
+            "grant-free",
+            "dev.sniperlyf3.meowssh",
+            EntitlementTier.Free,
+            now,
+            now.AddHours(1),
+            ClientNode);
+        var handler = new RecordingHandler(CreateSignedResponse(signer, claims));
+        using var http = new HttpClient(handler);
+        var provider = CreateProvider(signer, http, now, new FakeStore(purchases: []));
+
+        var grant = await provider.GetNodeBoundGrantAsync(ClientNode);
+
+        Assert.False(string.IsNullOrWhiteSpace(grant.PayloadBase64));
+        Assert.Equal("https://licensing.example/v1/entitlements/free/verify", handler.RequestUri?.ToString());
+        using var body = JsonDocument.Parse(handler.RequestBody!);
+        Assert.Equal(ClientNode, body.RootElement.GetProperty("clientNodePublic").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(body.RootElement.GetProperty("integrityNonce").GetString()));
+    }
+
+    [Fact]
+    public async Task NodeBoundPaidGrantUsesPaidIntegrityFlowAndIncludesNode()
+    {
+        using var signer = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var now = DateTimeOffset.UtcNow;
+        var claims = new EntitlementGrantClaims(
+            "grant-pro",
+            "dev.sniperlyf3.meowssh",
+            EntitlementTier.Pro,
+            now,
+            now.AddHours(1),
+            ClientNode);
+        var handler = new RecordingHandler(CreateSignedResponse(signer, claims));
+        using var http = new HttpClient(handler);
+        var provider = CreateProvider(signer, http, now);
+
+        await provider.GetNodeBoundGrantAsync(ClientNode);
+
+        Assert.Equal("https://licensing.example/v1/entitlements/google-play/verify", handler.RequestUri?.ToString());
+        using var body = JsonDocument.Parse(handler.RequestBody!);
+        Assert.Equal(ClientNode, body.RootElement.GetProperty("clientNodePublic").GetString());
+        Assert.Single(body.RootElement.GetProperty("purchases").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task NodeBoundGrantRejectsGrantForAnotherNode()
+    {
+        using var signer = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var now = DateTimeOffset.UtcNow;
+        var claims = new EntitlementGrantClaims(
+            "grant-wrong-node",
+            "dev.sniperlyf3.meowssh",
+            EntitlementTier.Free,
+            now,
+            now.AddHours(1),
+            OtherNode);
+        using var http = new HttpClient(new StaticHandler(CreateSignedResponse(signer, claims)));
+        var provider = CreateProvider(signer, http, now, new FakeStore(purchases: []));
+
+        await Assert.ThrowsAsync<SecurityException>(() => provider.GetNodeBoundGrantAsync(ClientNode));
+    }
+
+    [Fact]
     public void IntegrityNonceIsStableAcrossPurchaseOrderingAndChangesWhenRequestChanges()
     {
         var first = new[]
@@ -90,19 +159,25 @@ public sealed class LicensingApiGrantProviderTests
         var nonce1 = LicensingApiGrantProvider.CreateIntegrityNonce("dev.sniperlyf3.meowssh", first, "request-1");
         var nonce2 = LicensingApiGrantProvider.CreateIntegrityNonce("dev.sniperlyf3.meowssh", reversed, "request-1");
         var nonce3 = LicensingApiGrantProvider.CreateIntegrityNonce("dev.sniperlyf3.meowssh", first, "request-2");
+        var nodeNonce = LicensingApiGrantProvider.CreateIntegrityNonce("dev.sniperlyf3.meowssh", first, "request-1", ClientNode);
 
         Assert.Equal(nonce1, nonce2);
         Assert.NotEqual(nonce1, nonce3);
+        Assert.NotEqual(nonce1, nodeNonce);
         Assert.False(nonce1.Contains('+', StringComparison.Ordinal));
         Assert.False(nonce1.Contains('/', StringComparison.Ordinal));
         Assert.False(nonce1.Contains('=', StringComparison.Ordinal));
     }
 
-    private static LicensingApiGrantProvider CreateProvider(ECDsa signer, HttpClient http, DateTimeOffset now)
+    private static LicensingApiGrantProvider CreateProvider(
+        ECDsa signer,
+        HttpClient http,
+        DateTimeOffset now,
+        IStorePurchaseService? store = null)
     {
         var publicKey = Convert.ToBase64String(signer.ExportSubjectPublicKeyInfo());
         return new LicensingApiGrantProvider(
-            new FakeStore(),
+            store ?? new FakeStore(),
             new FakeIntegrity(),
             http,
             new LicensingApiOptions(new Uri("https://licensing.example/"), publicKey, "dev.sniperlyf3.meowssh"),
@@ -121,7 +196,7 @@ public sealed class LicensingApiGrantProviderTests
         };
     }
 
-    private sealed class FakeStore(bool throwIfCalled = false) : IStorePurchaseService
+    private sealed class FakeStore(bool throwIfCalled = false, IReadOnlyList<StorePurchase>? purchases = null) : IStorePurchaseService
     {
         public Task<IReadOnlyList<StoreProduct>> GetProductsAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<StoreProduct>>([]);
@@ -129,7 +204,7 @@ public sealed class LicensingApiGrantProviderTests
         public Task<IReadOnlyList<StorePurchase>> GetPurchasesAsync(CancellationToken cancellationToken = default)
         {
             if (throwIfCalled) throw new InvalidOperationException("Store should not be called.");
-            return Task.FromResult<IReadOnlyList<StorePurchase>>([
+            return Task.FromResult(purchases ?? (IReadOnlyList<StorePurchase>)[
                 new StorePurchase(MeowSshProducts.ProLifetime, "purchase-token", false, false),
             ]);
         }
@@ -155,6 +230,21 @@ public sealed class LicensingApiGrantProviderTests
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
             Task.FromResult(response);
+    }
+
+    private sealed class RecordingHandler(HttpResponseMessage response) : HttpMessageHandler
+    {
+        public Uri? RequestUri { get; private set; }
+        public string? RequestBody { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            RequestUri = request.RequestUri;
+            RequestBody = request.Content is null
+                ? null
+                : await request.Content.ReadAsStringAsync(cancellationToken);
+            return response;
+        }
     }
 
     private sealed class ThrowingHandler : HttpMessageHandler
