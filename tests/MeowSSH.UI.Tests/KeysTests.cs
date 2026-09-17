@@ -171,7 +171,7 @@ public class KeysTests(TestHostFixture fixture)
     }
 
     [Fact]
-    public async Task ChangingCreationTypeClearsPrivateMaterial()
+    public async Task ChangingCreationTypeClearsPrivateMaterialAfterExplicitDiscard()
     {
         var page = await fixture.NewPageAsync("/?keys");
         await OpenImportPrivateKeyAsync(page);
@@ -179,6 +179,8 @@ public class KeysTests(TestHostFixture fixture)
         await page.GetByTestId("credential-secret").FillAsync(SampleKey);
 
         await page.GetByTestId("change-credential-type").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("discard-credential-draft")).ToBeVisibleAsync();
+        await page.GetByTestId("discard-credential-draft-confirm").ClickAsync();
         await page.GetByTestId("flow-import-key").ClickAsync();
 
         await Assertions.Expect(page.GetByTestId("credential-secret")).ToHaveValueAsync("");
