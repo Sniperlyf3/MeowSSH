@@ -1,49 +1,60 @@
 @*
-    The row is one button, so editing cannot be a control nested inside it: a
-    button inside a button is invalid, and the browsers that tolerate it fire
-    both. The edit affordance is a sibling instead.
+    The row is one button, so management cannot be a control nested inside it:
+    a button inside a button is invalid, and browsers that tolerate it fire both.
+    Contextual actions are therefore siblings and only expand when requested.
 *@
 <div class="host-wrap">
-<button type="button" class="host @StateClass" @onclick="OnActivate" data-testid="host-row" data-host-id="@Status.Host.Id">
-    <span class="host__rail"></span>
+    <button type="button" class="host @StateClass" @onclick="OnActivate" data-testid="host-row" data-host-id="@Status.Host.Id">
+        <span class="host__rail"></span>
 
-    <span class="host__glyph" aria-hidden="true">@Status.Host.Initials</span>
+        <span class="host__glyph" aria-hidden="true">@Status.Host.Initials</span>
 
-    <span class="host__detail">
-        <span class="host__name">@Status.Host.Label</span>
-        @if (Status.State == ConnectionState.Error && Status.Detail is not null)
-        {
-            <span class="host__reason">@Status.Detail</span>
-        }
-        else
-        {
-            <span class="host__address">@Status.Host.DisplayAddress</span>
-        }
-    </span>
+        <span class="host__detail">
+            <span class="host__name">@Status.Host.Label</span>
+            @if (Status.State == ConnectionState.Error && Status.Detail is not null)
+            {
+                <span class="host__reason">@Status.Detail</span>
+            }
+            else
+            {
+                <span class="host__address">@Status.Host.DisplayAddress</span>
+            }
+        </span>
 
-    <span class="host__meta">
-        @if (Latency is not null)
-        {
-            <span class="transport">@Latency</span>
-        }
-        @if (Badge is not null)
-        {
-            <StatusBadge Label="@Badge.Value.Label" Variant="@Badge.Value.Variant" ShowDot="true" />
-        }
-        else
-        {
-            <span class="transport">@TransportLabel</span>
-        }
-    </span>
-</button>
-
-@if (OnEdit.HasDelegate)
-{
-    <button type="button" class="host__edit" data-testid="edit-host"
-            aria-label="@($"Edit {Status.Host.Label}")" @onclick="OnEditClicked">
-        <Icon Name="settings" />
+        <span class="host__meta">
+            @if (Latency is not null)
+            {
+                <span class="transport">@Latency</span>
+            }
+            @if (Badge is not null)
+            {
+                <StatusBadge Label="@Badge.Value.Label" Variant="@Badge.Value.Variant" ShowDot="true" />
+            }
+            else
+            {
+                <span class="transport">@TransportLabel</span>
+            }
+        </span>
     </button>
-}
+
+    @if (OnEdit.HasDelegate)
+    {
+        <button type="button" class="host__manage-trigger" data-testid="manage-host"
+                aria-label="@($"Manage {Status.Host.Label}")"
+                aria-expanded="@_manageOpen.ToString().ToLowerInvariant()"
+                @onclick="ToggleManage">
+            <Icon Name="more" />
+        </button>
+
+        @if (_manageOpen)
+        {
+            <div class="host__manage-actions" data-testid="host-manage-actions">
+                <button type="button" class="btn btn--ghost" data-testid="edit-host" @onclick="OnEditClicked">
+                    <Icon Name="settings" /> Edit connection
+                </button>
+            </div>
+        }
+    }
 </div>
 
 @code {
@@ -52,6 +63,8 @@
 
     /// <summary>Opens this host's settings. Omitted where editing makes no sense.</summary>
     [Parameter] public EventCallback<HostRecord> OnEdit { get; set; }
+
+    private bool _manageOpen;
 
     private string StateClass => Status.State switch
     {
@@ -70,9 +83,6 @@
         }
     }
 
-    // Only a connected host's latency earns space beside the badge. A failure
-    // reason goes in the detail column instead: it describes the host, it is far
-    // longer, and putting it here crushed the label it was meant to explain.
     private string? Latency => Status.State == ConnectionState.Connected ? Status.Detail : null;
 
     private string TransportLabel => Status.Host.Transport switch
@@ -84,5 +94,11 @@
 
     private Task OnActivate() => OnSelected.InvokeAsync(Status.Host);
 
-    private Task OnEditClicked() => OnEdit.InvokeAsync(Status.Host);
+    private void ToggleManage() => _manageOpen = !_manageOpen;
+
+    private async Task OnEditClicked()
+    {
+        _manageOpen = false;
+        await OnEdit.InvokeAsync(Status.Host);
+    }
 }
