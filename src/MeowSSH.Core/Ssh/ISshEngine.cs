@@ -17,20 +17,6 @@ public interface ISshEngine
 /// </summary>
 public interface ISshConnection : IHostConnection
 {
-    /// <summary>
-    /// Latest informational Tailcat path for this exact live SSH connection.
-    /// Null for ordinary TCP SSH or before a Tailcat path report arrives.
-    /// This is diagnostic UX state only and must not be used for billing.
-    /// </summary>
-    SshPathStatus? PathStatus => null;
-
-    /// <summary>Raised when the live Tailcat path changes.</summary>
-    event EventHandler<SshPathStatus>? PathChanged
-    {
-        add { }
-        remove { }
-    }
-
     Task<ISshShell> OpenShellAsync(int columns, int rows, CancellationToken cancellationToken = default);
 
     async Task<ITerminalSession> IHostConnection.OpenTerminalAsync(
