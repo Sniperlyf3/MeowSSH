@@ -17,6 +17,12 @@ public interface ISshEngine
 /// </summary>
 public interface ISshConnection : IHostConnection
 {
+    /// <summary>Latest live Tailcat path for this SSH connection, when available.</summary>
+    new SshPathStatus? PathStatus { get; }
+
+    /// <summary>Raised when the same live SSH connection changes between direct and relayed paths.</summary>
+    new event EventHandler<SshPathStatus>? PathChanged;
+
     Task<ISshShell> OpenShellAsync(int columns, int rows, CancellationToken cancellationToken = default);
 
     async Task<ITerminalSession> IHostConnection.OpenTerminalAsync(
