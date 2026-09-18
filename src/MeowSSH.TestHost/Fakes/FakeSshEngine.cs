@@ -27,13 +27,9 @@ public sealed class FakeSshEngine : ISshEngine
 
         public Guid HostId { get; } = hostId;
         public bool IsConnected => !_disposed;
-        public SshPathStatus? PathStatus { get; } = isTailcat ? new(false, "ci") : null;
+        public SshPathStatus? PathStatus { get; private set; }
 
-        public event EventHandler<SshPathStatus>? PathChanged
-        {
-            add { }
-            remove { }
-        }
+        public event EventHandler<SshPathStatus>? PathChanged;
 
         public event EventHandler<SshConnectionLost>? ConnectionLost
         {
@@ -49,6 +45,17 @@ public sealed class FakeSshEngine : ISshEngine
             cancellationToken.ThrowIfCancellationRequested();
             ObjectDisposedException.ThrowIf(_disposed, this);
             ISshShell shell = new FakeSshShell();
+            if (isTailcat)
+            {
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(25, CancellationToken.None).ConfigureAwait(false);
+                    if (_disposed) return;
+                    var path = new SshPathStatus(false, "ci");
+                    PathStatus = path;
+                    PathChanged?.Invoke(this, path);
+                });
+            }
             return Task.FromResult(shell);
         }
 
