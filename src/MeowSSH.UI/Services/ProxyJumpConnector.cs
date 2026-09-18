@@ -200,6 +200,14 @@ public sealed class ProxyJumpConnector(
 
         public Guid HostId { get; }
         public bool IsConnected => !_disposed && _connections.All(connection => connection.IsConnected);
+        public SshPathStatus? PathStatus => _final.PathStatus;
+
+        public event EventHandler<SshPathStatus>? PathChanged
+        {
+            add => _final.PathChanged += value;
+            remove => _final.PathChanged -= value;
+        }
+
         public event EventHandler<SshConnectionLost>? ConnectionLost;
 
         public Task<SshCommandResult> RunCommandAsync(string command, TimeSpan? timeout = null, CancellationToken cancellationToken = default) =>
