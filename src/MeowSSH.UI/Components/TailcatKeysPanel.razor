@@ -1,5 +1,6 @@
 @inject ITailcatHubService Hub
 @inject ITailcatIdentityStore IdentityStore
+@inject IManagedDerpUsageService ManagedDerpUsage
 @inject IJSRuntime Js
 
 <div class="tailcat-stack">
@@ -51,6 +52,21 @@
         }
     </article>
 
+    <article class="tailcat-card" data-testid="managed-derp-usage-card">
+        <h2>Managed relay usage</h2>
+        <p class="field__hint">Server-authoritative usage for the client identity above. Direct Tailcat traffic and other relays are not counted.</p>
+        <button class="btn btn--ghost btn--block" disabled="@_busy" data-testid="managed-derp-refresh-usage" @onclick="LoadManagedDerpUsageAsync">Refresh usage</button>
+        @if (_managedDerpQuota is { } quota)
+        {
+            <p data-testid="managed-derp-usage-summary"><strong>@FormatBytes(quota.UsedBytes)</strong> of <strong>@FormatBytes(quota.AllowanceBytes)</strong> used</p>
+            <p class="field__hint" data-testid="managed-derp-usage-details">Sent @FormatBytes(quota.SentBytes) · received @FormatBytes(quota.ReceivedBytes) · @quota.Tier · resets @quota.PeriodEndUtc.ToLocalTime().ToString("g")</p>
+            @if (quota.IsExceeded)
+            {
+                <p class="lock__error" role="status" data-testid="managed-derp-quota-exceeded">Managed relay allowance reached. Direct connections remain unaffected.</p>
+            }
+        }
+    </article>
+
     <article class="tailcat-card" data-testid="tailcat-identity-portability">
         <h2>Import / export identity</h2>
         <div class="tailcat-danger-warning" role="note">
@@ -86,6 +102,7 @@
     private TailcatGeneratedKey? _generated;
     private string _publicName = "";
     private string? _publicKey;
+    private ManagedDerpQuotaState? _managedDerpQuota;
     private string? _exportName;
     private string _importName = "";
     private string _portableJson = "";
@@ -113,6 +130,11 @@
     });
     private async Task DeleteAsync(string name) => await RunAsync(async () => { await Hub.DeleteKeyAsync(name); _keys = await Hub.ListKeysAsync(); });
     private async Task ShowPublicAsync() => await RunAsync(async () => _publicKey = await Hub.GetClientPublicKeyAsync(Empty(_publicName)));
+    private async Task LoadManagedDerpUsageAsync() => await RunAsync(async () =>
+    {
+        var clientNodePublic = await Hub.GetClientPublicKeyAsync(Empty(_publicName));
+        _managedDerpQuota = await ManagedDerpUsage.GetCurrentAsync(clientNodePublic);
+    });
 
     private async Task BeginExportAsync(string name) => await RunAsync(async () =>
     {
@@ -149,5 +171,15 @@
         try { await action(); } catch (Exception ex) { _error = ex.Message; }
         finally { _busy = false; }
     }
+
+    private static string FormatBytes(ulong bytes)
+    {
+        string[] units = ["B", "KiB", "MiB", "GiB", "TiB"];
+        var value = (double)bytes;
+        var unit = 0;
+        while (value >= 1024 && unit < units.Length - 1) { value /= 1024; unit++; }
+        return unit == 0 ? $"{bytes} B" : $"{value:0.##} {units[unit]}";
+    }
+
     private static string? Empty(string value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

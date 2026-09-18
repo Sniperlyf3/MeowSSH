@@ -42,6 +42,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<IEntitlementGrantProvider>(sp => sp.GetRequiredService<LicensingApiGrantProvider>());
         builder.Services.AddSingleton<IManagedDerpGrantProvider>(sp => sp.GetRequiredService<LicensingApiGrantProvider>());
         builder.Services.AddSingleton<IManagedDerpRegistrationService, ManagedDerpRegistrationService>();
+        builder.Services.AddSingleton<IManagedDerpUsageService, ManagedDerpUsageService>();
         builder.Services.AddSingleton<EntitlementService>();
         builder.Services.AddSingleton<IEntitlementService>(sp => sp.GetRequiredService<EntitlementService>());
 
