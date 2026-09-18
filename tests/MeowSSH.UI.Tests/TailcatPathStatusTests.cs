@@ -8,7 +8,7 @@ public sealed class TailcatPathStatusTests(TestHostFixture fixture)
     [Fact]
     public async Task TailcatSessionShowsRelayedPathWithoutTreatingItAsAnError()
     {
-        var page = await fixture.NewPageAsync();
+        var page = await fixture.NewPageAsync("?multi");
         var homeNas = page.GetByTestId("host-row").Filter(new() { HasText = "home-nas" });
 
         await homeNas.ClickAsync();
