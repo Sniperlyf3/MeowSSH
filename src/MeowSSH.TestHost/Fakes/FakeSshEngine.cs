@@ -20,14 +20,20 @@ public sealed class FakeSshEngine : ISshEngine
         return Task.FromResult<ISshConnection>(new FakeSshConnection(host.Id, host.Transport == SshTransport.Tailcat));
     }
 
-    private sealed class FakeSshConnection(Guid hostId, bool isTailcat) : ISshConnection
+    private sealed class FakeSshConnection : ISshConnection
     {
         private bool _disposed;
         private int _nextPort = 42000;
 
-        public Guid HostId { get; } = hostId;
+        public FakeSshConnection(Guid hostId, bool isTailcat)
+        {
+            HostId = hostId;
+            PathStatus = isTailcat ? new SshPathStatus(false, "ci") : null;
+        }
+
+        public Guid HostId { get; }
         public bool IsConnected => !_disposed;
-        public SshPathStatus? PathStatus { get; } = isTailcat ? new(false, "ci") : null;
+        public SshPathStatus? PathStatus { get; }
 
         public event EventHandler<SshPathStatus>? PathChanged
         {
