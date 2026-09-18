@@ -45,6 +45,13 @@ public sealed class LocalTerminalConnectionEngine(MeowshellSshEngineOptions opti
 
         public Guid HostId { get; }
         public bool IsConnected => !_disposed;
+
+        public SshPathStatus? PathStatus => null;
+        public event EventHandler<SshPathStatus>? PathChanged
+        {
+            add { }
+            remove { }
+        }
         public event EventHandler<SshConnectionLost>? ConnectionLost;
 
         public async Task<ITerminalSession> OpenTerminalAsync(
