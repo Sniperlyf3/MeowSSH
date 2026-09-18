@@ -35,17 +35,14 @@ public sealed class FakeSshEngine : ISshEngine
         public bool IsConnected => !_disposed;
         public SshPathStatus? PathStatus { get; }
 
-        private event EventHandler<SshPathStatus>? _pathChanged;
-
         public event EventHandler<SshPathStatus>? PathChanged
         {
             add
             {
-                _pathChanged += value;
                 if (value is not null && PathStatus is { } path)
                     value(this, path);
             }
-            remove => _pathChanged -= value;
+            remove { }
         }
 
         public event EventHandler<SshConnectionLost>? ConnectionLost
