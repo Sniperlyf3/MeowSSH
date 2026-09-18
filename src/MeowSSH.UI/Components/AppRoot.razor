@@ -313,18 +313,15 @@ else
         session.ConnectionLostHandler = handler;
         session.Connection.ConnectionLost += handler;
 
-        if (session.Connection is ISshConnection ssh)
-        {
-            session.PathStatus = ssh.PathStatus;
-            EventHandler<SshPathStatus> pathHandler = (_, path) =>
-                _ = InvokeAsync(() =>
-                {
-                    session.PathStatus = path;
-                    StateHasChanged();
-                });
-            session.PathChangedHandler = pathHandler;
-            ssh.PathChanged += pathHandler;
-        }
+        session.PathStatus = session.Connection.PathStatus;
+        EventHandler<SshPathStatus> pathHandler = (_, path) =>
+            _ = InvokeAsync(() =>
+            {
+                session.PathStatus = path;
+                StateHasChanged();
+            });
+        session.PathChangedHandler = pathHandler;
+        session.Connection.PathChanged += pathHandler;
     }
 
     private void WireTerminal(OpenSession session)
@@ -747,8 +744,8 @@ else
 
         if (session.ConnectionLostHandler is not null)
             session.Connection.ConnectionLost -= session.ConnectionLostHandler;
-        if (session.PathChangedHandler is not null && session.Connection is ISshConnection ssh)
-            ssh.PathChanged -= session.PathChangedHandler;
+        if (session.PathChangedHandler is not null)
+            session.Connection.PathChanged -= session.PathChangedHandler;
         await session.Connection.DisposeAsync();
         session.ConnectionLostHandler = null;
         session.PathChangedHandler = null;
