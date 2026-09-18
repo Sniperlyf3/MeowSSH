@@ -26,9 +26,9 @@
     <PrivacyPolicyUrl Condition="'$(PrivacyPolicyUrl)' == ''"></PrivacyPolicyUrl>
     <SupportUrl Condition="'$(SupportUrl)' == ''"></SupportUrl>
     <TermsOfServiceUrl Condition="'$(TermsOfServiceUrl)' == ''"></TermsOfServiceUrl>
-    <!-- Match the reviewed upstream Tailcat revision explicitly instead of
-         inheriting a native binary default that could change on upgrade. -->
-    <TailcatDerpMapUrl Condition="'$(TailcatDerpMapUrl)' == ''">https://tailcat.dev/derpmap.json</TailcatDerpMapUrl>
+    <!-- Optional explicit override. Production builds normally derive the managed
+         relay map from LicensingApiBaseUrl (/v1/derp/map). -->
+    <TailcatDerpMapUrl Condition="'$(TailcatDerpMapUrl)' == ''"></TailcatDerpMapUrl>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(EnableTailcatVpn)' == 'true'">
