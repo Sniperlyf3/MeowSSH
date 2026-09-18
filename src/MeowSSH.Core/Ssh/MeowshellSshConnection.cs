@@ -3,19 +3,31 @@ using Meowshell;
 
 namespace MeowSSH.Core.Ssh;
 
-internal sealed class MeowshellSshConnection(Guid hostId, MeowshellAgentConnection agent) : ISshConnection
+internal sealed class MeowshellSshConnection : ISshConnection, IConnectionPathTelemetry
 {
-    public Guid HostId { get; } = hostId;
+    private readonly MeowshellAgentConnection _agent;
+
+    public MeowshellSshConnection(Guid hostId, MeowshellAgentConnection agent)
+    {
+        HostId = hostId;
+        _agent = agent;
+        _agent.PathChanged += OnPathChanged;
+    }
+
+    public Guid HostId { get; }
 
     public bool IsConnected { get; private set; } = true;
 
+    public SshPathStatus? PathStatus => TranslatePath(_agent.CurrentPath);
+
     public event EventHandler<SshConnectionLost>? ConnectionLost;
+    public event EventHandler<SshPathStatus>? PathChanged;
 
     public async Task<ISshShell> OpenShellAsync(int columns, int rows, CancellationToken cancellationToken = default)
     {
         try
         {
-            var channel = await agent.OpenShellAsync(columns, rows, term: "xterm-256color", pty: true,
+            var channel = await _agent.OpenShellAsync(columns, rows, term: "xterm-256color", pty: true,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
             return new MeowshellSshShell(channel, OnChannelLost);
         }
@@ -43,7 +55,7 @@ internal sealed class MeowshellSshConnection(Guid hostId, MeowshellAgentConnecti
         MeowshellAgentShellChannel? channel = null;
         try
         {
-            channel = await agent.OpenExecAsync([command], pty: false, cancellationToken: linkedCts.Token)
+            channel = await _agent.OpenExecAsync([command], pty: false, cancellationToken: linkedCts.Token)
                 .ConfigureAwait(false);
 
             var stdoutTask = ReadUtf8Async(channel.Output, linkedCts.Token);
@@ -84,7 +96,7 @@ internal sealed class MeowshellSshConnection(Guid hostId, MeowshellAgentConnecti
     }
 
     public Task<ISftpSession> OpenSftpAsync(CancellationToken cancellationToken = default) =>
-        Task.FromResult<ISftpSession>(new MeowshellSftpSession(agent));
+        Task.FromResult<ISftpSession>(new MeowshellSftpSession(_agent));
 
     public Task<ISshForward> OpenLocalForwardAsync(
         string listenAddress,
@@ -93,7 +105,7 @@ internal sealed class MeowshellSshConnection(Guid hostId, MeowshellAgentConnecti
         int maxConnections = 256,
         CancellationToken cancellationToken = default) =>
         OpenForwardAsync(
-            () => agent.OpenLocalForwardAsync(listenAddress, remoteAddress, allowNonLoopbackBind, maxConnections,
+            () => _agent.OpenLocalForwardAsync(listenAddress, remoteAddress, allowNonLoopbackBind, maxConnections,
                 cancellationToken),
             SshForwardKind.Local,
             remoteAddress);
@@ -104,7 +116,7 @@ internal sealed class MeowshellSshConnection(Guid hostId, MeowshellAgentConnecti
         int maxConnections = 256,
         CancellationToken cancellationToken = default) =>
         OpenForwardAsync(
-            () => agent.OpenLocalForwardOnUnixSocketAsync(socketPath, remoteAddress, maxConnections, cancellationToken),
+            () => _agent.OpenLocalForwardOnUnixSocketAsync(socketPath, remoteAddress, maxConnections, cancellationToken),
             SshForwardKind.Local,
             remoteAddress);
 
@@ -114,7 +126,7 @@ internal sealed class MeowshellSshConnection(Guid hostId, MeowshellAgentConnecti
         int maxConnections = 256,
         CancellationToken cancellationToken = default) =>
         OpenForwardAsync(
-            () => agent.OpenRemoteForwardAsync(listenAddress, localAddress, maxConnections, cancellationToken),
+            () => _agent.OpenRemoteForwardAsync(listenAddress, localAddress, maxConnections, cancellationToken),
             SshForwardKind.Remote,
             localAddress);
 
@@ -127,7 +139,7 @@ internal sealed class MeowshellSshConnection(Guid hostId, MeowshellAgentConnecti
         int maxConnections = 256,
         CancellationToken cancellationToken = default) =>
         OpenForwardAsync(
-            () => agent.OpenSocksForwardAsync(
+            () => _agent.OpenSocksForwardAsync(
                 listenAddress,
                 requireAuth,
                 socksUsername,
@@ -146,7 +158,7 @@ internal sealed class MeowshellSshConnection(Guid hostId, MeowshellAgentConnecti
         int maxConnections = 256,
         CancellationToken cancellationToken = default) =>
         OpenForwardAsync(
-            () => agent.OpenSocksForwardOnUnixSocketAsync(
+            () => _agent.OpenSocksForwardOnUnixSocketAsync(
                 socketPath,
                 requireAuth,
                 socksUsername,
@@ -179,6 +191,12 @@ internal sealed class MeowshellSshConnection(Guid hostId, MeowshellAgentConnecti
         return Encoding.UTF8.GetString(buffer.GetBuffer(), 0, checked((int)buffer.Length));
     }
 
+    private static SshPathStatus? TranslatePath(MeowshellPathStatus? path) =>
+        path is null ? null : new SshPathStatus(path.Direct, path.Via);
+
+    private void OnPathChanged(MeowshellPathStatus path) =>
+        PathChanged?.Invoke(this, new SshPathStatus(path.Direct, path.Via));
+
     private void OnChannelLost(SshConnectionLost lost)
     {
         IsConnected = false;
@@ -188,7 +206,8 @@ internal sealed class MeowshellSshConnection(Guid hostId, MeowshellAgentConnecti
     public async ValueTask DisposeAsync()
     {
         IsConnected = false;
-        await agent.DisposeAsync().ConfigureAwait(false);
+        _agent.PathChanged -= OnPathChanged;
+        await _agent.DisposeAsync().ConfigureAwait(false);
     }
 }
 

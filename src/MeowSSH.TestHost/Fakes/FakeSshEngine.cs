@@ -17,16 +17,33 @@ public sealed class FakeSshEngine : ISshEngine
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return Task.FromResult<ISshConnection>(new FakeSshConnection(host.Id));
+        return Task.FromResult<ISshConnection>(new FakeSshConnection(host.Id, host.Transport == SshTransport.Tailcat));
     }
 
-    private sealed class FakeSshConnection(Guid hostId) : ISshConnection
+    private sealed class FakeSshConnection : ISshConnection, IConnectionPathTelemetry
     {
         private bool _disposed;
         private int _nextPort = 42000;
 
-        public Guid HostId { get; } = hostId;
+        public FakeSshConnection(Guid hostId, bool isTailcat)
+        {
+            HostId = hostId;
+            PathStatus = isTailcat ? new SshPathStatus(false, "ci") : null;
+        }
+
+        public Guid HostId { get; }
         public bool IsConnected => !_disposed;
+        public SshPathStatus? PathStatus { get; }
+
+        public event EventHandler<SshPathStatus>? PathChanged
+        {
+            add
+            {
+                if (value is not null && PathStatus is { } path)
+                    value(this, path);
+            }
+            remove { }
+        }
 
         public event EventHandler<SshConnectionLost>? ConnectionLost
         {

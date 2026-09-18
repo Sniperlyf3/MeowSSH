@@ -46,6 +46,7 @@ else if (_activeSessionId is not null && _sessions.Count > 0)
                                  SupportsFiles="session.SupportsSshFeatures"
                                  IsConnected="session.IsConnected"
                                  IsReconnecting="session.IsReconnecting"
+                                 PathStatus="CurrentPathStatus(session)"
                                  DisconnectMessage="session.Status"
                                  OnReconnect="() => ReconnectAsync(session.Id)"
                                  OnWriteFailed="ex => OnTerminalWriteFailedAsync(session.Id, ex)"
@@ -160,6 +161,8 @@ else
         public bool IsReconnecting { get; set; }
         public string Status { get; set; } = "Connected.";
         public EventHandler<SshConnectionLost>? ConnectionLostHandler { get; set; }
+        public EventHandler<SshPathStatus>? PathChangedHandler { get; set; }
+        public SshPathStatus? PathStatus { get; set; }
         public EventHandler<int>? TerminalExitedHandler { get; set; }
         public CancellationTokenSource? ReconnectCancellation { get; set; }
         public Task? ReconnectTask { get; set; }
@@ -253,6 +256,11 @@ else
             {
                 terminal = await connection.OpenTerminalAsync(80, 24);
                 session.Terminal = terminal;
+                // Re-read after terminal creation so a transport that learns its
+                // path while opening the live stream cannot race the initial
+                // connection snapshot/event subscription.
+                if (connection is IConnectionPathTelemetry telemetry)
+                    session.PathStatus = telemetry.PathStatus;
                 WireTerminal(session);
             }
             else if (connection is ISshConnection ssh)
@@ -309,6 +317,19 @@ else
             _ = InvokeAsync(() => MarkSessionDisconnectedAsync(session.Id, lost.Message, autoReconnect: true));
         session.ConnectionLostHandler = handler;
         session.Connection.ConnectionLost += handler;
+
+        if (session.Connection is IConnectionPathTelemetry telemetry)
+        {
+            session.PathStatus = telemetry.PathStatus;
+            EventHandler<SshPathStatus> pathHandler = (_, path) =>
+                _ = InvokeAsync(() =>
+                {
+                    session.PathStatus = path;
+                    StateHasChanged();
+                });
+            session.PathChangedHandler = pathHandler;
+            telemetry.PathChanged += pathHandler;
+        }
     }
 
     private void WireTerminal(OpenSession session)
@@ -731,8 +752,12 @@ else
 
         if (session.ConnectionLostHandler is not null)
             session.Connection.ConnectionLost -= session.ConnectionLostHandler;
+        if (session.PathChangedHandler is not null && session.Connection is IConnectionPathTelemetry telemetry)
+            telemetry.PathChanged -= session.PathChangedHandler;
         await session.Connection.DisposeAsync();
         session.ConnectionLostHandler = null;
+        session.PathChangedHandler = null;
+        session.PathStatus = null;
     }
 
     private static async Task CancelAutoReconnectAsync(OpenSession session)
@@ -751,6 +776,11 @@ else
     }
 
     private OpenSession? FindSession(Guid id) => _sessions.FirstOrDefault(s => s.Id == id);
+
+    private static SshPathStatus? CurrentPathStatus(OpenSession session) =>
+        session.Connection is IConnectionPathTelemetry telemetry
+            ? telemetry.PathStatus ?? session.PathStatus
+            : session.PathStatus;
 
     private static Failure MapFailure(string fallbackTitle, SshException ex) => ex.Failure switch
     {

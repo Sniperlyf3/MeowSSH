@@ -89,3 +89,13 @@ public interface ISshShell : ITerminalSession;
 /// <param name="Reason">Why the connection ended.</param>
 /// <param name="Message">A line to show the user, written for a person.</param>
 public sealed record SshConnectionLost(SshFailure Reason, string Message);
+
+/// <summary>Informational path state for a live Tailcat-backed SSH connection.</summary>
+/// <param name="Direct">True for peer-to-peer; false when traffic is currently using DERP.</param>
+/// <param name="Relay">Relay region/name when known. Empty on a direct path.</param>
+public sealed record SshPathStatus(bool Direct, string Relay)
+{
+    public string Label => Direct
+        ? "Direct"
+        : string.IsNullOrWhiteSpace(Relay) ? "Relayed" : $"Relayed · {Relay}";
+}

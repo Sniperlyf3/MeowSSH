@@ -176,7 +176,7 @@ public sealed class ProxyJumpConnector(
         }
     }
 
-    private sealed class ChainedSshConnection : ISshConnection
+    private sealed class ChainedSshConnection : ISshConnection, IConnectionPathTelemetry
     {
         private readonly ISshConnection _final;
         private readonly List<IHostConnection> _connections;
@@ -200,6 +200,23 @@ public sealed class ProxyJumpConnector(
 
         public Guid HostId { get; }
         public bool IsConnected => !_disposed && _connections.All(connection => connection.IsConnected);
+        public SshPathStatus? PathStatus =>
+            (_final as IConnectionPathTelemetry)?.PathStatus;
+
+        public event EventHandler<SshPathStatus>? PathChanged
+        {
+            add
+            {
+                if (_final is IConnectionPathTelemetry telemetry)
+                    telemetry.PathChanged += value;
+            }
+            remove
+            {
+                if (_final is IConnectionPathTelemetry telemetry)
+                    telemetry.PathChanged -= value;
+            }
+        }
+
         public event EventHandler<SshConnectionLost>? ConnectionLost;
 
         public Task<SshCommandResult> RunCommandAsync(string command, TimeSpan? timeout = null, CancellationToken cancellationToken = default) =>

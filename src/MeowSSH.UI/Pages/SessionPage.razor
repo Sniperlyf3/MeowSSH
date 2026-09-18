@@ -21,6 +21,15 @@
                 <Icon Name="folder" />
             </button>
         }
+        @if (PathStatus is not null && IsConnected)
+        {
+            <span data-testid="session-path-status"
+                  title="Live Tailcat path. This is connection diagnostics, not relay billing.">
+                <StatusBadge Label="@PathStatus.Label"
+                             Variant="@(PathStatus.Direct ? "ok" : "neutral")"
+                             ShowDot="true" />
+            </span>
+        }
         <StatusBadge Label="@(IsReconnecting ? "Reconnecting" : IsConnected ? "Connected" : "Disconnected")"
                      Variant="@(IsConnected ? "ok" : IsReconnecting ? "warn" : "danger")"
                      ShowDot="true" />
@@ -52,6 +61,7 @@
     [Parameter] public bool SupportsFiles { get; set; }
     [Parameter] public bool IsConnected { get; set; } = true;
     [Parameter] public bool IsReconnecting { get; set; }
+    [Parameter] public SshPathStatus? PathStatus { get; set; }
     [Parameter] public string DisconnectMessage { get; set; } = "The terminal session is no longer connected.";
     [Parameter] public EventCallback OnReconnect { get; set; }
     [Parameter] public EventCallback<Exception> OnWriteFailed { get; set; }

@@ -66,7 +66,7 @@ public sealed class SessionLoggingConnectionEngine(
         public virtual ValueTask DisposeAsync() => Inner.DisposeAsync();
     }
 
-    private sealed class LoggingSshConnection : LoggingHostConnection, ISshConnection
+    private sealed class LoggingSshConnection : LoggingHostConnection, ISshConnection, IConnectionPathTelemetry
     {
         private readonly ISshConnection _ssh;
 
@@ -74,6 +74,23 @@ public sealed class SessionLoggingConnectionEngine(
             : base(host, ssh, logs)
         {
             _ssh = ssh;
+        }
+
+        public SshPathStatus? PathStatus =>
+            (_ssh as IConnectionPathTelemetry)?.PathStatus;
+
+        public event EventHandler<SshPathStatus>? PathChanged
+        {
+            add
+            {
+                if (_ssh is IConnectionPathTelemetry telemetry)
+                    telemetry.PathChanged += value;
+            }
+            remove
+            {
+                if (_ssh is IConnectionPathTelemetry telemetry)
+                    telemetry.PathChanged -= value;
+            }
         }
 
         public Task<SshCommandResult> RunCommandAsync(

@@ -26,6 +26,16 @@ public interface IHostConnection : IAsyncDisposable
     event EventHandler<SshConnectionLost>? ConnectionLost;
 }
 
+/// <summary>
+/// Optional live path telemetry for transports such as Tailcat. This state is diagnostic only;
+/// managed-DERP billing remains authoritative on the relay.
+/// </summary>
+public interface IConnectionPathTelemetry
+{
+    SshPathStatus? PathStatus { get; }
+    event EventHandler<SshPathStatus>? PathChanged;
+}
+
 /// <summary>Raw terminal bytes plus resize and exit notifications.</summary>
 public interface ITerminalSession : IAsyncDisposable
 {
