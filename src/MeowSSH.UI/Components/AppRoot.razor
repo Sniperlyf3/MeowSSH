@@ -259,8 +259,8 @@ else
                 // Re-read after terminal creation so a transport that learns its
                 // path while opening the live stream cannot race the initial
                 // connection snapshot/event subscription.
-                if (connection is ISshConnection liveSsh)
-                    session.PathStatus = liveSsh.PathStatus;
+                if (connection is IConnectionPathTelemetry telemetry)
+                    session.PathStatus = telemetry.PathStatus;
                 WireTerminal(session);
             }
             else if (connection is ISshConnection ssh)
@@ -318,9 +318,9 @@ else
         session.ConnectionLostHandler = handler;
         session.Connection.ConnectionLost += handler;
 
-        if (session.Connection is ISshConnection ssh)
+        if (session.Connection is IConnectionPathTelemetry telemetry)
         {
-            session.PathStatus = ssh.PathStatus;
+            session.PathStatus = telemetry.PathStatus;
             EventHandler<SshPathStatus> pathHandler = (_, path) =>
                 _ = InvokeAsync(() =>
                 {
@@ -328,7 +328,7 @@ else
                     StateHasChanged();
                 });
             session.PathChangedHandler = pathHandler;
-            ssh.PathChanged += pathHandler;
+            telemetry.PathChanged += pathHandler;
         }
     }
 
@@ -752,8 +752,8 @@ else
 
         if (session.ConnectionLostHandler is not null)
             session.Connection.ConnectionLost -= session.ConnectionLostHandler;
-        if (session.PathChangedHandler is not null && session.Connection is ISshConnection ssh)
-            ssh.PathChanged -= session.PathChangedHandler;
+        if (session.PathChangedHandler is not null && session.Connection is IConnectionPathTelemetry telemetry)
+            telemetry.PathChanged -= session.PathChangedHandler;
         await session.Connection.DisposeAsync();
         session.ConnectionLostHandler = null;
         session.PathChangedHandler = null;
