@@ -17,6 +17,20 @@ public interface ISshEngine
 /// </summary>
 public interface ISshConnection : IHostConnection
 {
+    /// <summary>
+    /// Latest informational Tailcat path for this exact live SSH connection.
+    /// Null for ordinary TCP SSH or before a Tailcat path report arrives.
+    /// This is diagnostic UX state only and must not be used for billing.
+    /// </summary>
+    SshPathStatus? PathStatus => null;
+
+    /// <summary>Raised when the live Tailcat path changes.</summary>
+    event EventHandler<SshPathStatus>? PathChanged
+    {
+        add { }
+        remove { }
+    }
+
     Task<ISshShell> OpenShellAsync(int columns, int rows, CancellationToken cancellationToken = default);
 
     async Task<ITerminalSession> IHostConnection.OpenTerminalAsync(
@@ -89,3 +103,13 @@ public interface ISshShell : ITerminalSession;
 /// <param name="Reason">Why the connection ended.</param>
 /// <param name="Message">A line to show the user, written for a person.</param>
 public sealed record SshConnectionLost(SshFailure Reason, string Message);
+
+/// <summary>Informational path state for a live Tailcat-backed SSH connection.</summary>
+/// <param name="Direct">True for peer-to-peer; false when traffic is currently using DERP.</param>
+/// <param name="Relay">Relay region/name when known. Empty on a direct path.</param>
+public sealed record SshPathStatus(bool Direct, string Relay)
+{
+    public string Label => Direct
+        ? "Direct"
+        : string.IsNullOrWhiteSpace(Relay) ? "Relayed" : $"Relayed · {Relay}";
+}
