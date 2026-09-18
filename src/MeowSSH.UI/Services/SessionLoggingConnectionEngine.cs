@@ -35,6 +35,13 @@ public sealed class SessionLoggingConnectionEngine(
 
         public Guid HostId => Inner.HostId;
         public bool IsConnected => Inner.IsConnected;
+        public SshPathStatus? PathStatus => Inner.PathStatus;
+
+        public event EventHandler<SshPathStatus>? PathChanged
+        {
+            add => Inner.PathChanged += value;
+            remove => Inner.PathChanged -= value;
+        }
 
         public event EventHandler<SshConnectionLost>? ConnectionLost
         {
@@ -74,14 +81,6 @@ public sealed class SessionLoggingConnectionEngine(
             : base(host, ssh, logs)
         {
             _ssh = ssh;
-        }
-
-        public SshPathStatus? PathStatus => _ssh.PathStatus;
-
-        public event EventHandler<SshPathStatus>? PathChanged
-        {
-            add => _ssh.PathChanged += value;
-            remove => _ssh.PathChanged -= value;
         }
 
         public Task<SshCommandResult> RunCommandAsync(
