@@ -91,8 +91,11 @@ public static class MauiProgram
             Path.Combine(FileSystem.CacheDirectory, "tailcat-work"),
             string.IsNullOrWhiteSpace(TailcatBuildConfig.DerpMapUrl) ? null : TailcatBuildConfig.DerpMapUrl));
         builder.Services.AddSingleton<MeowshellTailcatHubService>();
-        builder.Services.AddSingleton<ITailcatHubService>(sp => new EntitlementTailcatHubService(
+        builder.Services.AddSingleton<ManagedDerpTailcatHubService>(sp => new ManagedDerpTailcatHubService(
             sp.GetRequiredService<MeowshellTailcatHubService>(),
+            sp.GetRequiredService<IManagedDerpRegistrationService>()));
+        builder.Services.AddSingleton<ITailcatHubService>(sp => new EntitlementTailcatHubService(
+            sp.GetRequiredService<ManagedDerpTailcatHubService>(),
             sp.GetRequiredService<IEntitlementService>()));
         builder.Services.AddSingleton<ITailcatIdentityStore, TailcatIdentityStore>();
         builder.Services.AddSingleton<ITailcatWorkspaceStore>(_ => new FileTailcatWorkspaceStore(
