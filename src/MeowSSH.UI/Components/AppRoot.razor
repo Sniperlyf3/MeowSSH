@@ -46,7 +46,7 @@ else if (_activeSessionId is not null && _sessions.Count > 0)
                                  SupportsFiles="session.SupportsSshFeatures"
                                  IsConnected="session.IsConnected"
                                  IsReconnecting="session.IsReconnecting"
-                                 PathStatus="session.PathStatus"
+                                 PathStatus="session.Connection.PathStatus"
                                  DisconnectMessage="session.Status"
                                  OnReconnect="() => ReconnectAsync(session.Id)"
                                  OnWriteFailed="ex => OnTerminalWriteFailedAsync(session.Id, ex)"
