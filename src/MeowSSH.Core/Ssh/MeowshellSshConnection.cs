@@ -11,14 +11,14 @@ internal sealed class MeowshellSshConnection : ISshConnection
     {
         HostId = hostId;
         _agent = agent;
-        __agent.PathChanged += OnPathChanged;
+        _agent.PathChanged += OnPathChanged;
     }
 
     public Guid HostId { get; }
 
     public bool IsConnected { get; private set; } = true;
 
-    public SshPathStatus? PathStatus => TranslatePath(__agent.CurrentPath);
+    public SshPathStatus? PathStatus => TranslatePath(_agent.CurrentPath);
 
     public event EventHandler<SshConnectionLost>? ConnectionLost;
     public event EventHandler<SshPathStatus>? PathChanged;
