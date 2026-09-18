@@ -47,14 +47,9 @@ public sealed class FakeSshEngine : ISshEngine
             ISshShell shell = new FakeSshShell();
             if (isTailcat)
             {
-                _ = Task.Run(async () =>
-                {
-                    await Task.Delay(25, CancellationToken.None).ConfigureAwait(false);
-                    if (_disposed) return;
-                    var path = new SshPathStatus(false, "ci");
-                    PathStatus = path;
-                    PathChanged?.Invoke(this, path);
-                }, CancellationToken.None);
+                var path = new SshPathStatus(false, "ci");
+                PathStatus = path;
+                PathChanged?.Invoke(this, path);
             }
             return Task.FromResult(shell);
         }
