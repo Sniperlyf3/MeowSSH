@@ -2,7 +2,7 @@
 
 **Repository:** `Sniperlyf3/MeowSSH`
 **Affects:** `src/MeowSSH.UI/Pages/`, `src/MeowSSH.UI/Components/`, `src/MeowSSH.UI/wwwroot/css/`, `tests/MeowSSH.UI.Tests/`
-**Status:** A1 landed in PR #108, commit `ac58122`; A2–E remain proposed.
+**Status:** A-series (A1–A4) landed in PR #108, commit `ac58122`; B–E remain proposed.
 **Audited at:** `claude/beautiful-bohr-im81me` @ `8f93a1a`
 **Method:** every screen driven through the Blazor test host at 412×915 and 360×780, captured and then audited in the DOM. Measurements below are real `getBoundingClientRect` / `getComputedStyle` values, not estimates.
 
@@ -69,6 +69,16 @@ Add a test asserting exactly one `nav.tabbar` exists on every reachable screen.
 
 ## A2 — A sentinel date is shown to the user as an entitlement expiry
 
+- [x] **Landed** in PR #108 (commit `ac58122`). `SettingsPage.PlanStatus`
+  treats any expiry more than `SentinelHorizonYears` (10) out as a sentinel
+  and reports "Lifetime" instead of formatting it; a real expiry renders
+  `d MMM yyyy` in the current culture rather than invariant `M/d/yyyy`.
+  Covered by `EntitlementDisplayTests` (added here), which asserts both the
+  Settings root and Settings → Plan read "Lifetime" and never leak `9999`,
+  `12/31` or `23:59` — the test host's `FakeEntitlementService` always
+  returns `ValidUntilUtc = DateTimeOffset.MaxValue`, so this is exercised on
+  every run rather than needing bespoke fixture setup.
+
 `Settings → Account` and `Settings → Plan` both render:
 
 ```
@@ -86,6 +96,9 @@ reads a real, localised date. Never format a sentinel. Also: the format is
 
 ## A3 — "Export report" is disabled while the copy beside it says exporting works
 
+- [x] **Landed** in PR #108 (commit `ac58122`), together with A4 below — see
+  A4 for the fix and its test coverage.
+
 `Settings → Privacy & diagnostics`. The card immediately above the button reads:
 
 > **No crash diagnostics waiting** — A normal bug report can still be exported
@@ -98,6 +111,17 @@ an empty "What went wrong?" textarea, which is stated nowhere.
 **Fix:** see A4.
 
 ## A4 — Three primary actions are disabled with no stated reason
+
+- [x] **Landed** in PR #108 (commit `ac58122`). All three controls now show a
+  `form__hint` naming the single unmet condition directly above the button
+  while it is disabled (`save-host-hint`, `start-tailcat-server-hint`,
+  `export-bug-report-hint`), and the host editor's button also wires
+  `aria-describedby` to its hint. Covered by `DisabledControlReasonTests`
+  (added here): each of the three screens asserts the hint is visible while
+  the button is disabled, that resolving the blocker enables the button and
+  removes the hint, and — for the Tailcat hub, whose `CanStart` has several
+  clauses — that the hint names the *next* unmet condition rather than just
+  disappearing after the first one is fixed.
 
 | Screen | Control | State |
 | --- | --- | --- |
