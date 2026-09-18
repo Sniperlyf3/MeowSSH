@@ -22,10 +22,14 @@ public interface IHostConnection : IAsyncDisposable
     /// Latest informational transport path for this exact live connection.
     /// Null when the transport does not expose path telemetry.
     /// </summary>
-    SshPathStatus? PathStatus { get; }
+    SshPathStatus? PathStatus => null;
 
     /// <summary>Raised when transport path telemetry changes.</summary>
-    event EventHandler<SshPathStatus>? PathChanged;
+    event EventHandler<SshPathStatus>? PathChanged
+    {
+        add { }
+        remove { }
+    }
 
     Task<ITerminalSession> OpenTerminalAsync(
         int columns,
