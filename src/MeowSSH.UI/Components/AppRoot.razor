@@ -256,6 +256,10 @@ else
             {
                 terminal = await connection.OpenTerminalAsync(80, 24);
                 session.Terminal = terminal;
+                // Re-read after terminal creation so a transport that learns its
+                // path while opening the live stream cannot race the initial
+                // connection snapshot/event subscription.
+                session.PathStatus = connection.PathStatus;
                 WireTerminal(session);
             }
             else if (connection is ISshConnection ssh)
