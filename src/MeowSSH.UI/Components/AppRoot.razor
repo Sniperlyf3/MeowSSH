@@ -46,6 +46,7 @@ else if (_activeSessionId is not null && _sessions.Count > 0)
                                  SupportsFiles="session.SupportsSshFeatures"
                                  IsConnected="session.IsConnected"
                                  IsReconnecting="session.IsReconnecting"
+                                 PathStatus="session.PathStatus"
                                  DisconnectMessage="session.Status"
                                  OnReconnect="() => ReconnectAsync(session.Id)"
                                  OnWriteFailed="ex => OnTerminalWriteFailedAsync(session.Id, ex)"
@@ -160,6 +161,8 @@ else
         public bool IsReconnecting { get; set; }
         public string Status { get; set; } = "Connected.";
         public EventHandler<SshConnectionLost>? ConnectionLostHandler { get; set; }
+        public EventHandler<SshPathStatus>? PathChangedHandler { get; set; }
+        public SshPathStatus? PathStatus { get; set; }
         public EventHandler<int>? TerminalExitedHandler { get; set; }
         public CancellationTokenSource? ReconnectCancellation { get; set; }
         public Task? ReconnectTask { get; set; }
@@ -309,6 +312,19 @@ else
             _ = InvokeAsync(() => MarkSessionDisconnectedAsync(session.Id, lost.Message, autoReconnect: true));
         session.ConnectionLostHandler = handler;
         session.Connection.ConnectionLost += handler;
+
+        if (session.Connection is ISshConnection ssh)
+        {
+            session.PathStatus = ssh.PathStatus;
+            EventHandler<SshPathStatus> pathHandler = (_, path) =>
+                _ = InvokeAsync(() =>
+                {
+                    session.PathStatus = path;
+                    StateHasChanged();
+                });
+            session.PathChangedHandler = pathHandler;
+            ssh.PathChanged += pathHandler;
+        }
     }
 
     private void WireTerminal(OpenSession session)
@@ -731,8 +747,12 @@ else
 
         if (session.ConnectionLostHandler is not null)
             session.Connection.ConnectionLost -= session.ConnectionLostHandler;
+        if (session.PathChangedHandler is not null && session.Connection is ISshConnection ssh)
+            ssh.PathChanged -= session.PathChangedHandler;
         await session.Connection.DisposeAsync();
         session.ConnectionLostHandler = null;
+        session.PathChangedHandler = null;
+        session.PathStatus = null;
     }
 
     private static async Task CancelAutoReconnectAsync(OpenSession session)
