@@ -54,7 +54,7 @@ public sealed class FakeSshEngine : ISshEngine
                     var path = new SshPathStatus(false, "ci");
                     PathStatus = path;
                     PathChanged?.Invoke(this, path);
-                });
+                }, CancellationToken.None);
             }
             return Task.FromResult(shell);
         }
