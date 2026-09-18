@@ -1,4 +1,5 @@
 using System.Reflection;
+using MeowSSH.Core.Licensing;
 
 namespace MeowSSH.App.Services;
 
@@ -11,18 +12,13 @@ internal static class TailcatBuildConfig
 {
     private const string DerpMapUrlKey = "MeowSSH.Tailcat.DerpMapUrl";
 
-    public static string DerpMapUrl => GetHttpsUrl(DerpMapUrlKey);
+    public static string DerpMapUrl => ManagedDerpMapUrl.Resolve(
+        GetMetadata(DerpMapUrlKey),
+        LicensingBuildConfig.ApiBaseUrl);
 
-    private static string GetHttpsUrl(string key)
-    {
-        var value = typeof(TailcatBuildConfig).Assembly
+    private static string GetMetadata(string key) =>
+        typeof(TailcatBuildConfig).Assembly
             .GetCustomAttributes<AssemblyMetadataAttribute>()
             .FirstOrDefault(attribute => string.Equals(attribute.Key, key, StringComparison.Ordinal))
             ?.Value ?? string.Empty;
-
-        return Uri.TryCreate(value, UriKind.Absolute, out var uri) &&
-               string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
-            ? uri.AbsoluteUri
-            : string.Empty;
-    }
 }
