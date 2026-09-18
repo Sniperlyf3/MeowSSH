@@ -76,6 +76,14 @@ public sealed class SessionLoggingConnectionEngine(
             _ssh = ssh;
         }
 
+        public SshPathStatus? PathStatus => _ssh.PathStatus;
+
+        public event EventHandler<SshPathStatus>? PathChanged
+        {
+            add => _ssh.PathChanged += value;
+            remove => _ssh.PathChanged -= value;
+        }
+
         public Task<SshCommandResult> RunCommandAsync(
             string command,
             TimeSpan? timeout = null,
