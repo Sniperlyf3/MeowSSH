@@ -18,25 +18,22 @@ public interface IHostConnection : IAsyncDisposable
     Guid HostId { get; }
     bool IsConnected { get; }
 
-    /// <summary>
-    /// Latest informational transport path for this exact live connection.
-    /// Null when the transport does not expose path telemetry.
-    /// </summary>
-    SshPathStatus? PathStatus => null;
-
-    /// <summary>Raised when transport path telemetry changes.</summary>
-    event EventHandler<SshPathStatus>? PathChanged
-    {
-        add { }
-        remove { }
-    }
-
     Task<ITerminalSession> OpenTerminalAsync(
         int columns,
         int rows,
         CancellationToken cancellationToken = default);
 
     event EventHandler<SshConnectionLost>? ConnectionLost;
+}
+
+/// <summary>
+/// Optional live path telemetry for transports such as Tailcat. This state is diagnostic only;
+/// managed-DERP billing remains authoritative on the relay.
+/// </summary>
+public interface IConnectionPathTelemetry
+{
+    SshPathStatus? PathStatus { get; }
+    event EventHandler<SshPathStatus>? PathChanged;
 }
 
 /// <summary>Raw terminal bytes plus resize and exit notifications.</summary>
