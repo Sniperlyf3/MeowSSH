@@ -3,7 +3,7 @@ using Meowshell;
 
 namespace MeowSSH.Core.Ssh;
 
-internal sealed class MeowshellSshConnection : ISshConnection
+internal sealed class MeowshellSshConnection : ISshConnection, IConnectionPathTelemetry
 {
     private readonly MeowshellAgentConnection _agent;
 
