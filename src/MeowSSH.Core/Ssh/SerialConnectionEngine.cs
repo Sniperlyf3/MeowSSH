@@ -42,6 +42,13 @@ public sealed class SerialConnectionEngine(ISerialDeviceService devices) : IProt
 
         public Guid HostId { get; } = hostId;
         public bool IsConnected => !_disposed;
+
+        public SshPathStatus? PathStatus => null;
+        public event EventHandler<SshPathStatus>? PathChanged
+        {
+            add { }
+            remove { }
+        }
         public event EventHandler<SshConnectionLost>? ConnectionLost
         {
             add { }
