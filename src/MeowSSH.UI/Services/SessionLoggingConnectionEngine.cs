@@ -35,13 +35,6 @@ public sealed class SessionLoggingConnectionEngine(
 
         public Guid HostId => Inner.HostId;
         public bool IsConnected => Inner.IsConnected;
-        public SshPathStatus? PathStatus => Inner.PathStatus;
-
-        public event EventHandler<SshPathStatus>? PathChanged
-        {
-            add => Inner.PathChanged += value;
-            remove => Inner.PathChanged -= value;
-        }
 
         public event EventHandler<SshConnectionLost>? ConnectionLost
         {
@@ -73,7 +66,7 @@ public sealed class SessionLoggingConnectionEngine(
         public virtual ValueTask DisposeAsync() => Inner.DisposeAsync();
     }
 
-    private sealed class LoggingSshConnection : LoggingHostConnection, ISshConnection
+    private sealed class LoggingSshConnection : LoggingHostConnection, ISshConnection, IConnectionPathTelemetry
     {
         private readonly ISshConnection _ssh;
 
@@ -83,12 +76,21 @@ public sealed class SessionLoggingConnectionEngine(
             _ssh = ssh;
         }
 
-        public new SshPathStatus? PathStatus => _ssh.PathStatus;
+        public SshPathStatus? PathStatus =>
+            (_ssh as IConnectionPathTelemetry)?.PathStatus;
 
-        public new event EventHandler<SshPathStatus>? PathChanged
+        public event EventHandler<SshPathStatus>? PathChanged
         {
-            add => _ssh.PathChanged += value;
-            remove => _ssh.PathChanged -= value;
+            add
+            {
+                if (_ssh is IConnectionPathTelemetry telemetry)
+                    telemetry.PathChanged += value;
+            }
+            remove
+            {
+                if (_ssh is IConnectionPathTelemetry telemetry)
+                    telemetry.PathChanged -= value;
+            }
         }
 
         public Task<SshCommandResult> RunCommandAsync(
