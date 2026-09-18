@@ -2,7 +2,7 @@
 
 **Repository:** `Sniperlyf3/MeowSSH`
 **Affects:** `src/MeowSSH.UI/Pages/`, `src/MeowSSH.UI/Components/`, `src/MeowSSH.UI/wwwroot/css/`, `tests/MeowSSH.UI.Tests/`
-**Status:** proposed
+**Status:** A1 landed in PR #108, commit `ac58122`; A2–E remain proposed.
 **Audited at:** `claude/beautiful-bohr-im81me` @ `8f93a1a`
 **Method:** every screen driven through the Blazor test host at 412×915 and 360×780, captured and then audited in the DOM. Measurements below are real `getBoundingClientRect` / `getComputedStyle` values, not estimates.
 
@@ -34,6 +34,14 @@ control primitives.
 # A. Functional bugs
 
 ## A1 — Nested `AppShell` renders two tab bars and strands navigation
+
+- [x] **Landed** in PR #108 (commit `ac58122`). `CommandMonitoringPage` is
+  content-only now; `AppShell` is the single owner of the shell for every
+  tool page (Actions, Host health, Encrypted backup, the Tailcat hub included
+  — none of them wrap themselves in a second `<AppShell>`). Covered by
+  `ControlSurfaceTests.EveryScreenHasExactlyOneTabBar`, which sweeps every
+  reachable screen in `tests/MeowSSH.UI.Tests/ControlSurfaceTests.cs` and
+  asserts `nav.tabbar` never appears twice.
 
 **Severity: high.** The only defect here that breaks navigation outright.
 
