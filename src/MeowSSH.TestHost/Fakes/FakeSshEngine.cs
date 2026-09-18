@@ -20,7 +20,7 @@ public sealed class FakeSshEngine : ISshEngine
         return Task.FromResult<ISshConnection>(new FakeSshConnection(host.Id, host.Transport == SshTransport.Tailcat));
     }
 
-    private sealed class FakeSshConnection : ISshConnection
+    private sealed class FakeSshConnection : ISshConnection, IConnectionPathTelemetry
     {
         private bool _disposed;
         private int _nextPort = 42000;
