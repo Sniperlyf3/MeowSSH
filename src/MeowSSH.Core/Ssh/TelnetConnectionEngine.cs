@@ -36,6 +36,13 @@ public sealed class TelnetConnectionEngine : IProtocolConnectionEngine
 
         public Guid HostId { get; } = hostId;
         public bool IsConnected => !_disposed && client.Connected;
+
+        public SshPathStatus? PathStatus => null;
+        public event EventHandler<SshPathStatus>? PathChanged
+        {
+            add { }
+            remove { }
+        }
         public event EventHandler<SshConnectionLost>? ConnectionLost;
 
         public Task<ITerminalSession> OpenTerminalAsync(
