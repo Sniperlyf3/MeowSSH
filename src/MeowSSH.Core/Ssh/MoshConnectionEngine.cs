@@ -178,6 +178,13 @@ public sealed class MoshConnectionEngine(MeowshellSshEngineOptions options) : IP
 
         public Guid HostId { get; }
         public bool IsConnected => !_disposed && _mosh.IsConnected;
+
+        public SshPathStatus? PathStatus => null;
+        public event EventHandler<SshPathStatus>? PathChanged
+        {
+            add { }
+            remove { }
+        }
         public event EventHandler<SshConnectionLost>? ConnectionLost;
 
         public async Task<ITerminalSession> OpenTerminalAsync(
