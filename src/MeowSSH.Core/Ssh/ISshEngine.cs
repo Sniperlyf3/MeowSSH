@@ -18,10 +18,14 @@ public interface ISshEngine
 public interface ISshConnection : IHostConnection
 {
     /// <summary>Latest live Tailcat path for this SSH connection, when available.</summary>
-    new SshPathStatus? PathStatus { get; }
+    new SshPathStatus? PathStatus => ((IHostConnection)this).PathStatus;
 
     /// <summary>Raised when the same live SSH connection changes between direct and relayed paths.</summary>
-    new event EventHandler<SshPathStatus>? PathChanged;
+    new event EventHandler<SshPathStatus>? PathChanged
+    {
+        add => ((IHostConnection)this).PathChanged += value;
+        remove => ((IHostConnection)this).PathChanged -= value;
+    }
 
     Task<ISshShell> OpenShellAsync(int columns, int rows, CancellationToken cancellationToken = default);
 
