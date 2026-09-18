@@ -9,7 +9,14 @@ internal sealed class MeowshellSshConnection(Guid hostId, MeowshellAgentConnecti
 
     public bool IsConnected { get; private set; } = true;
 
+    public SshPathStatus? PathStatus => TranslatePath(agent.CurrentPath);
+
     public event EventHandler<SshConnectionLost>? ConnectionLost;
+    public event EventHandler<SshPathStatus>? PathChanged;
+
+    {
+        agent.PathChanged += OnPathChanged;
+    }
 
     public async Task<ISshShell> OpenShellAsync(int columns, int rows, CancellationToken cancellationToken = default)
     {
@@ -179,6 +186,12 @@ internal sealed class MeowshellSshConnection(Guid hostId, MeowshellAgentConnecti
         return Encoding.UTF8.GetString(buffer.GetBuffer(), 0, checked((int)buffer.Length));
     }
 
+    private static SshPathStatus? TranslatePath(MeowshellPathStatus? path) =>
+        path is null ? null : new SshPathStatus(path.Direct, path.Via);
+
+    private void OnPathChanged(MeowshellPathStatus path) =>
+        PathChanged?.Invoke(this, new SshPathStatus(path.Direct, path.Via));
+
     private void OnChannelLost(SshConnectionLost lost)
     {
         IsConnected = false;
@@ -188,6 +201,7 @@ internal sealed class MeowshellSshConnection(Guid hostId, MeowshellAgentConnecti
     public async ValueTask DisposeAsync()
     {
         IsConnected = false;
+        agent.PathChanged -= OnPathChanged;
         await agent.DisposeAsync().ConfigureAwait(false);
     }
 }
