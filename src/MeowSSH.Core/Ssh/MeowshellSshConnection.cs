@@ -96,7 +96,7 @@ internal sealed class MeowshellSshConnection : ISshConnection
     }
 
     public Task<ISftpSession> OpenSftpAsync(CancellationToken cancellationToken = default) =>
-        Task.FromResult<ISftpSession>(new MeowshellSftpSession(agent));
+        Task.FromResult<ISftpSession>(new MeowshellSftpSession(_agent));
 
     public Task<ISshForward> OpenLocalForwardAsync(
         string listenAddress,
