@@ -46,7 +46,7 @@ else if (_activeSessionId is not null && _sessions.Count > 0)
                                  SupportsFiles="session.SupportsSshFeatures"
                                  IsConnected="session.IsConnected"
                                  IsReconnecting="session.IsReconnecting"
-                                 PathStatus="session.PathStatus"
+                                 PathStatus="CurrentPathStatus(session)"
                                  DisconnectMessage="session.Status"
                                  OnReconnect="() => ReconnectAsync(session.Id)"
                                  OnWriteFailed="ex => OnTerminalWriteFailedAsync(session.Id, ex)"
@@ -776,6 +776,11 @@ else
     }
 
     private OpenSession? FindSession(Guid id) => _sessions.FirstOrDefault(s => s.Id == id);
+
+    private static SshPathStatus? CurrentPathStatus(OpenSession session) =>
+        session.Connection is IConnectionPathTelemetry telemetry
+            ? telemetry.PathStatus ?? session.PathStatus
+            : session.PathStatus;
 
     private static Failure MapFailure(string fallbackTitle, SshException ex) => ex.Failure switch
     {
