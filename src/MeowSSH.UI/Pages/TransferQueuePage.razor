@@ -1,0 +1,19 @@
+@* No open host connection here -- this is reached from the Tools hub, not from a live SFTP
+   session, so retry is only ever offered when the currently open Files session is for the same
+   host an item was queued against. That is a real limitation, not a bug: see
+   TransferQueueContents.CanRetry. *@
+<section class="settings" data-testid="transfer-queue-page">
+    <div class="settings__section">
+        <div class="section-heading">
+            <div>
+                <h2 class="section-label">Transfer queue <span class="action-pro-badge">PRO</span></h2>
+                <p class="setting-card__body">
+                    Uploads and downloads queued from Files run one at a time, in order, with a
+                    local record of every attempt.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <TransferQueueContents />
+</section>

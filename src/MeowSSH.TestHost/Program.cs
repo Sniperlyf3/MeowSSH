@@ -53,6 +53,7 @@ builder.Services.AddScoped<ITransferHistoryService>(_ => new FileTransferHistory
     Path.Combine(Path.GetTempPath(), "meowssh-testhost-transfer-history", Guid.NewGuid().ToString("N") + ".json")));
 builder.Services.AddScoped<TransferQueueService>();
 builder.Services.AddScoped<ITransferQueueService>(sp => sp.GetRequiredService<TransferQueueService>());
+builder.Services.AddScoped<TransferQueueLocalFileCleanup>();
 builder.Services.AddScoped<IEncryptedVaultBackupService, FakeEncryptedVaultBackupService>();
 builder.Services.AddScoped<IPortForwardProfileStore, MemoryPortForwardProfileStore>();
 builder.Services.AddScoped<IPortForwardProfileService, PortForwardProfileService>();

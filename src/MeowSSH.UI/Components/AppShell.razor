@@ -42,6 +42,10 @@
         {
             <EncryptedBackupPage />
         }
+        else if (_activeTool == "transferqueue")
+        {
+            <TransferQueuePage />
+        }
         else
         {
             @ChildContent
@@ -81,6 +85,7 @@
         "monitoring" => "Monitoring",
         "health" => "Host Health",
         "backup" => "Backup",
+        "transferqueue" => "Transfer Queue",
         _ when _showToolsHub => "Tools",
         _ => Title,
     };

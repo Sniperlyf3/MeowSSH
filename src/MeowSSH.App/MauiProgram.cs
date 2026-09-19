@@ -78,6 +78,7 @@ public static class MauiProgram
             Path.Combine(FileSystem.AppDataDirectory, "transfer-history.json")));
         builder.Services.AddSingleton<TransferQueueService>();
         builder.Services.AddSingleton<ITransferQueueService>(sp => sp.GetRequiredService<TransferQueueService>());
+        builder.Services.AddSingleton<TransferQueueLocalFileCleanup>();
         builder.Services.AddSingleton<IEncryptedVaultBackupService, EncryptedVaultBackupService>();
         builder.Services.AddSingleton<IPortForwardProfileStore>(_ => new FilePortForwardProfileStore(
             Path.Combine(FileSystem.AppDataDirectory, "port-forward-profiles.json")));

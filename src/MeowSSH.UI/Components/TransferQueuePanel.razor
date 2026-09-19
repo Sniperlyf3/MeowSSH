@@ -1,0 +1,24 @@
+@* The sheet used from FilesPage, where a live SFTP session for the open host lets a same-host
+   retry actually run. AppShell already supplies a back button for the Tools-hosted
+   TransferQueuePage, so this is the only place that needs its own header. *@
+<div class="files" data-testid="transfer-queue-panel">
+    <header class="topbar">
+        <button type="button" class="btn btn--icon" aria-label="Close transfer queue"
+                data-testid="transfer-queue-close" @onclick="() => OnClosed.InvokeAsync()">
+            <Icon Name="back" />
+        </button>
+        <span class="session__title">
+            <span class="session__host">Transfer queue <span class="action-pro-badge">PRO</span></span>
+        </span>
+    </header>
+
+    <div class="files__body">
+        <TransferQueueContents Sftp="Sftp" CurrentHostId="CurrentHostId" />
+    </div>
+</div>
+
+@code {
+    [Parameter] public EventCallback OnClosed { get; set; }
+    [Parameter] public ISftpSession? Sftp { get; set; }
+    [Parameter] public Guid CurrentHostId { get; set; }
+}

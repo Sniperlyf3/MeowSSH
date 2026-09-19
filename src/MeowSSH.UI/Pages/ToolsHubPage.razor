@@ -51,6 +51,14 @@
                 </span>
                 <Icon Name="chevron" />
             </button>
+
+            <button type="button" class="setting-card" data-testid="open-tool-transferqueue" @onclick="OpenTransferQueue">
+                <span class="setting-card__copy">
+                    <span class="setting-card__title">Transfer queue <span class="tier-badge">Pro</span></span>
+                    <span class="setting-card__body">Review and manage queued and past SFTP transfers.</span>
+                </span>
+                <Icon Name="chevron" />
+            </button>
         </div>
     </section>
 </section>
@@ -63,4 +71,5 @@
     private Task OpenHealth() => OnSelected.InvokeAsync("health");
     private Task OpenTailcat() => OnSelected.InvokeAsync("tailcat");
     private Task OpenBackup() => OnSelected.InvokeAsync("backup");
+    private Task OpenTransferQueue() => OnSelected.InvokeAsync("transferqueue");
 }

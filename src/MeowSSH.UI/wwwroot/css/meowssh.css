@@ -956,6 +956,21 @@ h1:focus, h2:focus, h3:focus, [tabindex="-1"]:focus { outline: none; box-shadow:
 }
 
 /*
+  For the transfer queue's "Queue"/"History" sections, each with a
+  clear-this-list action beside the heading. Not .section-heading: that class
+  is already used elsewhere (HostHealthDashboardPage) wrapping a single child
+  with no layout rule of its own, and giving it one here would change that
+  page's rendering along with this one.
+*/
+.section-heading--with-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+/*
   C6: "Refresh plan" and "Restore purchases" had no layout rule at all here --
   a bare block <div> around two inline-flex .btn elements, each sized to its
   own label, side by side with whatever space was left over. Equal widths on
