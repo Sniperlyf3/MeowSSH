@@ -1,0 +1,284 @@
+@using QRCoder
+@using MeowSSH.Core.Licensing
+@implements IDisposable
+@inject ITailcatTemporaryShareService Shares
+@inject ITailcatHubService Hub
+@inject IEntitlementService Entitlements
+@inject IActiveSessionLifetime SessionLifetime
+
+@*
+    "Temporary" bounds time, not who may connect -- ITailcatTemporaryShareService
+    already refuses to create a share without at least one named client key, and
+    always drops shell/files/exit-node from the request. This panel's job is to
+    say that plainly (not just enforce it silently) and to make revoke as
+    prominent as start, since the thing being handed out is a live credential:
+    per Meowshell/CLAUDE.md, a Tailcat address IS the cryptographic capability.
+*@
+<div class="tailcat-stack" data-testid="tailcat-temporary-share">
+    @if (!Entitlements.Has(PremiumFeature.TailcatPhoneServer))
+    {
+        <article class="tailcat-card" data-testid="tailcat-temporary-share-locked">
+            <h2>Temporary sharing · Pro</h2>
+            <p class="note">Hand a Tailcat client access to one or more chosen services, for a bounded time, then have the address stop working on its own.</p>
+            <p class="note">Upgrade to MeowSSH Pro to create a temporary share.</p>
+        </article>
+    }
+    else
+    {
+        @if (_error is not null) { <p class="lock__error" role="alert" data-testid="tailcat-temporary-share-error">@_error</p> }
+        @if (_notice is not null) { <p class="note" role="status" data-testid="tailcat-temporary-share-notice">@_notice</p> }
+
+        @if (Shares.Active is { } active)
+        {
+            <article class="tailcat-card tailcat-card--active" data-testid="tailcat-temporary-share-active">
+                <h2>Temporary share is live</h2>
+                <p><strong>@active.Label</strong></p>
+                <p class="field__hint" data-testid="tailcat-temporary-share-grant">
+                    Grants access to: <span class="mono">@string.Join(", ", active.ServeTargets)</span> only.
+                    Not granted: shell, files, or an exit node.
+                </p>
+                <label class="field">
+                    <span class="field__label">Tailcat address</span>
+                    <textarea class="field__input mono" rows="4" readonly data-testid="tailcat-temporary-share-address">@active.Address</textarea>
+                </label>
+                <p class="field__hint" data-testid="tailcat-temporary-share-expires">
+                    Expires @active.ExpiresAtUtc.ToLocalTime().ToString("g").
+                    Treat the address as a secret credential until then -- anyone holding it can reach the services above.
+                </p>
+                <div class="form__row">
+                    <button type="button" class="btn btn--ghost field--grow" data-testid="tailcat-temporary-share-toggle-qr" @onclick="ToggleQr">@(_qrSvg is null ? "Show QR" : "Hide QR")</button>
+                </div>
+                @if (_qrSvg is not null)
+                {
+                    <div class="tailcat-qr" data-testid="tailcat-temporary-share-qr">@((MarkupString)_qrSvg)<p class="field__hint"><strong>Keep this QR private.</strong> It contains the Tailcat address itself and can therefore contain credential material.</p></div>
+                }
+                @*
+                    btn--danger, not btn--ghost: revoking here actually terminates the
+                    underlying Tailcat process (ITailcatTemporaryShareService.RevokeAsync
+                    -> ITailcatHubService.StopServerAsync), the same as the general
+                    "Share this phone" panel's Stop button. It is a consequential action,
+                    not a UI toggle, and is styled to match.
+                *@
+                <button type="button" class="btn btn--danger btn--block" disabled="@_busy" data-testid="revoke-temporary-share" @onclick="RevokeAsync">Revoke now</button>
+            </article>
+        }
+        else
+        {
+            <article class="tailcat-card">
+                <h2>Share a service temporarily</h2>
+                <p class="note">
+                    Grants only the service(s)/port(s) chosen below, to the Tailcat clients named below, until the
+                    timer runs out or you revoke it. Never shell, files, or an exit node, and never an address anyone
+                    can use without being named first.
+                </p>
+                <label class="field">
+                    <span class="field__label">Label</span>
+                    <input class="field__input" maxlength="80" data-testid="tailcat-temporary-share-label" placeholder="e.g. Guest access to dev server" @bind="_label" @bind:event="oninput" />
+                </label>
+                <label class="field">
+                    <span class="field__label">Services or ports to share</span>
+                    <textarea class="field__input mono" rows="2" data-testid="tailcat-temporary-share-targets" placeholder="8080,443" @bind="_serveTargets" @bind:event="oninput"></textarea>
+                    <span class="field__hint">Comma- or line-separated Tailcat serve targets. Ports and ranges only.</span>
+                </label>
+                @if (_savedTailcatClientKeys.Count > 0)
+                {
+                    <fieldset class="field" data-testid="tailcat-temporary-share-saved-client-keys">
+                        <legend class="field__label">Saved Tailcat identities allowed to connect</legend>
+                        @foreach (var key in _savedTailcatClientKeys)
+                        {
+                            <label class="forward-option">
+                                <input type="checkbox" data-testid="tailcat-temporary-share-saved-client-key" checked="@_selectedTailcatClientNames.Contains(key.Name)" @onchange="e => SetSavedTailcatClient(key.Name, e.Value is true)" />
+                                <span><strong>@key.Name</strong><small class="mono tailcat-break">@key.PublicKey</small></span>
+                            </label>
+                        }
+                        <span class="field__hint">Only the public <span class="mono">nodekey:</span> value is sent to the server allowlist.</span>
+                    </fieldset>
+                }
+                <label class="field">
+                    <span class="field__label">Additional Tailcat client keys</span>
+                    <textarea class="field__input mono" rows="2" data-testid="tailcat-temporary-share-clients" placeholder="nodekey:..." @bind="_allowedClients" @bind:event="oninput"></textarea>
+                    <span class="field__hint">Required -- a temporary share narrows how long the address works, not who may use it. Comma-separate additional <span class="mono">nodekey:</span> public keys.</span>
+                </label>
+                <label class="field">
+                    <span class="field__label">Expires after</span>
+                    <select class="field__input" data-testid="tailcat-temporary-share-lifetime" @bind="_lifetimeMinutes">
+                        <option value="5">5 minutes</option>
+                        <option value="15">15 minutes</option>
+                        <option value="30">30 minutes</option>
+                        <option value="60">1 hour</option>
+                        <option value="240">4 hours</option>
+                        <option value="480">8 hours</option>
+                        <option value="1440">24 hours</option>
+                    </select>
+                </label>
+                @*
+                    CanStart is two conditions wide, same idea as TailcatPhonePanel's
+                    StartBlockedBecause: name the one that is unmet rather than leave a
+                    dimmed button unexplained (audit items A3/A4).
+                *@
+                @if (!_busy && StartBlockedBecause is { } blocked)
+                {
+                    <p class="form__hint" data-testid="start-temporary-share-hint">@blocked</p>
+                }
+                <button type="button" class="btn btn--primary btn--block" disabled="@(_busy || !CanStart)" data-testid="start-temporary-share" @onclick="StartAsync">Start temporary share</button>
+            </article>
+        }
+
+        <article class="tailcat-card" data-testid="tailcat-temporary-share-history">
+            <h2>Recent shares</h2>
+            @if (_history.Count == 0)
+            {
+                <p class="note" data-testid="tailcat-temporary-share-history-empty">No temporary shares yet.</p>
+            }
+            else
+            {
+                @foreach (var share in _history)
+                {
+                    <div class="tailcat-running-row" data-testid="tailcat-temporary-share-history-row">
+                        <span>
+                            <strong>@share.Label</strong>
+                            <small data-testid="tailcat-temporary-share-history-status">@StatusText(share) · @string.Join(", ", share.ServeTargets) · created @share.CreatedAtUtc.ToLocalTime().ToString("g")</small>
+                        </span>
+                    </div>
+                }
+            }
+        </article>
+    }
+</div>
+
+@code {
+    private sealed record SavedTailcatClientKey(string Name, string PublicKey);
+
+    private string _label = "";
+    private string _serveTargets = "";
+    private string _allowedClients = "";
+    private int _lifetimeMinutes = 60;
+    private IReadOnlyList<SavedTailcatClientKey> _savedTailcatClientKeys = [];
+    private readonly HashSet<string> _selectedTailcatClientNames = new(StringComparer.Ordinal);
+    private IReadOnlyList<TailcatTemporaryShare> _history = [];
+    private string? _qrSvg;
+    private bool _busy;
+    private string? _error;
+    private string? _notice;
+
+    private IReadOnlyList<string> ServeTargetList => [.. _serveTargets.Split([',', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Distinct(StringComparer.Ordinal)];
+    private bool HasAllowedClients => !string.IsNullOrWhiteSpace(_allowedClients) || _selectedTailcatClientNames.Count > 0;
+
+    /// <summary>
+    /// The unmet condition keeping <c>Start temporary share</c> disabled, worded
+    /// for the person configuring it -- or null once it is ready to start. Kept
+    /// in the same order as <see cref="CanStart"/> so the two cannot disagree.
+    /// </summary>
+    private string? StartBlockedBecause
+    {
+        get
+        {
+            if (ServeTargetList.Count == 0)
+                return "Choose at least one service or port to share.";
+            if (!HasAllowedClients)
+                return "Choose a saved Tailcat identity, or paste a client key, to say who may connect.";
+            return null;
+        }
+    }
+
+    private bool CanStart => ServeTargetList.Count > 0 && HasAllowedClients;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Shares.Changed += OnChanged;
+        Entitlements.Changed += OnChanged;
+
+        var clientKeys = new List<SavedTailcatClientKey>();
+        foreach (var name in await Hub.ListKeysAsync())
+        {
+            try
+            {
+                var publicKey = await Hub.GetClientPublicKeyAsync(name);
+                if (publicKey.StartsWith("nodekey:", StringComparison.Ordinal)) clientKeys.Add(new SavedTailcatClientKey(name, publicKey.Trim()));
+            }
+            catch { }
+        }
+        _savedTailcatClientKeys = clientKeys;
+
+        await ReloadHistoryAsync();
+    }
+
+    private async Task ReloadHistoryAsync() => _history = await Shares.GetHistoryAsync();
+
+    private void SetSavedTailcatClient(string name, bool selected) { if (selected) _selectedTailcatClientNames.Add(name); else _selectedTailcatClientNames.Remove(name); }
+
+    private string AllowedTailcatClientKeys()
+    {
+        var saved = _savedTailcatClientKeys.Where(key => _selectedTailcatClientNames.Contains(key.Name)).Select(key => key.PublicKey);
+        var manual = _allowedClients.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return string.Join(',', saved.Concat(manual).Distinct(StringComparer.Ordinal));
+    }
+
+    private bool HasLongLivedTailcat() { var s = Hub.Snapshot; return s.Server is not null || s.Socks is not null || s.Forwards.Count > 0; }
+
+    private async Task StartAsync()
+    {
+        if (_busy) return;
+        _busy = true; _error = _notice = null;
+        var wasActive = HasLongLivedTailcat();
+        try
+        {
+            if (!wasActive) await SessionLifetime.StartAsync();
+            try
+            {
+                await Shares.CreateAsync(new TailcatTemporaryShareRequest(_label.Trim(), ServeTargetList, AllowedTailcatClientKeys(), TimeSpan.FromMinutes(_lifetimeMinutes)));
+            }
+            catch { if (!wasActive) await SessionLifetime.StopAsync(); throw; }
+            _notice = "Temporary share started.";
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task RevokeAsync()
+    {
+        if (_busy) return;
+        _busy = true; _error = _notice = null;
+        try
+        {
+            await Shares.RevokeAsync();
+            if (!HasLongLivedTailcat()) await SessionLifetime.StopAsync();
+            _notice = "Temporary share revoked.";
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private void ToggleQr()
+    {
+        _error = null;
+        if (_qrSvg is not null) { _qrSvg = null; return; }
+        if (Shares.Active is not { } active) return;
+        try { using var data = QRCodeGenerator.GenerateQrCode(active.Address, QRCodeGenerator.ECCLevel.L); using var renderer = new SvgQRCode(data); _qrSvg = renderer.GetGraphic(6); }
+        catch (Exception ex) { _qrSvg = null; _error = $"This address is too large to fit safely in a QR code: {ex.Message}"; }
+    }
+
+    private static string StatusText(TailcatTemporaryShare share) => share.EndReason switch
+    {
+        null => "Active",
+        TailcatTemporaryShareEndReason.Revoked => "Revoked",
+        TailcatTemporaryShareEndReason.Expired => "Expired",
+        _ => "Ended",
+    };
+
+    private void OnChanged(object? sender, EventArgs e) => _ = InvokeAsync(async () =>
+    {
+        // A share this panel did not just act on can still disappear -- its own
+        // deadline elapsed, or it was stopped from elsewhere -- so the QR for a
+        // now-dead address does not linger once Active reads null.
+        if (Shares.Active is null) _qrSvg = null;
+        await ReloadHistoryAsync();
+        StateHasChanged();
+    });
+
+    public void Dispose()
+    {
+        Shares.Changed -= OnChanged;
+        Entitlements.Changed -= OnChanged;
+    }
+}
