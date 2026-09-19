@@ -1,7 +1,27 @@
+using Microsoft.AspNetCore.Components;
 using MeowSSH.Core.Licensing;
 
 namespace MeowSSH.TestHost.Fakes;
 
+/// <summary>
+/// Grants a verified Pro entitlement, unless the page was opened with "free"
+/// in the query string (e.g. <c>NewPageAsync("/?free")</c> or
+/// <c>"/?tab-tools&amp;free"</c>), in which case it reports Free with no
+/// grant at all. This piggybacks on the same string-Contains query parsing
+/// Playground.razor already uses for "setup", "locked" and "multi" -- a
+/// second, differently-shaped test-config mechanism (env var, header,
+/// appsettings toggle) would be one more thing to keep in sync with how
+/// tests actually drive the host, for no benefit over the pattern already
+/// here.
+/// </summary>
+/// <remarks>
+/// Read once per circuit, same as every other Playground.razor flag: a test
+/// wanting the free-tier path opens its own <c>NewPageAsync("/?free...")</c>
+/// rather than flipping an existing page's tier mid-session. Every one of
+/// the 249 tests that predate this either passes no query string or passes
+/// one without "free" in it, so <see cref="Current"/> still resolves to the
+/// same verified-Pro snapshot they were written against.
+/// </remarks>
 public sealed class FakeEntitlementService : IEntitlementService
 {
     private static readonly EntitlementSnapshot VerifiedPro = new(
@@ -11,7 +31,15 @@ public sealed class FakeEntitlementService : IEntitlementService
         DateTimeOffset.MaxValue,
         "test-pro");
 
-    public EntitlementSnapshot Current => VerifiedPro;
+    private static readonly EntitlementSnapshot Unverified = EntitlementSnapshot.Free(DateTimeOffset.UnixEpoch);
+
+    public EntitlementSnapshot Current { get; }
+
+    public FakeEntitlementService(NavigationManager navigation)
+    {
+        var query = new Uri(navigation.Uri).Query;
+        Current = query.Contains("free", StringComparison.OrdinalIgnoreCase) ? Unverified : VerifiedPro;
+    }
 
     public event EventHandler? Changed
     {
