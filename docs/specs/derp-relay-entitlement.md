@@ -2,7 +2,21 @@
 
 **Repositories:** `Sniperlyf3/MeowSSH` (app), the licensing service (does not yet exist), `Sniperlyf3/meowshell` (one blocking gap)
 **Affects:** `src/MeowSSH.Core/Ssh/`, `src/MeowSSH.Core/Licensing/`, `src/MeowSSH.UI/`, `cmd/meowshell/agent.go`, `dotnet/Meowshell/MeowshellAgentConnection.cs`
-**Status:** proposed
+**Status:** superseded. This spec's Part A5/B4/D metering design was
+client-reported and observe-only (see the "accepted risk" note under A5): the
+app counted its own bytes and told the licensing service, which is exactly the
+authority boundary the shipped design rejects. It was replaced by a
+relay-authoritative design, where the DERP relay itself is the accounting
+boundary and client telemetry is diagnostics only, never a billing input. The
+classification vocabulary also changed name (`RelayClass` here vs. the shipped
+naming) and the fixed three-hostname allowlist in A2/C was replaced by
+managed-relay configuration. The admission (Part B3), eviction (Part E) and
+"no fork of derper" (Part C) reasoning held up and fed the shipped design
+directly — this document is being kept for that background, not deleted.
+Current authoritative design: `Sniperlyf3/MeowSSHAPI/METERED_DERP_RELAY_ROADMAP.md`
+and `Sniperlyf3/MeowSSHAPI/DERP_METERING_ENFORCEMENT_ROADMAP.md` (see
+`Sniperlyf3/MeowSSHAPI/agents/ROADMAP_INDEX.md` for how they relate to this
+file and to the closed execution epic, MeowSSHAPI issue #20).
 **Depends on:** the entitlement stack in PRs #32–#39, unmerged at the time of writing
 
 ## Why this exists
