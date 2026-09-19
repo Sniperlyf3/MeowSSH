@@ -5,16 +5,15 @@
 @inject IJSRuntime Js
 
 <AppShell Title="Keys" ActiveTab="keys" OnTabSelected="OnTabSelected">
-    <Actions>
-        @if (!_adding)
-        {
-            <button type="button" class="btn btn--icon" aria-label="Add credential"
-                    data-testid="add-credential" @onclick="StartAdding">
-                <Icon Name="plus" />
-            </button>
-        }
-    </Actions>
-
+    @*
+        No header Actions here on purpose -- audit B1. This header used to carry
+        a "+" (aria-label "Add credential") unconditionally, so an empty vault
+        showed it next to the empty state's own "Add credential" button, both
+        calling StartAdding. A non-empty vault has the same duplication against
+        the list header's own "+ Add" (below, data-testid="add-credential-list").
+        Each state already owns exactly one entry point to StartAdding: the
+        empty state while there is nothing saved, the list header once there is.
+    *@
     <ChildContent>
         <section class="keys-page" data-testid="keys-page">
             @if (_adding)
@@ -220,7 +219,7 @@
                     <span class="empty__glyph"><Icon Name="key" /></span>
                     <p class="empty__title">No saved credentials</p>
                     <p class="empty__body">Generate or import a key, add a device key, or save a password once and reuse it across hosts.</p>
-                    <button type="button" class="btn btn--primary" data-testid="add-first-credential" @onclick="StartAdding"><Icon Name="plus" /> Add your first credential</button>
+                    <button type="button" class="btn btn--primary" data-testid="add-credential" @onclick="StartAdding"><Icon Name="plus" /> Add your first credential</button>
                 </div>
             }
             else

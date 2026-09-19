@@ -231,6 +231,37 @@ h1:focus, h2:focus, h3:focus, [tabindex="-1"]:focus { outline: none; box-shadow:
   flex-shrink: 0;
 }
 
+/*
+  C2 (continued, verified still reproducing after the manage-column fix
+  below): .host is a CSS grid ("3px auto 1fr auto"), and a plain "auto"
+  track's floor is its own min-content, full stop -- unlike the "1fr" name
+  column, whose min-width:0 (on .host__detail) really does let it shrink to
+  nothing, an "auto" track never gives an inch even when the grid item inside
+  it is given min-width:0 too (that only affects flex layouts). The result:
+  whichever status badge is showing keeps its full natural width and the host
+  name/address -- the thing that identifies the row -- gives up space first.
+  Measured with Playwright at 412px: "Connecting" (97px) still ellipsised
+  "ci@build.internal:2222" down to 136px (needs 146), one of the exact
+  strings the audit measured as clipped. This cap makes the badge concede a
+  meaningful amount of that width back before the identifier does.
+
+  It does not close every case: "staging-db-replica-eu-west" (27 characters)
+  paired with the "Failed" badge and this row's ~103px of fixed rail/avatar/
+  padding overhead needs more than the 233px this row has to split between
+  name and badge combined, even with the badge capped here. Shrinking the
+  badge text further to fix that one combination would mean an unreadable
+  sliver of a label on every *other* row too. Regression tests:
+  UiUxAuditFollowUpTests.ShortAndMediumHostNamesDoNotOverflowTheirColumnOnTheHostsList
+  and .TheOneRemainingHostNameOverflowIsBoundedAndDocumented assert what
+  this cap actually achieves and pin the residual case rather than asserting
+  a fix this change does not fully make. The cap only applies below the same
+  460px breakpoint as the transport chip below -- above it there is room for
+  both a full badge and a full name, so neither gives up anything.
+*/
+@media (max-width: 460px) {
+  .host__meta { max-width: 5rem; }
+}
+
 .host__reason {
   font-size: var(--text-xs);
   color: var(--danger);
@@ -796,7 +827,15 @@ h1:focus, h2:focus, h3:focus, [tabindex="-1"]:focus { outline: none; box-shadow:
   cursor: pointer;
   transition: background 120ms ease, color 120ms ease;
 }
-.segmented__option--on { background: var(--accent); color: var(--text-on-accent); font-weight: 600; }
+/*
+  E5's real fix lives in controls.css, which loads after this file: a plain
+  ".segmented__option--on" rule there wins the cascade tie and repaints this
+  full accent fill as a tinted wash instead. This rule stays only as the
+  fallback shape (padding/radius come from .segmented__option above); do not
+  re-add a background/color here -- it would silently win again the moment
+  controls.css stops loading last, and nothing would fail to compile to warn
+  you. See controls.css's own comment on .segmented__option--on.
+*/
 .segmented__option:focus-visible { outline: none; box-shadow: var(--ring); }
 
 .check { display: flex; gap: var(--space-3); align-items: flex-start; font-size: var(--text-sm); cursor: pointer; }
@@ -916,6 +955,24 @@ h1:focus, h2:focus, h3:focus, [tabindex="-1"]:focus { outline: none; box-shadow:
   gap: var(--space-3);
 }
 
+/*
+  C6: "Refresh plan" and "Restore purchases" had no layout rule at all here --
+  a bare block <div> around two inline-flex .btn elements, each sized to its
+  own label, side by side with whatever space was left over. Equal widths on
+  one row read as a single decision the way the rest of the app's paired
+  actions do; wrapping to two full-width rows below the point they fit keeps
+  either label from clipping.
+*/
+.settings__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.settings__actions > .btn {
+  flex: 1 1 10rem;
+}
+
 .setting-card {
   display: flex;
   align-items: center;
@@ -1021,6 +1078,31 @@ h1:focus, h2:focus, h3:focus, [tabindex="-1"]:focus { outline: none; box-shadow:
   letter-spacing: 0.06em;
   text-transform: uppercase;
   line-height: 1.6;
+}
+
+/*
+  The Actions page's own PRO/TRUNCATED marker, promoted here from
+  ActionsPage.razor.css because it never worked anywhere else. Blazor CSS
+  isolation only stamps the scope attribute a .razor.css rule needs onto
+  elements the *same* .razor file renders; a <span class="action-pro-badge">
+  written in AdvancedSftpPage, CommandMonitoringPage, EncryptedBackupPage,
+  ForwardsPage, HostHealthDashboardPage, SessionLogsPage,
+  ActionSequenceControl, BroadcastTerminalControl, ForwardProfilesPanel or
+  SftpRemoteSearchPanel never carried ActionsPage's scope attribute, so the
+  rule matched nothing there and "PRO" rendered as bare text inheriting the
+  surrounding heading's weight -- the literal E2 defect the badge exists to
+  prevent. This class has to live somewhere every page's markup can reach it.
+*/
+.action-pro-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.35rem;
+  padding: 0 0.4rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
 }
 
 .range {
