@@ -26,6 +26,8 @@ builder.Services.AddScoped<ITailcatIdentityStore, FakeTailcatIdentityStore>();
 builder.Services.AddScoped<IManagedDerpUsageService, FakeManagedDerpUsageService>();
 builder.Services.AddScoped<ITailcatWorkspaceStore, MemoryTailcatWorkspaceStore>();
 builder.Services.AddScoped<ITailcatWorkspaceService, TailcatWorkspaceService>();
+builder.Services.AddScoped<ITailcatTemporaryShareStore, MemoryTailcatTemporaryShareStore>();
+builder.Services.AddScoped<ITailcatTemporaryShareService, TailcatTemporaryShareService>();
 builder.Services.AddScoped<ICommandActionStore, MemoryCommandActionStore>();
 builder.Services.AddScoped<ICommandActionService, CommandActionService>();
 builder.Services.AddScoped<IParameterizedCommandActionRunner, ParameterizedCommandActionRunner>();

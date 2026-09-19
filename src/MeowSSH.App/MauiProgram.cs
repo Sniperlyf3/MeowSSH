@@ -106,6 +106,9 @@ public static class MauiProgram
         builder.Services.AddSingleton<ITailcatWorkspaceStore>(_ => new FileTailcatWorkspaceStore(
             Path.Combine(FileSystem.AppDataDirectory, "tailcat-workspaces.json")));
         builder.Services.AddSingleton<ITailcatWorkspaceService, TailcatWorkspaceService>();
+        builder.Services.AddSingleton<ITailcatTemporaryShareStore>(_ => new FileTailcatTemporaryShareStore(
+            Path.Combine(FileSystem.AppDataDirectory, "tailcat-temporary-shares.json")));
+        builder.Services.AddSingleton<ITailcatTemporaryShareService, TailcatTemporaryShareService>();
         builder.Services.AddSingleton<ICommandActionStore>(_ => new FileCommandActionStore(
             Path.Combine(FileSystem.AppDataDirectory, "actions.json")));
         builder.Services.AddSingleton<ICommandActionService, CommandActionService>();
