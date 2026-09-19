@@ -74,6 +74,10 @@ public static class MauiProgram
         builder.Services.AddSingleton<ISftpBookmarkStore>(_ => new FileSftpBookmarkStore(
             Path.Combine(FileSystem.AppDataDirectory, "sftp-bookmarks.json")));
         builder.Services.AddSingleton<ISftpBookmarkService, SftpBookmarkService>();
+        builder.Services.AddSingleton<ITransferHistoryService>(_ => new FileTransferHistoryService(
+            Path.Combine(FileSystem.AppDataDirectory, "transfer-history.json")));
+        builder.Services.AddSingleton<TransferQueueService>();
+        builder.Services.AddSingleton<ITransferQueueService>(sp => sp.GetRequiredService<TransferQueueService>());
         builder.Services.AddSingleton<IEncryptedVaultBackupService, EncryptedVaultBackupService>();
         builder.Services.AddSingleton<IPortForwardProfileStore>(_ => new FilePortForwardProfileStore(
             Path.Combine(FileSystem.AppDataDirectory, "port-forward-profiles.json")));

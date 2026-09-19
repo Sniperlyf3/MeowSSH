@@ -49,6 +49,10 @@ builder.Services.AddScoped<ITerminalBroadcastService, TerminalBroadcastService>(
 builder.Services.AddScoped<TerminalBroadcastCoordinator>();
 builder.Services.AddScoped<ISftpBookmarkStore, MemorySftpBookmarkStore>();
 builder.Services.AddScoped<ISftpBookmarkService, SftpBookmarkService>();
+builder.Services.AddScoped<ITransferHistoryService>(_ => new FileTransferHistoryService(
+    Path.Combine(Path.GetTempPath(), "meowssh-testhost-transfer-history", Guid.NewGuid().ToString("N") + ".json")));
+builder.Services.AddScoped<TransferQueueService>();
+builder.Services.AddScoped<ITransferQueueService>(sp => sp.GetRequiredService<TransferQueueService>());
 builder.Services.AddScoped<IEncryptedVaultBackupService, FakeEncryptedVaultBackupService>();
 builder.Services.AddScoped<IPortForwardProfileStore, MemoryPortForwardProfileStore>();
 builder.Services.AddScoped<IPortForwardProfileService, PortForwardProfileService>();
