@@ -78,6 +78,11 @@ builder.Services.AddScoped<IExternalUriLauncher, NoOpExternalUriLauncher>();
 builder.Services.AddScoped<IThirdPartyNoticeProvider, FakeThirdPartyNoticeProvider>();
 builder.Services.AddScoped<IPendingDiagnosticReportStore>(_ => new FilePendingDiagnosticReportStore(
     Path.Combine(Path.GetTempPath(), "meowssh-testhost-diagnostics", Guid.NewGuid().ToString("N"))));
+builder.Services.AddScoped<IDiagnosticsInstallIdStore>(_ => new FileDiagnosticsInstallIdStore(
+    Path.Combine(Path.GetTempPath(), "meowssh-testhost-diagnostics-id", Guid.NewGuid().ToString("N"))));
+builder.Services.AddScoped<IDiagnosticsSendPreferenceStore>(_ => new FileDiagnosticsSendPreferenceStore(
+    Path.Combine(Path.GetTempPath(), "meowssh-testhost-diagnostics-pref", Guid.NewGuid().ToString("N"))));
+builder.Services.AddScoped<DiagnosticsInstallIdentity>();
 builder.Services.AddScoped(_ => new AppExternalLinks(
     new Uri("https://example.test/privacy"),
     new Uri("https://example.test/support"),

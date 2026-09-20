@@ -16,7 +16,8 @@ public static class BugReportExportBuilder
         string description,
         string? expectedBehavior,
         string? reproductionSteps,
-        DiagnosticReportSnapshot? diagnosticReport = null)
+        DiagnosticReportSnapshot? diagnosticReport = null,
+        string? installId = null)
     {
         if (string.IsNullOrWhiteSpace(description))
             throw new ArgumentException("Describe what went wrong before exporting the report.", nameof(description));
@@ -40,6 +41,15 @@ public static class BugReportExportBuilder
         }
 
         builder.AppendLine("Anonymized diagnostics: attached by user choice");
+        // installId is only ever non-null when the "send anonymized diagnostics"
+        // setting is on (DiagnosticsInstallIdentity.GetIdForReportAsync returns null
+        // otherwise) — a random per-install value, never derived from this device or
+        // the account, so support can tell reports from one install apart without
+        // it doubling as a device or account identifier. Omitted entirely when the
+        // setting is off so a report built with it off carries no trace that the
+        // setting exists.
+        if (!string.IsNullOrEmpty(installId))
+            builder.AppendLine($"Anonymous install id: {installId}");
         builder.AppendLine($"Format: {diagnosticReport.FormatVersion}");
         builder.AppendLine($"App version: {diagnosticReport.AppVersion}");
         builder.AppendLine($"Platform: {diagnosticReport.Platform}");
