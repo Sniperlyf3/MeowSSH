@@ -170,6 +170,26 @@ public sealed class UiUxAuditFollowUpTests(TestHostFixture fixture)
         Assert.NotEqual(hiddenLabel, shownLabel);
     }
 
+    /// <summary>
+    /// E3's own residual, noted but left open in the original pass: Upload
+    /// and New folder had <c>aria-label</c> (so a screen reader announces
+    /// them) but, unlike the hidden-files toggle right next to them, no
+    /// visible <c>title</c> tooltip for a sighted mouse/trackpad user
+    /// hovering the bare icon. Closed by adding <c>title</c> to both,
+    /// matching the toggle's own treatment.
+    /// </summary>
+    [Fact]
+    public async Task UploadAndNewFolderHaveVisibleTooltipsLikeTheHiddenFilesToggle()
+    {
+        var page = await fixture.NewPageAsync("/?files");
+
+        var upload = await page.GetByTestId("upload-file").GetAttributeAsync("title");
+        var newFolder = await page.GetByTestId("new-folder").GetAttributeAsync("title");
+
+        Assert.False(string.IsNullOrWhiteSpace(upload), "Upload button has no visible title tooltip.");
+        Assert.False(string.IsNullOrWhiteSpace(newFolder), "New folder button has no visible title tooltip.");
+    }
+
     // C2 ---------------------------------------------------------------------
 
     /// <summary>

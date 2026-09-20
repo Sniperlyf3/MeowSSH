@@ -24,7 +24,7 @@ else
             <span class="session__address">@Host.Label</span>
         </span>
 
-        <button type="button" class="btn btn--icon" aria-label="Upload file"
+        <button type="button" class="btn btn--icon" aria-label="Upload file" title="Upload file"
                 data-testid="upload-file" @onclick="UploadAsync">
             <Icon Name="upload" />
         </button>
@@ -45,7 +45,7 @@ else
                 data-testid="toggle-hidden" @onclick="ToggleHidden">
             <Icon Name="@(_showHidden ? "eye" : "eye-off")" />
         </button>
-        <button type="button" class="btn btn--icon" aria-label="New folder"
+        <button type="button" class="btn btn--icon" aria-label="New folder" title="New folder"
                 data-testid="new-folder" @onclick="StartNewFolder">
             <Icon Name="folder-plus" />
         </button>

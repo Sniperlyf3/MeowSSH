@@ -8,8 +8,8 @@ most of B–E in the same pass — its own commit message says so — but that w
 never verified against B–E's checkboxes here, which is what left this doc
 understating what had already shipped. Re-verified item by item against
 current source below: FIXED for B2–B6, C1, C3, C4, D1–D4, E1, E3–E6 (citations
-per item; E3 has a small residual noted; C3's missing dedicated regression
-test is closed in a later pass here); B1, C2, C6 and part of E2 were
+per item; C3's missing dedicated regression test and E3's Upload/New-folder
+tooltip residual are both closed in a later pass here); B1, C2, C6 and part of E2 were
 still genuinely broken as of `ac58122` and were fixed here, in
 `e4c1007`, with regression tests; C7 is unaddressed by design (the
 doc itself calls it lowest priority, a design suggestion rather than a
@@ -534,9 +534,14 @@ or "tap to hide". State matters and the icon does not carry it.
   them." / "...shown. Hide them."), a `title` tooltip, and `aria-pressed` —
   the exact ambiguity this item calls out. Added regression coverage here:
   `UiUxAuditFollowUpTests.HiddenFilesToggleStatesItsCurrentStateRatherThanJustAnIcon`.
-  Not fully closed: Upload and New folder still have only an `aria-label`
-  (no visible label or `title` tooltip), which is a smaller, lower-severity
-  residual than the eye toggle's genuine ambiguity — left as further polish.
+
+  Residual closed here: Upload and New folder had an `aria-label` (so a
+  screen reader still announced them) but, unlike the hidden-files toggle
+  right next to them, no visible `title` tooltip for a sighted mouse/
+  trackpad user hovering the bare icon. Added `title="Upload file"` /
+  `title="New folder"` to both, matching the toggle's own treatment. Added
+  regression coverage here:
+  `UiUxAuditFollowUpTests.UploadAndNewFolderHaveVisibleTooltipsLikeTheHiddenFilesToggle`.
 
 ## E4 — Dangerous options look exactly like benign ones
 
