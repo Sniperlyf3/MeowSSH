@@ -43,6 +43,19 @@ public sealed class RelayHealthBannerTests(TestHostFixture fixture)
         var homeNas = page.GetByTestId("host-row").Filter(new() { HasText = "home-nas" });
         await homeNas.ClickAsync();
         await Assertions.Expect(page.GetByTestId("terminal")).ToBeVisibleAsync();
+        // The outer <div data-testid="terminal"> renders before terminal.js's
+        // create() call finishes -- xterm.js only creates .xterm-helper-textarea
+        // (and only starts accepting focus/input) once that JS interop call
+        // completes. TerminalTests.OpenSessionAsync already waits for
+        // .xterm-screen (an element xterm.js itself creates) for exactly this
+        // reason; this helper didn't, so Keyboard.TypeAsync immediately after
+        // "terminal" becomes visible could type into a textarea that does not
+        // exist yet and lose the whole string. Diagnosed by typing "tput cols"
+        // (used elsewhere in this suite) here without this wait: it reproduced
+        // -- a fully blank terminal, no echo at all -- on every run, which is
+        // what sent every keyboard-driven test in this file after "exit" or
+        // "relayhealth ..." off looking like an unrelated load flake instead.
+        await Assertions.Expect(page.Locator(".xterm-screen")).ToBeVisibleAsync();
         return page;
     }
 
@@ -86,7 +99,12 @@ public sealed class RelayHealthBannerTests(TestHostFixture fixture)
         await page.Keyboard.TypeAsync("relayhealth clear");
         await page.Keyboard.PressAsync("Enter");
 
-        await Assertions.Expect(page.GetByTestId("session-relay-health")).ToHaveCountAsync(0);
+        // Same reason TerminalTests/MultiSessionTests give post-keystroke
+        // terminal assertions 10s rather than the 5s default: this round-trips
+        // a real keystroke through xterm.js and the Blazor circuit, which the
+        // default timeout is too tight for under load.
+        await Assertions.Expect(page.GetByTestId("session-relay-health"))
+            .ToHaveCountAsync(0, new() { Timeout = 10_000 });
     }
 
     [Fact]
@@ -102,7 +120,11 @@ public sealed class RelayHealthBannerTests(TestHostFixture fixture)
         await page.Keyboard.TypeAsync($"relayhealth {sentinel}");
         await page.Keyboard.PressAsync("Enter");
 
-        await Assertions.Expect(page.GetByTestId("session-relay-health-text")).ToHaveTextAsync(sentinel);
+        // See RelayHealthBannerClearsWhenTheProblemGoesAwayWithoutReconnecting: a
+        // post-keystroke terminal assertion needs the same 10s TerminalTests
+        // already uses, not the 5s default.
+        await Assertions.Expect(page.GetByTestId("session-relay-health-text"))
+            .ToHaveTextAsync(sentinel, new() { Timeout = 10_000 });
     }
 
     [Fact]
@@ -113,7 +135,12 @@ public sealed class RelayHealthBannerTests(TestHostFixture fixture)
 
         await page.Keyboard.TypeAsync("exit");
         await page.Keyboard.PressAsync("Enter");
-        await Assertions.Expect(page.GetByTestId("session-disconnected")).ToBeVisibleAsync();
+        // Same reason as the other two tests in this file: a post-keystroke
+        // terminal assertion needs TerminalTests' 10s, not the 5s default --
+        // every observed flake in this test failed here, not at the relay
+        // health assertion below, before this timeout was added.
+        await Assertions.Expect(page.GetByTestId("session-disconnected"))
+            .ToBeVisibleAsync(new() { Timeout = 10_000 });
 
         await page.GetByTestId("session-reconnect").ClickAsync();
         await Assertions.Expect(page.GetByTestId("terminal")).ToBeVisibleAsync();
