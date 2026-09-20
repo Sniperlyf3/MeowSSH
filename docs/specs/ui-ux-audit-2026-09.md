@@ -8,7 +8,8 @@ most of B–E in the same pass — its own commit message says so — but that w
 never verified against B–E's checkboxes here, which is what left this doc
 understating what had already shipped. Re-verified item by item against
 current source below: FIXED for B2–B6, C1, C3, C4, D1–D4, E1, E3–E6 (citations
-per item; C3/E3 have small residuals noted); B1, C2, C6 and part of E2 were
+per item; E3 has a small residual noted; C3's missing dedicated regression
+test is closed in a later pass here); B1, C2, C6 and part of E2 were
 still genuinely broken as of `ac58122` and were fixed here, in
 `e4c1007`, with regression tests; C7 is unaddressed by design (the
 doc itself calls it lowest priority, a design suggestion rather than a
@@ -312,10 +313,15 @@ row, or a bottom sheet on long-press. See also B2.
   "More" bands. Verified by reading `FilesLandingPage.razor` and
   `HostRow.razor` (the `host__manage-trigger` contextual-edit button is a
   44px icon, not a full-width band, and isn't even wired up on this page —
-  `OnEdit` is only passed on `HostsPage.razor`). No dedicated regression test
-  was added for the band's absence specifically; it is covered indirectly by
-  `AdvancedSftpTests` and by `ControlSurfaceTests`' sweep of the
-  `files-landing` scenario.
+  `OnEdit` is only passed on `HostsPage.razor`).
+
+  This was originally verified only by reading the source, with no dedicated
+  regression test (it was covered only indirectly, by `AdvancedSftpTests` and
+  `ControlSurfaceTests`' sweep of the `files-landing` scenario). Closed here:
+  `UiUxAuditFollowUpTests.FilesLandingPageHasNoPerHostMoreDisclosure` asserts
+  the old disclosure's testid (`files-host-more`, from the pre-fix
+  `<details>` band) is absent, and that the host list's child count equals
+  its row count rather than a doubled count from a per-row wrapper.
 
 ## C4 — The SFTP overflow column reads as a detached stripe
 

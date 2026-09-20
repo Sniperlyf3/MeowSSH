@@ -250,6 +250,41 @@ public sealed class UiUxAuditFollowUpTests(TestHostFixture fixture)
         Assert.True(width is >= 44 and <= 56, $"Manage column is {width}px wide, expected ~44px.");
     }
 
+    // C3 -------------------------------------------------------------------
+
+    /// <summary>
+    /// C3: every SSH host row on the Files landing page used to be followed
+    /// by its own full-width "More" band -- a
+    /// <c>&lt;details data-testid="files-host-more"&gt;</c> disclosure
+    /// holding a per-row "Advanced SFTP" button -- which roughly doubled the
+    /// list's height for six hosts. Fixed as a side effect of the B2 fix
+    /// (<see cref="AdvancedSftpTests.AdvancedSftpIsOfferedOnceAndAsksWhichHostAfterwards"/>):
+    /// one "Advanced SFTP" entry point above the list puts it into a picking
+    /// mode instead, so <c>FilesLandingPage</c> never renders a per-row
+    /// disclosure at all. The audit doc noted this was verified only by
+    /// reading the source, with no dedicated regression test; this is that
+    /// test.
+    /// </summary>
+    [Fact]
+    public async Task FilesLandingPageHasNoPerHostMoreDisclosure()
+    {
+        var page = await fixture.NewPageAsync("/");
+        await page.GetByTestId("tab-files").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("files-host-list")).ToBeVisibleAsync();
+
+        // The old per-row disclosure must not exist at all -- not merely be
+        // hidden or collapsed -- for any of the seeded hosts.
+        await Assertions.Expect(page.GetByTestId("files-host-more")).ToHaveCountAsync(0);
+
+        // The list holds exactly one element per host: nothing wraps each row
+        // in an extra band that would inflate the list's child count (and,
+        // with it, its height) beyond the number of rows actually shown.
+        var hostRows = await page.Locator("[data-testid='files-host-list'] [data-testid='host-row']").CountAsync();
+        var listChildren = await page.GetByTestId("files-host-list").EvaluateAsync<int>("el => el.children.length");
+        Assert.True(hostRows > 0, "Expected at least one seeded host to assert against.");
+        Assert.Equal(hostRows, listChildren);
+    }
+
     // C4 -----------------------------------------------------------------------
 
     /// <summary>
