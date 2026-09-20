@@ -28,15 +28,15 @@
         }
         else if (_activeTool == "actions")
         {
-            <ActionsPage />
+            <ActionsPage OnNavigateToHosts="@(() => SelectTabAsync("hosts"))" />
         }
         else if (_activeTool == "monitoring")
         {
-            <CommandMonitoringPage />
+            <CommandMonitoringPage OnNavigateToHosts="@(() => SelectTabAsync("hosts"))" />
         }
         else if (_activeTool == "health")
         {
-            <HostHealthDashboardPage />
+            <HostHealthDashboardPage OnNavigateToHosts="@(() => SelectTabAsync("hosts"))" />
         }
         else if (_activeTool == "backup")
         {

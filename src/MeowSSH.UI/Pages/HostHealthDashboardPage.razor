@@ -1,5 +1,7 @@
+@implements IDisposable
 @inject IHostHealthDashboardService Health
 @inject IEntitlementService Entitlements
+@inject IHostDirectory Directory
 
 <section class="settings" data-testid="host-health-dashboard">
     <div class="settings__section">
@@ -17,6 +19,22 @@
                     <span class="setting-card__title">MeowSSH Pro required</span>
                     <span class="setting-card__body">Fleet health checks are included with the local MeowSSH Pro license.</span>
                 </span>
+            </div>
+        }
+        else if (_hostCount == 0)
+        {
+            @* C7: "no hosts saved" is a different, earlier state than "hosts
+               exist but nothing has been checked yet" -- the button below
+               would just fail every time with "No saved hosts are available
+               to check.", which only tells the user what is wrong after
+               they have already tried and waited for the run to finish. *@
+            <div class="empty" data-testid="host-health-no-hosts">
+                <span class="empty__glyph"><Icon Name="terminal" /></span>
+                <p class="empty__title">No hosts to check</p>
+                <p class="empty__body">Host Health runs an SSH check against your saved hosts. Add one first, then come back here.</p>
+                <button type="button" class="btn btn--primary" data-testid="host-health-add-host" @onclick="GoToHostsAsync">
+                    <Icon Name="plus" /> Add a host
+                </button>
             </div>
         }
         else
@@ -66,6 +84,25 @@
     private IReadOnlyList<HostHealthSnapshot> _results = [];
     private bool _busy;
     private string? _message;
+    private int _hostCount;
+
+    /// <summary>Switches the shell back to the Hosts tab. Wired by AppShell, which owns tab state.</summary>
+    [Parameter] public EventCallback OnNavigateToHosts { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        Directory.Changed += OnDirectoryChanged;
+        await LoadHostCountAsync();
+    }
+
+    private async Task LoadHostCountAsync() => _hostCount = (await Directory.GetHostsAsync()).Count;
+
+    private void OnDirectoryChanged(object? sender, EventArgs e) =>
+        _ = InvokeAsync(async () => { await LoadHostCountAsync(); StateHasChanged(); });
+
+    private Task GoToHostsAsync() => OnNavigateToHosts.InvokeAsync();
+
+    public void Dispose() => Directory.Changed -= OnDirectoryChanged;
 
     private async Task RefreshAsync()
     {

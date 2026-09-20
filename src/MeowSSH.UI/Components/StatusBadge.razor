@@ -1,9 +1,18 @@
-<span class="badge badge--@Variant">
+@*
+    ShowDot badges (host rows) also carry a title: below the C2 dot-only
+    breakpoint (meowssh.css) the label text is clipped to 1px with the same
+    technique as .visually-hidden -- present for assistive tech, invisible on
+    screen -- so the dot alone is what a sighted user sees. A dot with no
+    text anywhere would make colour the only carrier of "Connected" vs
+    "Failed"; title gives a mouse/trackpad user the same word on hover that
+    screen readers already get from the (visually hidden) label.
+*@
+<span class="badge badge--@Variant" title="@(ShowDot ? Label : null)">
     @if (ShowDot)
     {
-        <span class="badge__dot"></span>
+        <span class="badge__dot" aria-hidden="true"></span>
     }
-    @Label
+    <span class="badge__label">@Label</span>
 </span>
 
 @code {

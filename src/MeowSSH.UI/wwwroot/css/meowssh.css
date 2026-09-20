@@ -206,12 +206,42 @@ h1:focus, h2:focus, h3:focus, [tabindex="-1"]:focus { outline: none; box-shadow:
 }
 
 .host__name {
+  position: relative;
   font-size: var(--text-base);
   font-weight: 550;
   letter-spacing: -0.005em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/*
+  C2 (scroll-on-focus/selection): the marquee text lives in its own inline
+  span so it can be transformed independently of .host__name's own
+  overflow/ellipsis box. In the resting state .host__name-text stays
+  "display: inline" -- CSS transforms have no effect on non-replaced inline
+  boxes, which is exactly what we want here, since with no transform applied
+  the row must still ellipsis normally, identically to before this existed.
+  host-name-marquee.js only ever adds .host__name--marquee (which switches
+  the child to inline-block and starts the animation) while a row is focused
+  or its manage panel is open, and only when there is real overflow to show
+  and the visitor has not asked for reduced motion.
+*/
+.host__name-text { display: inline; }
+
+.host__name--marquee {
+  text-overflow: clip;
+}
+
+.host__name--marquee .host__name-text {
+  display: inline-block;
+  animation: host-name-marquee 5s ease-in-out infinite;
+}
+
+@keyframes host-name-marquee {
+  0%, 12% { transform: translateX(0); }
+  45%, 60% { transform: translateX(calc(-1 * var(--marquee-distance, 0px))); }
+  92%, 100% { transform: translateX(0); }
 }
 
 .host__address {
@@ -260,6 +290,45 @@ h1:focus, h2:focus, h3:focus, [tabindex="-1"]:focus { outline: none; box-shadow:
 */
 @media (max-width: 460px) {
   .host__meta { max-width: 5rem; }
+}
+
+/*
+  C2 (dot-only badges): the 5rem cap above closes ci@build.internal:2222 but
+  not staging-db-replica-eu-west + "Failed" -- that row has 233px to split
+  between name and badge and the name alone needs 227px, so *any* visible
+  badge label leaves it short (see the .host__meta comment above). There is
+  no more width to give the name without touching the badge's text, and
+  shrinking the label further on every row for one row's sake was left open
+  rather than decided unilaterally in the CSS-only pass that added the cap.
+
+  Decided here: below HOST_META_DOT_ONLY_BREAKPOINT the badge's label is
+  clipped the same way .visually-hidden clips text -- 1x1px, not display:none
+  -- rather than removed, so it stays in the accessibility tree and a screen
+  reader still hears "Failed"/"Connected"/etc; the badge's own `title`
+  attribute (StatusBadge.razor) gives a sighted mouse/trackpad user the same
+  word on hover. Colour (the dot's background) is never the only carrier of
+  the state. Measured empirically with Playwright
+  (UiUxAuditFollowUpTests.HostMetaDotOnlyBreakpointCollapsesTheBadgeToADot,
+  and the bound in TheOneRemainingHostNameOverflowIsBoundedAndDocumented):
+  at 412px -- the audit's own tested width -- this takes .host__meta from
+  ~72px to 22px and the row's residual name overflow from ~58px to ~16px.
+  It does NOT close that overflow: "staging-db-replica-eu-west" needs 227px
+  for its name and still gets 211px, so C2's documented residual shrinks but
+  survives -- the scroll-on-focus behaviour above is what actually makes the
+  rest of the name readable. Reusing 460px keeps one threshold for "this row
+  is tight" instead of introducing a second, unexplained number.
+*/
+@media (max-width: 460px) {
+  .host__meta .badge__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
 }
 
 .host__reason {
