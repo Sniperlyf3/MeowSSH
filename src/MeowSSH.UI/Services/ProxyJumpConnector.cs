@@ -176,7 +176,7 @@ public sealed class ProxyJumpConnector(
         }
     }
 
-    private sealed class ChainedSshConnection : ISshConnection, IConnectionPathTelemetry
+    private sealed class ChainedSshConnection : ISshConnection, IConnectionPathTelemetry, IConnectionRelayHealth
     {
         private readonly ISshConnection _final;
         private readonly List<IHostConnection> _connections;
@@ -214,6 +214,23 @@ public sealed class ProxyJumpConnector(
             {
                 if (_final is IConnectionPathTelemetry telemetry)
                     telemetry.PathChanged -= value;
+            }
+        }
+
+        public string? RelayHealth =>
+            (_final as IConnectionRelayHealth)?.RelayHealth;
+
+        public event EventHandler<string?>? RelayHealthChanged
+        {
+            add
+            {
+                if (_final is IConnectionRelayHealth relay)
+                    relay.RelayHealthChanged += value;
+            }
+            remove
+            {
+                if (_final is IConnectionRelayHealth relay)
+                    relay.RelayHealthChanged -= value;
             }
         }
 

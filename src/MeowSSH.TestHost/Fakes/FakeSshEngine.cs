@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Components;
 using MeowSSH.Core.Model;
 using MeowSSH.Core.Ssh;
 
@@ -8,8 +9,18 @@ namespace MeowSSH.TestHost.Fakes;
 /// shell, SFTP and forwarding channels so multi-session UI behavior can be exercised
 /// without a real SSH server.
 /// </summary>
-public sealed class FakeSshEngine : ISshEngine
+/// <remarks>
+/// A Tailcat connection opened with "relayhealth" in the query string (e.g.
+/// <c>NewPageAsync("/?multi&amp;relayhealth")</c>) starts with a non-null
+/// <see cref="IConnectionRelayHealth.RelayHealth"/>, same piggyback on
+/// query-string parsing as <see cref="FakeEntitlementService"/>'s "free". The
+/// literal text is the sample from the admission-refusal contract, not a code
+/// this fake looks up -- the UI is expected to render it verbatim.
+/// </remarks>
+public sealed class FakeSshEngine(NavigationManager navigation) : ISshEngine
 {
+    internal const string OverQuotaRelayHealth = "MeowSSH managed relay: monthly usage allowance exceeded";
+
     public Task<ISshConnection> ConnectAsync(
         HostRecord host,
         SshCredentials credentials,
@@ -17,18 +28,25 @@ public sealed class FakeSshEngine : ISshEngine
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return Task.FromResult<ISshConnection>(new FakeSshConnection(host.Id, host.Transport == SshTransport.Tailcat));
+        var isTailcat = host.Transport == SshTransport.Tailcat;
+        var query = new Uri(navigation.Uri).Query;
+        var relayHealth = isTailcat && query.Contains("relayhealth", StringComparison.OrdinalIgnoreCase)
+            ? OverQuotaRelayHealth
+            : null;
+        return Task.FromResult<ISshConnection>(new FakeSshConnection(host.Id, isTailcat, relayHealth));
     }
 
-    private sealed class FakeSshConnection : ISshConnection, IConnectionPathTelemetry
+    private sealed class FakeSshConnection : ISshConnection, IConnectionPathTelemetry, IConnectionRelayHealth
     {
         private bool _disposed;
         private int _nextPort = 42000;
+        private EventHandler<string?>? _relayHealthChanged;
 
-        public FakeSshConnection(Guid hostId, bool isTailcat)
+        public FakeSshConnection(Guid hostId, bool isTailcat, string? relayHealth)
         {
             HostId = hostId;
             PathStatus = isTailcat ? new SshPathStatus(false, "ci") : null;
+            RelayHealth = relayHealth;
         }
 
         public Guid HostId { get; }
@@ -45,6 +63,28 @@ public sealed class FakeSshEngine : ISshEngine
             remove { }
         }
 
+        public string? RelayHealth { get; private set; }
+
+        // Deliberately does NOT replay the current value on subscribe (unlike
+        // PathChanged above): a caller must read RelayHealth itself before
+        // subscribing, exactly as MeowshellAgentConnection's real contract
+        // works, or a session that already knows its relay is unhealthy at
+        // load/reconnect time would never show anything until the next
+        // (possibly nonexistent) change.
+        public event EventHandler<string?>? RelayHealthChanged
+        {
+            add => _relayHealthChanged += value;
+            remove => _relayHealthChanged -= value;
+        }
+
+        /// <summary>Test-only hook: <see cref="FakeSshShell"/> calls this for a typed "relayhealth ..." command.</summary>
+        private void SetRelayHealth(string? problem)
+        {
+            if (problem == RelayHealth) return;
+            RelayHealth = problem;
+            _relayHealthChanged?.Invoke(this, problem);
+        }
+
         public event EventHandler<SshConnectionLost>? ConnectionLost
         {
             add { }
@@ -58,7 +98,7 @@ public sealed class FakeSshEngine : ISshEngine
         {
             cancellationToken.ThrowIfCancellationRequested();
             ObjectDisposedException.ThrowIf(_disposed, this);
-            ISshShell shell = new FakeSshShell();
+            ISshShell shell = new FakeSshShell(SetRelayHealth);
             return Task.FromResult(shell);
         }
 

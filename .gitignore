@@ -29,3 +29,8 @@ local.settings.json
 *.apk
 *.aab
 *.keystore
+
+# Local NuGet override (see NuGet.config) -- a stopgap Meowshell package built
+# from a commit ahead of what its own CI has published, never a real release
+nupkg/*.nupkg
+nupkg/*.snupkg

@@ -36,6 +36,21 @@ public interface IConnectionPathTelemetry
     event EventHandler<SshPathStatus>? PathChanged;
 }
 
+/// <summary>
+/// Optional managed-relay health for transports such as Tailcat, e.g. a monthly usage
+/// allowance being exceeded. Mirrors <see cref="Meowshell.MeowshellAgentConnection"/>'s
+/// contract exactly: <c>null</c> means healthy -- both "never had a problem" and "the
+/// problem just cleared" collapse to <c>null</c> on purpose, so a caller only ever learns
+/// "is there a problem right now". A non-null value is literal, pre-formatted, user-facing
+/// text from the relay (e.g. "MeowSSH managed relay: monthly usage allowance exceeded"),
+/// never a code to map -- there is nothing else to look up.
+/// </summary>
+public interface IConnectionRelayHealth
+{
+    string? RelayHealth { get; }
+    event EventHandler<string?>? RelayHealthChanged;
+}
+
 /// <summary>Raw terminal bytes plus resize and exit notifications.</summary>
 public interface ITerminalSession : IAsyncDisposable
 {

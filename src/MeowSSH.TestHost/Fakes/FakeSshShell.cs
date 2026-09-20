@@ -13,7 +13,7 @@ namespace MeowSSH.TestHost.Fakes;
 /// terminal component gets wrong, so a fake that skipped them would let real bugs
 /// through.
 /// </remarks>
-public sealed class FakeSshShell : ISshShell
+public sealed class FakeSshShell(Action<string?>? onRelayHealth = null) : ISshShell
 {
     private readonly StringBuilder _line = new();
     private const string Prompt = "\u001b[38;2;63;191;143mdeploy@prod-web-01\u001b[0m:\u001b[38;2;89;169;255m~\u001b[0m$ ";
@@ -95,6 +95,19 @@ public sealed class FakeSshShell : ISshShell
 
     private void RunCommand(string command)
     {
+        // Test-only hook so a Playwright test can drive a live relay-health
+        // transition through the terminal: "relayhealth clear" fires null
+        // (healthy again), anything else after the space is passed through
+        // verbatim -- proving the banner renders whatever text it is given
+        // rather than mapping a known phrase to canned copy.
+        if (command.StartsWith("relayhealth ", StringComparison.Ordinal))
+        {
+            var problem = command["relayhealth ".Length..];
+            onRelayHealth?.Invoke(problem == "clear" ? null : problem);
+            Emit($"relayhealth: {(problem == "clear" ? "cleared" : "set")}\r\n");
+            return;
+        }
+
         switch (command)
         {
             case "":

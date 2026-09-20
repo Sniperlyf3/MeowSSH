@@ -740,6 +740,10 @@ h1:focus, h2:focus, h3:focus, [tabindex="-1"]:focus { outline: none; box-shadow:
 }
 
 .notice--danger { background: var(--danger-wash); color: var(--danger); }
+/* Consequential but not destructive: a managed-relay quota message, unlike
+   notice--danger, never means the app itself is broken -- direct/self-hosted
+   connections still work, so this stays in the warn palette, not danger's. */
+.notice--warn { background: var(--warn-wash); color: var(--warn); }
 .notice .icon { width: 18px; height: 18px; margin-top: 1px; }
 .notice__title { font-size: var(--text-sm); font-weight: 600; }
 .notice__body { font-size: var(--text-sm); opacity: 0.85; }
