@@ -109,6 +109,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<ITailcatTemporaryShareStore>(_ => new FileTailcatTemporaryShareStore(
             Path.Combine(FileSystem.AppDataDirectory, "tailcat-temporary-shares.json")));
         builder.Services.AddSingleton<ITailcatTemporaryShareService, TailcatTemporaryShareService>();
+        builder.Services.AddSingleton<TailcatServerSessionLifetimeCoordinator>();
         builder.Services.AddSingleton<ICommandActionStore>(_ => new FileCommandActionStore(
             Path.Combine(FileSystem.AppDataDirectory, "actions.json")));
         builder.Services.AddSingleton<ICommandActionService, CommandActionService>();

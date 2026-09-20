@@ -4,7 +4,6 @@
 @inject ITailcatTemporaryShareService Shares
 @inject ITailcatHubService Hub
 @inject IEntitlementService Entitlements
-@inject IActiveSessionLifetime SessionLifetime
 
 @*
     "Temporary" bounds time, not who may connect -- ITailcatTemporaryShareService
@@ -214,21 +213,19 @@
         return string.Join(',', saved.Concat(manual).Distinct(StringComparer.Ordinal));
     }
 
-    private bool HasLongLivedTailcat() { var s = Hub.Snapshot; return s.Server is not null || s.Socks is not null || s.Forwards.Count > 0; }
+    // Session-lifetime (wakelock) accounting for the Tailcat server lives in
+    // TailcatServerSessionLifetimeCoordinator, driven by the hub's own
+    // Snapshot.Server rather than this panel's Start/Revoke clicks -- see that
+    // type's remarks for why a click-driven release here missed a share's own
+    // deadline expiring on its own.
 
     private async Task StartAsync()
     {
         if (_busy) return;
         _busy = true; _error = _notice = null;
-        var wasActive = HasLongLivedTailcat();
         try
         {
-            if (!wasActive) await SessionLifetime.StartAsync();
-            try
-            {
-                await Shares.CreateAsync(new TailcatTemporaryShareRequest(_label.Trim(), ServeTargetList, AllowedTailcatClientKeys(), TimeSpan.FromMinutes(_lifetimeMinutes)));
-            }
-            catch { if (!wasActive) await SessionLifetime.StopAsync(); throw; }
+            await Shares.CreateAsync(new TailcatTemporaryShareRequest(_label.Trim(), ServeTargetList, AllowedTailcatClientKeys(), TimeSpan.FromMinutes(_lifetimeMinutes)));
             _notice = "Temporary share started.";
         }
         catch (Exception ex) { _error = ex.Message; }
@@ -242,7 +239,6 @@
         try
         {
             await Shares.RevokeAsync();
-            if (!HasLongLivedTailcat()) await SessionLifetime.StopAsync();
             _notice = "Temporary share revoked.";
         }
         catch (Exception ex) { _error = ex.Message; }

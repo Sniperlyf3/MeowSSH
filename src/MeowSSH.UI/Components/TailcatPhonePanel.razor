@@ -2,7 +2,6 @@
 @inject ITailcatHubService Hub
 @inject ITailcatIdentityStore IdentityStore
 @inject IHostEditor Editor
-@inject IActiveSessionLifetime SessionLifetime
 
 <div class="tailcat-stack">
     @if (_error is not null) { <p class="lock__error" role="alert">@_error</p> }
@@ -202,21 +201,20 @@
         IEnumerable<string> manual = string.IsNullOrWhiteSpace(_authorizedSsh) ? Array.Empty<string>() : [_authorizedSsh.Trim()];
         return string.Join(Environment.NewLine, saved.Concat(manual));
     }
-    private bool HasLongLivedTailcat() { var s = Hub.Snapshot; return s.Server is not null || s.Socks is not null || s.Forwards.Count > 0; }
+    // Session-lifetime (wakelock) accounting for the Tailcat server lives in
+    // TailcatServerSessionLifetimeCoordinator, driven by the hub's own
+    // Snapshot.Server rather than this panel's Start/Stop clicks -- see that
+    // type's remarks for why a click-driven release here missed spontaneous
+    // deadline expiry.
     private async Task StartAsync()
     {
-        _busy = true; _error = _notice = null; var wasActive = HasLongLivedTailcat();
+        _busy = true; _error = _notice = null;
         try
         {
-            if (!wasActive) await SessionLifetime.StartAsync();
-            try
-            {
-                var privateKeyJson = string.IsNullOrWhiteSpace(_serverIdentityName) ? null : await IdentityStore.ExportAsync(_serverIdentityName);
-                await Hub.StartServerAsync(new TailcatServeRequest(TimeSpan.FromHours(_hours), AllowedTailcatClientKeys(), _shell, AuthorizedSshKeys(), _files, _folder, _fileMode, _exitNode,
-                    AllowAnyClient: _allowAnyClient, UseTailcatCredentialForShell: _useTailcatCredentialForShell, FullAddress: _fullAddress, UsePresharedKey: _usePresharedKey,
-                    DerpMapUrl: Empty(_derpMapUrl), PrivateKeyJson: privateKeyJson, ServeTargets: ServeTargetList));
-            }
-            catch { if (!wasActive) await SessionLifetime.StopAsync(); throw; }
+            var privateKeyJson = string.IsNullOrWhiteSpace(_serverIdentityName) ? null : await IdentityStore.ExportAsync(_serverIdentityName);
+            await Hub.StartServerAsync(new TailcatServeRequest(TimeSpan.FromHours(_hours), AllowedTailcatClientKeys(), _shell, AuthorizedSshKeys(), _files, _folder, _fileMode, _exitNode,
+                AllowAnyClient: _allowAnyClient, UseTailcatCredentialForShell: _useTailcatCredentialForShell, FullAddress: _fullAddress, UsePresharedKey: _usePresharedKey,
+                DerpMapUrl: Empty(_derpMapUrl), PrivateKeyJson: privateKeyJson, ServeTargets: ServeTargetList));
             _notice = "Tailcat sharing started.";
         }
         catch (Exception ex) { _error = ex.Message; }
@@ -225,7 +223,7 @@
     private async Task StopAsync()
     {
         _busy = true; _error = _notice = null;
-        try { await Hub.StopServerAsync(); if (!HasLongLivedTailcat()) await SessionLifetime.StopAsync(); _notice = "Tailcat sharing stopped."; }
+        try { await Hub.StopServerAsync(); _notice = "Tailcat sharing stopped."; }
         catch (Exception ex) { _error = ex.Message; }
         finally { _busy = false; }
     }

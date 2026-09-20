@@ -8,6 +8,14 @@
 @inject InteractiveSshPrompts Questions
 @inject ICredentialResolver Credentials
 @inject IActiveSessionLifetime SessionLifetime
+@* Injected but otherwise unused here -- this is the earliest point in the
+   component tree that is guaranteed to render, so injecting it is what forces
+   the coordinator to be constructed (and start observing the Tailcat hub)
+   before either Tailcat panel could ever start a server, not merely whenever
+   a panel happens to be opened first. See its own remarks for why that
+   matters: a deadline expiring while neither panel is on screen must still
+   release the wakelock. *@
+@inject TailcatServerSessionLifetimeCoordinator TailcatServerLifetime
 
 @if (!_ready)
 {
