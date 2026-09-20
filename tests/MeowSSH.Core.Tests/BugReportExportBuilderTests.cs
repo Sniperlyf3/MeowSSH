@@ -39,6 +39,56 @@ public sealed class BugReportExportBuilderTests
     }
 
     [Fact]
+    public void InstallIdIsOmittedWhenNotProvidedEvenWithDiagnosticsAttached()
+    {
+        var snapshot = DiagnosticReportSnapshotBuilder.Capture(
+            new InvalidOperationException("boom"),
+            new DiagnosticBreadcrumbBuffer(),
+            "2.0.0",
+            "Android");
+
+        // installId defaults to null, standing in for diagnostics-sending being
+        // off: the exported text must carry no trace that an id could exist.
+        var export = BugReportExportBuilder.Build(
+            "MeowSSH closed while I was opening Files.",
+            null,
+            null,
+            snapshot);
+
+        Assert.DoesNotContain("Anonymous install id", export, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void InstallIdIsIncludedOnlyWhenDiagnosticsAreAttachedAndAnIdIsSupplied()
+    {
+        var snapshot = DiagnosticReportSnapshotBuilder.Capture(
+            new InvalidOperationException("boom"),
+            new DiagnosticBreadcrumbBuffer(),
+            "2.0.0",
+            "Android");
+
+        var export = BugReportExportBuilder.Build(
+            "MeowSSH closed while I was opening Files.",
+            null,
+            null,
+            snapshot,
+            "11111111-2222-3333-4444-555555555555");
+
+        Assert.Contains("Anonymous install id: 11111111-2222-3333-4444-555555555555", export, StringComparison.Ordinal);
+
+        // An id supplied without diagnostics being attached must never surface --
+        // the id exists to identify a diagnostic report, not to ride along with a
+        // plain bug description on its own.
+        var withoutDiagnostics = BugReportExportBuilder.Build(
+            "MeowSSH closed while I was opening Files.",
+            null,
+            null,
+            diagnosticReport: null,
+            installId: "11111111-2222-3333-4444-555555555555");
+        Assert.DoesNotContain("Anonymous install id", withoutDiagnostics, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void DescriptionIsRequired()
     {
         var error = Assert.Throws<ArgumentException>(() =>
