@@ -229,16 +229,15 @@ public sealed class UiUxAuditFollowUpTests(TestHostFixture fixture)
     /// <summary>
     /// C2's one documented residual: a 27-character host name ("staging-db-
     /// replica-eu-west") in the <c>Error</c> state needs 227px for its name
-    /// alone, and this row has only 233px total to split between the name
-    /// and its status badge once the rail, avatar and padding (~103px, fixed)
-    /// are subtracted -- there is no badge width left to reclaim that would
-    /// not mean hiding the badge's label outright, which was judged out of
-    /// scope for a CSS-only pass (it is a UX call: dot-only badges under
-    /// this breakpoint, and this row already keeps its most useful
-    /// information, "Host key changed", one line down and fully legible).
-    /// This test pins the *current, reduced* overflow rather than a
-    /// theoretical zero, so a future regression that makes it worse is still
-    /// caught.
+    /// alone, and this row has only 233px total to split between the name and
+    /// its status badge once the rail, avatar and padding (~103px, fixed) are
+    /// subtracted. The dot-only badge breakpoint the owner later approved
+    /// (see <see cref="HostNameOverflowAndEmptyStateTests"/>) took the badge
+    /// from ~72px to 22px and this overflow from ~58px to ~16px -- it did not
+    /// close it, because 211px is still less than 227px. Reading the rest of
+    /// the name is what scroll-on-focus is for; this test pins the *current,
+    /// reduced* overflow rather than a theoretical zero, so a regression that
+    /// makes it worse is still caught.
     /// </summary>
     [Fact]
     public async Task TheOneRemainingHostNameOverflowIsBoundedAndDocumented()
@@ -250,10 +249,11 @@ public sealed class UiUxAuditFollowUpTests(TestHostFixture fixture)
             .Locator(".host__name")
             .EvaluateAsync<double>("el => el.scrollWidth - el.clientWidth");
 
-        Assert.True(overflowPx is > 0 and <= 60,
-            $"Expected the known, bounded overflow (~58px) on this one row, got {overflowPx}px. " +
+        Assert.True(overflowPx is > 0 and <= 25,
+            $"Expected the known, bounded overflow (~16px) on this one row, got {overflowPx}px. " +
             "If this is now 0, update this test and the audit doc to mark C2 fully fixed. " +
-            "If it grew, something regressed the badge width cap on .host__meta.");
+            "If it is back near 58px, the dot-only badge breakpoint stopped applying; " +
+            "if it grew beyond that, something regressed the width cap on .host__meta.");
     }
 
     /// <summary>

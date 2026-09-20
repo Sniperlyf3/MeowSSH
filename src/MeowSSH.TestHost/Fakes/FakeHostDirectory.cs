@@ -1,4 +1,5 @@
 using System.Text;
+using Microsoft.AspNetCore.Components;
 using MeowSSH.Core.Model;
 using MeowSSH.Core.Services;
 
@@ -9,7 +10,33 @@ public sealed class FakeHostDirectory : IHostDirectory, IHostEditor
     private readonly List<HostStatus> _hosts;
     private readonly List<CredentialRecord> _credentials = [];
 
-    public FakeHostDirectory(bool empty = false) => _hosts = empty ? [] : BuildSample();
+    /// <summary>
+    /// Private, and must stay private: DI resolves this type by constructor,
+    /// and a second public constructor it could also pick makes activation
+    /// ambiguous and fails the whole host at startup.
+    /// </summary>
+    private FakeHostDirectory(bool empty) => _hosts = empty ? [] : BuildSample();
+
+    /// <summary>
+    /// The constructor DI uses. Starts with an empty vault when the page was
+    /// opened with "nohosts" in the query string (e.g.
+    /// <c>NewPageAsync("/?nohosts")</c>), the same string-Contains flag
+    /// mechanism <see cref="FakeEntitlementService"/> and Playground.razor
+    /// already use.
+    /// </summary>
+    /// <remarks>
+    /// Until this existed there was no way for a UI test to reach any "you
+    /// have no hosts yet" state -- which is exactly the state C7's Actions and
+    /// Host Health empty states exist to render, so they would have shipped
+    /// untestable. This directory is scoped per circuit, so a test opting in
+    /// gets its own empty vault without touching the sample one every other
+    /// test is written against; no existing query string contains "nohosts"
+    /// ("newhost", the nearest, does not).
+    /// </remarks>
+    public FakeHostDirectory(NavigationManager navigation)
+        : this(new Uri(navigation.Uri).Query.Contains("nohosts", StringComparison.OrdinalIgnoreCase))
+    {
+    }
 
     public event EventHandler? Changed;
 
