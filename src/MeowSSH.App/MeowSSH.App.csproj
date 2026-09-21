@@ -94,7 +94,7 @@
     <PackageReference Include="Xamarin.AndroidX.Lifecycle.LiveData" Version="2.11.0.1" />
     <PackageReference Include="Xamarin.AndroidX.Lifecycle.LiveData.Core.Ktx" Version="2.11.0.1" />
     <PackageReference Include="Xamarin.AndroidX.Lifecycle.Process" Version="2.11.0.1" />
-    <PackageReference Include="Xamarin.AndroidX.Tracing.Tracing.Ktx" Version="2.0.0" />
+    <PackageReference Include="Xamarin.AndroidX.Tracing.Tracing.Ktx" Version="2.0.1" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(EnableTailcatVpn)' == 'true'">
