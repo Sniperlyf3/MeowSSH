@@ -3,7 +3,7 @@ using Meowshell;
 
 namespace MeowSSH.Core.Ssh;
 
-internal sealed class MeowshellSshConnection : ISshConnection, IConnectionPathTelemetry
+internal sealed class MeowshellSshConnection : ISshConnection, IConnectionPathTelemetry, IConnectionRelayHealth
 {
     private readonly MeowshellAgentConnection _agent;
 
@@ -12,6 +12,7 @@ internal sealed class MeowshellSshConnection : ISshConnection, IConnectionPathTe
         HostId = hostId;
         _agent = agent;
         _agent.PathChanged += OnPathChanged;
+        _agent.RelayHealthChanged += OnRelayHealthChanged;
     }
 
     public Guid HostId { get; }
@@ -20,8 +21,11 @@ internal sealed class MeowshellSshConnection : ISshConnection, IConnectionPathTe
 
     public SshPathStatus? PathStatus => TranslatePath(_agent.CurrentPath);
 
+    public string? RelayHealth => _agent.CurrentRelayHealth;
+
     public event EventHandler<SshConnectionLost>? ConnectionLost;
     public event EventHandler<SshPathStatus>? PathChanged;
+    public event EventHandler<string?>? RelayHealthChanged;
 
     public async Task<ISshShell> OpenShellAsync(int columns, int rows, CancellationToken cancellationToken = default)
     {
@@ -197,6 +201,9 @@ internal sealed class MeowshellSshConnection : ISshConnection, IConnectionPathTe
     private void OnPathChanged(MeowshellPathStatus path) =>
         PathChanged?.Invoke(this, new SshPathStatus(path.Direct, path.Via));
 
+    private void OnRelayHealthChanged(string? problem) =>
+        RelayHealthChanged?.Invoke(this, problem);
+
     private void OnChannelLost(SshConnectionLost lost)
     {
         IsConnected = false;
@@ -207,6 +214,7 @@ internal sealed class MeowshellSshConnection : ISshConnection, IConnectionPathTe
     {
         IsConnected = false;
         _agent.PathChanged -= OnPathChanged;
+        _agent.RelayHealthChanged -= OnRelayHealthChanged;
         await _agent.DisposeAsync().ConfigureAwait(false);
     }
 }

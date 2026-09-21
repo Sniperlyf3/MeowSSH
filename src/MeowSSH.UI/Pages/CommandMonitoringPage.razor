@@ -121,6 +121,22 @@
     {
         <p class="visually-hidden" role="status">Loading monitors</p>
     }
+    else if (_monitors.Count == 0 && _hosts.Count == 0)
+    {
+        @* C7: a monitor must target one saved SSH host (SaveAsync throws
+           without a resolvable host ID), so "no hosts yet" is a different,
+           earlier state than "hosts exist, no monitors saved yet" -- the
+           "New monitor" editor below would open with nothing but "Choose a
+           host" in its (empty) host picker. *@
+        <div class="empty" data-testid="monitoring-no-hosts">
+            <span class="empty__glyph"><Icon Name="terminal" /></span>
+            <p class="empty__title">Add a host to create a monitor</p>
+            <p class="empty__body">A monitor watches a command on one of your SSH hosts, so you'll need one saved first.</p>
+            <button type="button" class="btn btn--primary" data-testid="monitoring-add-host" @onclick="GoToHostsAsync">
+                <Icon Name="plus" /> Add a host
+            </button>
+        </div>
+    }
     else if (_monitors.Count == 0)
     {
         <div class="empty" data-testid="monitoring-empty">
@@ -245,6 +261,11 @@
     private bool _notifyOnRecovery = true;
     private bool _busy;
     private string? _message;
+
+    /// <summary>Switches the shell back to the Hosts tab. Wired by AppShell, which owns tab state.</summary>
+    [Parameter] public EventCallback OnNavigateToHosts { get; set; }
+
+    private Task GoToHostsAsync() => OnNavigateToHosts.InvokeAsync();
 
     protected override async Task OnInitializedAsync()
     {

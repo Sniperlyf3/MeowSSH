@@ -8,6 +8,14 @@
 @inject InteractiveSshPrompts Questions
 @inject ICredentialResolver Credentials
 @inject IActiveSessionLifetime SessionLifetime
+@* Injected but otherwise unused here -- this is the earliest point in the
+   component tree that is guaranteed to render, so injecting it is what forces
+   the coordinator to be constructed (and start observing the Tailcat hub)
+   before either Tailcat panel could ever start a server, not merely whenever
+   a panel happens to be opened first. See its own remarks for why that
+   matters: a deadline expiring while neither panel is on screen must still
+   release the wakelock. *@
+@inject TailcatServerSessionLifetimeCoordinator TailcatServerLifetime
 
 @if (!_ready)
 {
@@ -47,6 +55,7 @@ else if (_activeSessionId is not null && _sessions.Count > 0)
                                  IsConnected="session.IsConnected"
                                  IsReconnecting="session.IsReconnecting"
                                  PathStatus="CurrentPathStatus(session)"
+                                 RelayHealth="@CurrentRelayHealth(session)"
                                  DisconnectMessage="session.Status"
                                  OnReconnect="() => ReconnectAsync(session.Id)"
                                  OnWriteFailed="ex => OnTerminalWriteFailedAsync(session.Id, ex)"
@@ -163,6 +172,8 @@ else
         public EventHandler<SshConnectionLost>? ConnectionLostHandler { get; set; }
         public EventHandler<SshPathStatus>? PathChangedHandler { get; set; }
         public SshPathStatus? PathStatus { get; set; }
+        public EventHandler<string?>? RelayHealthChangedHandler { get; set; }
+        public string? RelayHealth { get; set; }
         public EventHandler<int>? TerminalExitedHandler { get; set; }
         public CancellationTokenSource? ReconnectCancellation { get; set; }
         public Task? ReconnectTask { get; set; }
@@ -257,10 +268,12 @@ else
                 terminal = await connection.OpenTerminalAsync(80, 24);
                 session.Terminal = terminal;
                 // Re-read after terminal creation so a transport that learns its
-                // path while opening the live stream cannot race the initial
-                // connection snapshot/event subscription.
+                // path (or relay health) while opening the live stream cannot race
+                // the initial connection snapshot/event subscription.
                 if (connection is IConnectionPathTelemetry telemetry)
                     session.PathStatus = telemetry.PathStatus;
+                if (connection is IConnectionRelayHealth relay)
+                    session.RelayHealth = relay.RelayHealth;
                 WireTerminal(session);
             }
             else if (connection is ISshConnection ssh)
@@ -329,6 +342,24 @@ else
                 });
             session.PathChangedHandler = pathHandler;
             telemetry.PathChanged += pathHandler;
+        }
+
+        if (session.Connection is IConnectionRelayHealth relay)
+        {
+            // Read the current value before subscribing, same reason as PathStatus
+            // above: a transport that already knows its relay is degraded (e.g. a
+            // resumed session, or a reconnect onto the same over-quota client
+            // identity) must show the banner immediately, not wait for the next
+            // change event that may never come if nothing changes again.
+            session.RelayHealth = relay.RelayHealth;
+            EventHandler<string?> relayHandler = (_, problem) =>
+                _ = InvokeAsync(() =>
+                {
+                    session.RelayHealth = problem;
+                    StateHasChanged();
+                });
+            session.RelayHealthChangedHandler = relayHandler;
+            relay.RelayHealthChanged += relayHandler;
         }
     }
 
@@ -754,10 +785,14 @@ else
             session.Connection.ConnectionLost -= session.ConnectionLostHandler;
         if (session.PathChangedHandler is not null && session.Connection is IConnectionPathTelemetry telemetry)
             telemetry.PathChanged -= session.PathChangedHandler;
+        if (session.RelayHealthChangedHandler is not null && session.Connection is IConnectionRelayHealth relay)
+            relay.RelayHealthChanged -= session.RelayHealthChangedHandler;
         await session.Connection.DisposeAsync();
         session.ConnectionLostHandler = null;
         session.PathChangedHandler = null;
         session.PathStatus = null;
+        session.RelayHealthChangedHandler = null;
+        session.RelayHealth = null;
     }
 
     private static async Task CancelAutoReconnectAsync(OpenSession session)
@@ -781,6 +816,11 @@ else
         session.Connection is IConnectionPathTelemetry telemetry
             ? telemetry.PathStatus ?? session.PathStatus
             : session.PathStatus;
+
+    private static string? CurrentRelayHealth(OpenSession session) =>
+        session.Connection is IConnectionRelayHealth relay
+            ? relay.RelayHealth ?? session.RelayHealth
+            : session.RelayHealth;
 
     private static Failure MapFailure(string fallbackTitle, SshException ex) => ex.Failure switch
     {

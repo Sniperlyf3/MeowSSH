@@ -90,6 +90,23 @@
     {
         <p class="visually-hidden" role="status">Loading Actions</p>
     }
+    else if (_actions.Count == 0 && _hosts.Count == 0)
+    {
+        @* C7: an Action must target a saved SSH host (validated by
+           CommandActionService.SaveAsync), so "no hosts yet" is a different,
+           earlier state than "hosts exist, no Actions saved yet" -- the
+           "Create an Action" flow below would open, but the host list inside
+           it would just say "No saved SSH hosts are available." and there
+           would be nothing to save. *@
+        <div class="empty" data-testid="actions-no-hosts">
+            <span class="empty__glyph"><Icon Name="terminal" /></span>
+            <p class="empty__title">Add a host to create an Action</p>
+            <p class="empty__body">Actions run a saved command against one of your SSH hosts, so you'll need one saved first.</p>
+            <button type="button" class="btn btn--primary" data-testid="actions-add-host" @onclick="GoToHostsAsync">
+                <Icon Name="plus" /> Add a host
+            </button>
+        </div>
+    }
     else if (_actions.Count == 0)
     {
         <div class="empty" data-testid="actions-empty">
@@ -245,6 +262,11 @@
     private Guid? _runningActionId;
     private CancellationTokenSource? _runCancellation;
     private CommandActionRun? _lastRun;
+
+    /// <summary>Switches the shell back to the Hosts tab. Wired by AppShell, which owns tab state.</summary>
+    [Parameter] public EventCallback OnNavigateToHosts { get; set; }
+
+    private Task GoToHostsAsync() => OnNavigateToHosts.InvokeAsync();
 
     protected override async Task OnInitializedAsync()
     {

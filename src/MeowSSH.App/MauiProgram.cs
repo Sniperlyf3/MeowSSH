@@ -59,6 +59,11 @@ public static class MauiProgram
         builder.Services.AddSingleton<IThirdPartyNoticeProvider, PackagedThirdPartyNoticeProvider>();
         builder.Services.AddSingleton<IPendingDiagnosticReportStore>(_ => new FilePendingDiagnosticReportStore(
             Path.Combine(FileSystem.AppDataDirectory, "diagnostics")));
+        builder.Services.AddSingleton<IDiagnosticsInstallIdStore>(_ => new FileDiagnosticsInstallIdStore(
+            Path.Combine(FileSystem.AppDataDirectory, "diagnostics", "install-id")));
+        builder.Services.AddSingleton<IDiagnosticsSendPreferenceStore>(_ => new FileDiagnosticsSendPreferenceStore(
+            Path.Combine(FileSystem.AppDataDirectory, "diagnostics", "send-enabled")));
+        builder.Services.AddSingleton<DiagnosticsInstallIdentity>();
         builder.Services.AddSingleton<DiagnosticBreadcrumbBuffer>();
         builder.Services.AddSingleton<DiagnosticCrashRecorder>();
         builder.Services.AddSingleton(LaunchBuildConfig.ExternalLinks);
@@ -74,6 +79,11 @@ public static class MauiProgram
         builder.Services.AddSingleton<ISftpBookmarkStore>(_ => new FileSftpBookmarkStore(
             Path.Combine(FileSystem.AppDataDirectory, "sftp-bookmarks.json")));
         builder.Services.AddSingleton<ISftpBookmarkService, SftpBookmarkService>();
+        builder.Services.AddSingleton<ITransferHistoryService>(_ => new FileTransferHistoryService(
+            Path.Combine(FileSystem.AppDataDirectory, "transfer-history.json")));
+        builder.Services.AddSingleton<TransferQueueService>();
+        builder.Services.AddSingleton<ITransferQueueService>(sp => sp.GetRequiredService<TransferQueueService>());
+        builder.Services.AddSingleton<TransferQueueLocalFileCleanup>();
         builder.Services.AddSingleton<IEncryptedVaultBackupService, EncryptedVaultBackupService>();
         builder.Services.AddSingleton<IPortForwardProfileStore>(_ => new FilePortForwardProfileStore(
             Path.Combine(FileSystem.AppDataDirectory, "port-forward-profiles.json")));
@@ -101,6 +111,10 @@ public static class MauiProgram
         builder.Services.AddSingleton<ITailcatWorkspaceStore>(_ => new FileTailcatWorkspaceStore(
             Path.Combine(FileSystem.AppDataDirectory, "tailcat-workspaces.json")));
         builder.Services.AddSingleton<ITailcatWorkspaceService, TailcatWorkspaceService>();
+        builder.Services.AddSingleton<ITailcatTemporaryShareStore>(_ => new FileTailcatTemporaryShareStore(
+            Path.Combine(FileSystem.AppDataDirectory, "tailcat-temporary-shares.json")));
+        builder.Services.AddSingleton<ITailcatTemporaryShareService, TailcatTemporaryShareService>();
+        builder.Services.AddSingleton<TailcatServerSessionLifetimeCoordinator>();
         builder.Services.AddSingleton<ICommandActionStore>(_ => new FileCommandActionStore(
             Path.Combine(FileSystem.AppDataDirectory, "actions.json")));
         builder.Services.AddSingleton<ICommandActionService, CommandActionService>();

@@ -35,6 +35,21 @@
                      ShowDot="true" />
     </header>
 
+    @if (RelayHealth is not null)
+    {
+        <div class="notice notice--warn" role="status" data-testid="session-relay-health">
+            <Icon Name="alert" />
+            <div>
+                <p class="notice__title">Managed relay limited</p>
+                <p class="notice__body" data-testid="session-relay-health-text">@RelayHealth</p>
+                <p class="notice__body">
+                    Direct connections and self-hosted relays are not affected. Check your
+                    allowance under Tools &rarr; Tailcat &rarr; Managed relay usage.
+                </p>
+            </div>
+        </div>
+    }
+
     @if (_broadcastShell is not null)
     {
         <BroadcastTerminalControl SessionId="_broadcastShell.RegistrationId" />
@@ -62,6 +77,7 @@
     [Parameter] public bool IsConnected { get; set; } = true;
     [Parameter] public bool IsReconnecting { get; set; }
     [Parameter] public SshPathStatus? PathStatus { get; set; }
+    [Parameter] public string? RelayHealth { get; set; }
     [Parameter] public string DisconnectMessage { get; set; } = "The terminal session is no longer connected.";
     [Parameter] public EventCallback OnReconnect { get; set; }
     [Parameter] public EventCallback<Exception> OnWriteFailed { get; set; }

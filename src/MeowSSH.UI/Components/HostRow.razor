@@ -1,3 +1,5 @@
+@inject IJSRuntime MarqueeJs
+
 @*
     The row is one button, so management cannot be a control nested inside it:
     a button inside a button is invalid, and browsers that tolerate it fire both.
@@ -10,7 +12,9 @@
         <span class="host__glyph" aria-hidden="true">@Status.Host.Initials</span>
 
         <span class="host__detail">
-            <span class="host__name">@Status.Host.Label</span>
+            <span class="host__name" data-testid="host-name">
+                <span class="host__name-text">@Status.Host.Label</span>
+            </span>
             @if (Status.State == ConnectionState.Error && Status.Detail is not null)
             {
                 <span class="host__reason">@Status.Detail</span>
@@ -65,6 +69,19 @@
     [Parameter] public EventCallback<HostRecord> OnEdit { get; set; }
 
     private bool _manageOpen;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        // Idempotent on the JS side (installHostNameMarquee), so every row
+        // mounting can call this without double-attaching the document-level
+        // listeners it installs. The module reference itself is only needed
+        // for this one call.
+        await using var module = await MarqueeJs.InvokeAsync<IJSObjectReference>(
+            "import", "./_content/MeowSSH.UI/js/host-name-marquee.js");
+        await module.InvokeVoidAsync("installHostNameMarquee");
+    }
 
     private string StateClass => Status.State switch
     {

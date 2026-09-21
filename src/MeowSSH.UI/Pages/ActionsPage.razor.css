@@ -169,17 +169,22 @@
     color: var(--text-muted);
 }
 
-.action-pro-badge {
-    display: inline-flex;
-    align-items: center;
-    min-height: 1.35rem;
-    padding: 0 .4rem;
-    border: 1px solid var(--border-strong);
-    border-radius: 999px;
-    font-size: .7rem;
-    font-weight: 700;
-    letter-spacing: .08em;
-}
+/*
+  .action-pro-badge itself moved to meowssh.css (global, unscoped).
+
+  Blazor CSS isolation only rewrites elements that this .razor file renders
+  directly: the scope attribute a bundled .razor.css rule requires
+  (.action-pro-badge[b-xxxxxxxxxx]) is never added to a <span
+  class="action-pro-badge"> written in a *different* page or component. Nine
+  other files reused this class -- AdvancedSftpPage, CommandMonitoringPage,
+  EncryptedBackupPage, ForwardsPage, HostHealthDashboardPage, SessionLogsPage,
+  ActionSequenceControl, BroadcastTerminalControl, ForwardProfilesPanel,
+  SftpRemoteSearchPanel -- and on every one of them the rule silently matched
+  nothing: "PRO" rendered as bare text inheriting the heading's own weight,
+  which is exactly the E2 defect the badge was built to fix. It only ever
+  worked on this page, where the badge was invented and where the E2 fix was
+  screenshotted from. Regression test: ProBadgeStylingTests.
+*/
 
 .action-message {
     padding: .75rem;

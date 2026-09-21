@@ -206,12 +206,42 @@ h1:focus, h2:focus, h3:focus, [tabindex="-1"]:focus { outline: none; box-shadow:
 }
 
 .host__name {
+  position: relative;
   font-size: var(--text-base);
   font-weight: 550;
   letter-spacing: -0.005em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/*
+  C2 (scroll-on-focus/selection): the marquee text lives in its own inline
+  span so it can be transformed independently of .host__name's own
+  overflow/ellipsis box. In the resting state .host__name-text stays
+  "display: inline" -- CSS transforms have no effect on non-replaced inline
+  boxes, which is exactly what we want here, since with no transform applied
+  the row must still ellipsis normally, identically to before this existed.
+  host-name-marquee.js only ever adds .host__name--marquee (which switches
+  the child to inline-block and starts the animation) while a row is focused
+  or its manage panel is open, and only when there is real overflow to show
+  and the visitor has not asked for reduced motion.
+*/
+.host__name-text { display: inline; }
+
+.host__name--marquee {
+  text-overflow: clip;
+}
+
+.host__name--marquee .host__name-text {
+  display: inline-block;
+  animation: host-name-marquee 5s ease-in-out infinite;
+}
+
+@keyframes host-name-marquee {
+  0%, 12% { transform: translateX(0); }
+  45%, 60% { transform: translateX(calc(-1 * var(--marquee-distance, 0px))); }
+  92%, 100% { transform: translateX(0); }
 }
 
 .host__address {
@@ -229,6 +259,76 @@ h1:focus, h2:focus, h3:focus, [tabindex="-1"]:focus { outline: none; box-shadow:
   align-items: center;
   gap: var(--space-2);
   flex-shrink: 0;
+}
+
+/*
+  C2 (continued, verified still reproducing after the manage-column fix
+  below): .host is a CSS grid ("3px auto 1fr auto"), and a plain "auto"
+  track's floor is its own min-content, full stop -- unlike the "1fr" name
+  column, whose min-width:0 (on .host__detail) really does let it shrink to
+  nothing, an "auto" track never gives an inch even when the grid item inside
+  it is given min-width:0 too (that only affects flex layouts). The result:
+  whichever status badge is showing keeps its full natural width and the host
+  name/address -- the thing that identifies the row -- gives up space first.
+  Measured with Playwright at 412px: "Connecting" (97px) still ellipsised
+  "ci@build.internal:2222" down to 136px (needs 146), one of the exact
+  strings the audit measured as clipped. This cap makes the badge concede a
+  meaningful amount of that width back before the identifier does.
+
+  It does not close every case: "staging-db-replica-eu-west" (27 characters)
+  paired with the "Failed" badge and this row's ~103px of fixed rail/avatar/
+  padding overhead needs more than the 233px this row has to split between
+  name and badge combined, even with the badge capped here. Shrinking the
+  badge text further to fix that one combination would mean an unreadable
+  sliver of a label on every *other* row too. Regression tests:
+  UiUxAuditFollowUpTests.ShortAndMediumHostNamesDoNotOverflowTheirColumnOnTheHostsList
+  and .TheOneRemainingHostNameOverflowIsBoundedAndDocumented assert what
+  this cap actually achieves and pin the residual case rather than asserting
+  a fix this change does not fully make. The cap only applies below the same
+  460px breakpoint as the transport chip below -- above it there is room for
+  both a full badge and a full name, so neither gives up anything.
+*/
+@media (max-width: 460px) {
+  .host__meta { max-width: 5rem; }
+}
+
+/*
+  C2 (dot-only badges): the 5rem cap above closes ci@build.internal:2222 but
+  not staging-db-replica-eu-west + "Failed" -- that row has 233px to split
+  between name and badge and the name alone needs 227px, so *any* visible
+  badge label leaves it short (see the .host__meta comment above). There is
+  no more width to give the name without touching the badge's text, and
+  shrinking the label further on every row for one row's sake was left open
+  rather than decided unilaterally in the CSS-only pass that added the cap.
+
+  Decided here: below HOST_META_DOT_ONLY_BREAKPOINT the badge's label is
+  clipped the same way .visually-hidden clips text -- 1x1px, not display:none
+  -- rather than removed, so it stays in the accessibility tree and a screen
+  reader still hears "Failed"/"Connected"/etc; the badge's own `title`
+  attribute (StatusBadge.razor) gives a sighted mouse/trackpad user the same
+  word on hover. Colour (the dot's background) is never the only carrier of
+  the state. Measured empirically with Playwright
+  (UiUxAuditFollowUpTests.HostMetaDotOnlyBreakpointCollapsesTheBadgeToADot,
+  and the bound in TheOneRemainingHostNameOverflowIsBoundedAndDocumented):
+  at 412px -- the audit's own tested width -- this takes .host__meta from
+  ~72px to 22px and the row's residual name overflow from ~58px to ~16px.
+  It does NOT close that overflow: "staging-db-replica-eu-west" needs 227px
+  for its name and still gets 211px, so C2's documented residual shrinks but
+  survives -- the scroll-on-focus behaviour above is what actually makes the
+  rest of the name readable. Reusing 460px keeps one threshold for "this row
+  is tight" instead of introducing a second, unexplained number.
+*/
+@media (max-width: 460px) {
+  .host__meta .badge__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
 }
 
 .host__reason {
@@ -709,6 +809,10 @@ h1:focus, h2:focus, h3:focus, [tabindex="-1"]:focus { outline: none; box-shadow:
 }
 
 .notice--danger { background: var(--danger-wash); color: var(--danger); }
+/* Consequential but not destructive: a managed-relay quota message, unlike
+   notice--danger, never means the app itself is broken -- direct/self-hosted
+   connections still work, so this stays in the warn palette, not danger's. */
+.notice--warn { background: var(--warn-wash); color: var(--warn); }
 .notice .icon { width: 18px; height: 18px; margin-top: 1px; }
 .notice__title { font-size: var(--text-sm); font-weight: 600; }
 .notice__body { font-size: var(--text-sm); opacity: 0.85; }
@@ -796,7 +900,15 @@ h1:focus, h2:focus, h3:focus, [tabindex="-1"]:focus { outline: none; box-shadow:
   cursor: pointer;
   transition: background 120ms ease, color 120ms ease;
 }
-.segmented__option--on { background: var(--accent); color: var(--text-on-accent); font-weight: 600; }
+/*
+  E5's real fix lives in controls.css, which loads after this file: a plain
+  ".segmented__option--on" rule there wins the cascade tie and repaints this
+  full accent fill as a tinted wash instead. This rule stays only as the
+  fallback shape (padding/radius come from .segmented__option above); do not
+  re-add a background/color here -- it would silently win again the moment
+  controls.css stops loading last, and nothing would fail to compile to warn
+  you. See controls.css's own comment on .segmented__option--on.
+*/
 .segmented__option:focus-visible { outline: none; box-shadow: var(--ring); }
 
 .check { display: flex; gap: var(--space-3); align-items: flex-start; font-size: var(--text-sm); cursor: pointer; }
@@ -916,6 +1028,39 @@ h1:focus, h2:focus, h3:focus, [tabindex="-1"]:focus { outline: none; box-shadow:
   gap: var(--space-3);
 }
 
+/*
+  For the transfer queue's "Queue"/"History" sections, each with a
+  clear-this-list action beside the heading. Not .section-heading: that class
+  is already used elsewhere (HostHealthDashboardPage) wrapping a single child
+  with no layout rule of its own, and giving it one here would change that
+  page's rendering along with this one.
+*/
+.section-heading--with-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+/*
+  C6: "Refresh plan" and "Restore purchases" had no layout rule at all here --
+  a bare block <div> around two inline-flex .btn elements, each sized to its
+  own label, side by side with whatever space was left over. Equal widths on
+  one row read as a single decision the way the rest of the app's paired
+  actions do; wrapping to two full-width rows below the point they fit keeps
+  either label from clipping.
+*/
+.settings__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.settings__actions > .btn {
+  flex: 1 1 10rem;
+}
+
 .setting-card {
   display: flex;
   align-items: center;
@@ -1021,6 +1166,31 @@ h1:focus, h2:focus, h3:focus, [tabindex="-1"]:focus { outline: none; box-shadow:
   letter-spacing: 0.06em;
   text-transform: uppercase;
   line-height: 1.6;
+}
+
+/*
+  The Actions page's own PRO/TRUNCATED marker, promoted here from
+  ActionsPage.razor.css because it never worked anywhere else. Blazor CSS
+  isolation only stamps the scope attribute a .razor.css rule needs onto
+  elements the *same* .razor file renders; a <span class="action-pro-badge">
+  written in AdvancedSftpPage, CommandMonitoringPage, EncryptedBackupPage,
+  ForwardsPage, HostHealthDashboardPage, SessionLogsPage,
+  ActionSequenceControl, BroadcastTerminalControl, ForwardProfilesPanel or
+  SftpRemoteSearchPanel never carried ActionsPage's scope attribute, so the
+  rule matched nothing there and "PRO" rendered as bare text inheriting the
+  surrounding heading's weight -- the literal E2 defect the badge exists to
+  prevent. This class has to live somewhere every page's markup can reach it.
+*/
+.action-pro-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.35rem;
+  padding: 0 0.4rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
 }
 
 .range {

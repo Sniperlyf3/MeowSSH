@@ -26,6 +26,9 @@ builder.Services.AddScoped<ITailcatIdentityStore, FakeTailcatIdentityStore>();
 builder.Services.AddScoped<IManagedDerpUsageService, FakeManagedDerpUsageService>();
 builder.Services.AddScoped<ITailcatWorkspaceStore, MemoryTailcatWorkspaceStore>();
 builder.Services.AddScoped<ITailcatWorkspaceService, TailcatWorkspaceService>();
+builder.Services.AddScoped<ITailcatTemporaryShareStore, MemoryTailcatTemporaryShareStore>();
+builder.Services.AddScoped<ITailcatTemporaryShareService, TailcatTemporaryShareService>();
+builder.Services.AddScoped<TailcatServerSessionLifetimeCoordinator>();
 builder.Services.AddScoped<ICommandActionStore, MemoryCommandActionStore>();
 builder.Services.AddScoped<ICommandActionService, CommandActionService>();
 builder.Services.AddScoped<IParameterizedCommandActionRunner, ParameterizedCommandActionRunner>();
@@ -49,6 +52,11 @@ builder.Services.AddScoped<ITerminalBroadcastService, TerminalBroadcastService>(
 builder.Services.AddScoped<TerminalBroadcastCoordinator>();
 builder.Services.AddScoped<ISftpBookmarkStore, MemorySftpBookmarkStore>();
 builder.Services.AddScoped<ISftpBookmarkService, SftpBookmarkService>();
+builder.Services.AddScoped<ITransferHistoryService>(_ => new FileTransferHistoryService(
+    Path.Combine(Path.GetTempPath(), "meowssh-testhost-transfer-history", Guid.NewGuid().ToString("N") + ".json")));
+builder.Services.AddScoped<TransferQueueService>();
+builder.Services.AddScoped<ITransferQueueService>(sp => sp.GetRequiredService<TransferQueueService>());
+builder.Services.AddScoped<TransferQueueLocalFileCleanup>();
 builder.Services.AddScoped<IEncryptedVaultBackupService, FakeEncryptedVaultBackupService>();
 builder.Services.AddScoped<IPortForwardProfileStore, MemoryPortForwardProfileStore>();
 builder.Services.AddScoped<IPortForwardProfileService, PortForwardProfileService>();
@@ -70,6 +78,11 @@ builder.Services.AddScoped<IExternalUriLauncher, NoOpExternalUriLauncher>();
 builder.Services.AddScoped<IThirdPartyNoticeProvider, FakeThirdPartyNoticeProvider>();
 builder.Services.AddScoped<IPendingDiagnosticReportStore>(_ => new FilePendingDiagnosticReportStore(
     Path.Combine(Path.GetTempPath(), "meowssh-testhost-diagnostics", Guid.NewGuid().ToString("N"))));
+builder.Services.AddScoped<IDiagnosticsInstallIdStore>(_ => new FileDiagnosticsInstallIdStore(
+    Path.Combine(Path.GetTempPath(), "meowssh-testhost-diagnostics-id", Guid.NewGuid().ToString("N"))));
+builder.Services.AddScoped<IDiagnosticsSendPreferenceStore>(_ => new FileDiagnosticsSendPreferenceStore(
+    Path.Combine(Path.GetTempPath(), "meowssh-testhost-diagnostics-pref", Guid.NewGuid().ToString("N"))));
+builder.Services.AddScoped<DiagnosticsInstallIdentity>();
 builder.Services.AddScoped(_ => new AppExternalLinks(
     new Uri("https://example.test/privacy"),
     new Uri("https://example.test/support"),

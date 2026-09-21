@@ -66,7 +66,7 @@ public sealed class SessionLoggingConnectionEngine(
         public virtual ValueTask DisposeAsync() => Inner.DisposeAsync();
     }
 
-    private sealed class LoggingSshConnection : LoggingHostConnection, ISshConnection, IConnectionPathTelemetry
+    private sealed class LoggingSshConnection : LoggingHostConnection, ISshConnection, IConnectionPathTelemetry, IConnectionRelayHealth
     {
         private readonly ISshConnection _ssh;
 
@@ -90,6 +90,23 @@ public sealed class SessionLoggingConnectionEngine(
             {
                 if (_ssh is IConnectionPathTelemetry telemetry)
                     telemetry.PathChanged -= value;
+            }
+        }
+
+        public string? RelayHealth =>
+            (_ssh as IConnectionRelayHealth)?.RelayHealth;
+
+        public event EventHandler<string?>? RelayHealthChanged
+        {
+            add
+            {
+                if (_ssh is IConnectionRelayHealth relay)
+                    relay.RelayHealthChanged += value;
+            }
+            remove
+            {
+                if (_ssh is IConnectionRelayHealth relay)
+                    relay.RelayHealthChanged -= value;
             }
         }
 

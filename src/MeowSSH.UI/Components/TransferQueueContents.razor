@@ -1,0 +1,225 @@
+@inject ITransferQueueService Queue
+@inject ITransferHistoryService History
+@inject IEntitlementService Entitlements
+@implements IDisposable
+
+@if (!Entitlements.Has(PremiumFeature.TransferQueue))
+{
+    <div class="setting-card" data-testid="transfer-queue-pro-gate">
+        <span class="setting-card__copy">
+            <span class="setting-card__title">MeowSSH Pro required</span>
+            <span class="setting-card__body">
+                Sequencing multiple uploads and downloads, and keeping a local record of what
+                already ran, is included with the local MeowSSH Pro license.
+            </span>
+        </span>
+    </div>
+}
+else
+{
+    <section class="settings__section" aria-labelledby="transfer-queue-active-title">
+        <div class="section-heading--with-action">
+            <h2 class="section-label" id="transfer-queue-active-title">Queue</h2>
+            @if (_items.Any(static item => item.IsFinished))
+            {
+                <button type="button" class="btn btn--ghost" data-testid="clear-finished-transfers"
+                        @onclick="ClearFinishedAsync">Clear finished</button>
+            }
+        </div>
+
+        @if (_items.Count == 0)
+        {
+            <p class="setting-card__body" data-testid="transfer-queue-empty">Nothing queued.</p>
+        }
+        else
+        {
+            <div class="stack" data-testid="transfer-queue-list">
+                @foreach (var item in _items)
+                {
+                    <article class="setting-card" data-testid="transfer-queue-item" @key="item.Id">
+                        <span class="setting-card__copy">
+                            <span class="setting-card__title">@DirectionLabel(item.Direction) @item.HostLabel</span>
+                            <span class="setting-card__body mono">@PathFor(item)</span>
+                            @if (item.State == TransferItemState.InProgress && item.Fraction is { } fraction)
+                            {
+                                <progress class="transfer-progress" max="1" value="@fraction"></progress>
+                            }
+                            @if (item.Attempt > 1)
+                            {
+                                <span class="setting-card__body">Attempt @item.Attempt</span>
+                            }
+                            @if (item.State == TransferItemState.Failed && item.Error is not null)
+                            {
+                                <span class="field__error" role="alert">@item.Error</span>
+                            }
+                            @if (item.State is TransferItemState.Failed or TransferItemState.Cancelled && !CanRetry(item))
+                            {
+                                <p class="form__hint" id="@RetryHintId(item.Id)" data-testid="retry-transfer-item-hint">Open @item.HostLabel to retry.</p>
+                            }
+                        </span>
+                        <StatusBadge Label="@StateLabel(item.State)" Variant="@StateVariant(item.State)" />
+                        <div class="settings__actions">
+                            @if (item.State is TransferItemState.Queued or TransferItemState.InProgress)
+                            {
+                                <button type="button" class="btn btn--ghost" data-testid="cancel-transfer-item"
+                                        @onclick="() => CancelAsync(item.Id)">Cancel</button>
+                            }
+                            @if (item.State is TransferItemState.Failed or TransferItemState.Cancelled)
+                            {
+                                <button type="button" class="btn btn--primary" data-testid="retry-transfer-item"
+                                        disabled="@(!CanRetry(item))"
+                                        aria-describedby="@(CanRetry(item) ? null : RetryHintId(item.Id))"
+                                        @onclick="() => RetryAsync(item.Id)">Retry</button>
+                            }
+                            @if (item.IsFinished)
+                            {
+                                <button type="button" class="btn btn--ghost" data-testid="dismiss-transfer-item"
+                                        @onclick="() => DismissAsync(item.Id)">Dismiss</button>
+                            }
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+    </section>
+
+    <section class="settings__section" aria-labelledby="transfer-history-title">
+        <div class="section-heading--with-action">
+            <h2 class="section-label" id="transfer-history-title">History</h2>
+            @if (_history.Count > 0)
+            {
+                <button type="button" class="btn btn--ghost" data-testid="clear-transfer-history"
+                        @onclick="ClearHistoryAsync">Clear history</button>
+            }
+        </div>
+
+        @if (_history.Count == 0)
+        {
+            <p class="setting-card__body" data-testid="transfer-history-empty">No completed transfers yet.</p>
+        }
+        else
+        {
+            <div class="stack" data-testid="transfer-history-list">
+                @foreach (var entry in _history)
+                {
+                    <article class="setting-card" data-testid="transfer-history-entry" @key="entry.Id">
+                        <span class="setting-card__copy">
+                            <span class="setting-card__title">@DirectionLabel(entry.Direction) @entry.HostLabel</span>
+                            <span class="setting-card__body mono">@PathFor(entry)</span>
+                            <span class="setting-card__body">@Relative(entry.EndedAtUtc)@(entry.Attempt > 1 ? $" · attempt {entry.Attempt}" : "")</span>
+                            @if (entry.Error is not null)
+                            {
+                                <span class="field__error" role="alert">@entry.Error</span>
+                            }
+                        </span>
+                        <StatusBadge Label="@StateLabel(entry.State)" Variant="@StateVariant(entry.State)" />
+                    </article>
+                }
+            </div>
+        }
+    </section>
+}
+
+@code {
+    private IReadOnlyList<TransferQueueItem> _items = [];
+    private IReadOnlyList<TransferHistoryEntry> _history = [];
+
+    /// <summary>
+    /// The currently open host connection, if any, and the host it belongs to. Retry needs a
+    /// live SFTP session against the *same* host the item was queued for -- the one it failed
+    /// with may belong to a page the user has since navigated away from and closed, and using a
+    /// different host's session would silently retry against the wrong machine.
+    /// </summary>
+    [Parameter] public ISftpSession? Sftp { get; set; }
+    [Parameter] public Guid CurrentHostId { get; set; }
+
+    private bool CanRetry(TransferQueueItem item) => Sftp is not null && item.HostId == CurrentHostId;
+
+    private static string RetryHintId(Guid id) => $"retry-transfer-item-hint-{id:N}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        Queue.Changed += OnChanged;
+        History.Changed += OnChanged;
+        _items = Queue.Items;
+        await ReloadHistoryAsync();
+    }
+
+    private async Task ReloadHistoryAsync() => _history = await History.GetAllAsync();
+
+    private void OnChanged(object? sender, EventArgs e) => _ = InvokeAsync(async () =>
+    {
+        _items = Queue.Items;
+        await ReloadHistoryAsync();
+        StateHasChanged();
+    });
+
+    private Task CancelAsync(Guid id) => Queue.CancelAsync(id);
+
+    private Task RetryAsync(Guid id)
+    {
+        var item = _items.FirstOrDefault(candidate => candidate.Id == id);
+        return item is null || Sftp is null || !CanRetry(item) ? Task.CompletedTask : Queue.RetryAsync(id, Sftp);
+    }
+
+    private Task DismissAsync(Guid id) => Queue.DismissAsync(id);
+
+    private Task ClearFinishedAsync() => Queue.ClearFinishedAsync();
+
+    private async Task ClearHistoryAsync()
+    {
+        await History.ClearAsync();
+        await ReloadHistoryAsync();
+    }
+
+    private static string DirectionLabel(TransferDirection direction) => direction switch
+    {
+        TransferDirection.Upload => "Upload to",
+        TransferDirection.Download => "Download from",
+        _ => direction.ToString(),
+    };
+
+    private static string PathFor(TransferQueueItem item) =>
+        item.Direction == TransferDirection.Upload ? item.RemotePath : item.LocalPath;
+
+    private static string PathFor(TransferHistoryEntry entry) =>
+        entry.Direction == TransferDirection.Upload ? entry.RemotePath : entry.LocalPath;
+
+    private static string StateLabel(TransferItemState state) => state switch
+    {
+        TransferItemState.Queued => "Queued",
+        TransferItemState.InProgress => "In progress",
+        TransferItemState.Completed => "Completed",
+        TransferItemState.Failed => "Failed",
+        TransferItemState.Cancelled => "Cancelled",
+        _ => state.ToString(),
+    };
+
+    private static string StateVariant(TransferItemState state) => state switch
+    {
+        TransferItemState.Completed => "ok",
+        TransferItemState.InProgress => "warn",
+        TransferItemState.Failed => "danger",
+        TransferItemState.Cancelled => "neutral",
+        _ => "neutral",
+    };
+
+    private static string Relative(DateTimeOffset when)
+    {
+        var age = DateTimeOffset.UtcNow - when;
+        return age switch
+        {
+            { TotalMinutes: < 1 } => "just now",
+            { TotalHours: < 1 } => $"{(int)age.TotalMinutes}m ago",
+            { TotalDays: < 1 } => $"{(int)age.TotalHours}h ago",
+            { TotalDays: < 30 } => $"{(int)age.TotalDays}d ago",
+            _ => when.ToString("MMM yyyy", System.Globalization.CultureInfo.InvariantCulture),
+        };
+    }
+
+    public void Dispose()
+    {
+        Queue.Changed -= OnChanged;
+        History.Changed -= OnChanged;
+    }
+}

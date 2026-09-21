@@ -2,6 +2,7 @@
 @using MeowSSH.UI.Services
 @inject IPendingDiagnosticReportStore PendingDiagnostics
 @inject ILocalFileTransferService LocalFiles
+@inject DiagnosticsInstallIdentity InstallIdentity
 
 @if (_report is not null)
 {
@@ -44,11 +45,16 @@ else if (!string.IsNullOrWhiteSpace(_message))
         string? temporaryPath = null;
         try
         {
+            // Null unless the person has already turned on "Include an anonymous
+            // install id in exported reports" in Privacy & diagnostics -- this
+            // save action never turns that setting on by itself.
+            var installId = await InstallIdentity.GetIdForReportAsync();
             var report = BugReportExportBuilder.Build(
                 "MeowSSH closed unexpectedly.",
                 expectedBehavior: null,
                 reproductionSteps: null,
-                _report);
+                _report,
+                installId);
             var fileName = $"meowssh-crash-report-{_report.CapturedAtUtc:yyyyMMdd-HHmmss}.txt";
             temporaryPath = LocalFiles.CreateTemporaryPath(fileName);
             await File.WriteAllTextAsync(temporaryPath, report);

@@ -24,6 +24,7 @@ public enum PremiumFeature
     HostHealthDashboard,
     PortForwardProfiles,
     SessionLogs,
+    TransferQueue,
     PremiumCustomization,
     EncryptedLocalBackup,
     CloudBackup,

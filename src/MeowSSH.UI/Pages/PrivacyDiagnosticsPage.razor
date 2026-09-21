@@ -1,6 +1,7 @@
 @using MeowSSH.Core.Diagnostics
 @inject IPendingDiagnosticReportStore PendingReports
 @inject ILocalFileTransferService LocalFiles
+@inject DiagnosticsInstallIdentity InstallIdentity
 
 <AppShell Title="Privacy & diagnostics" ActiveTab="settings">
     <Actions>
@@ -138,6 +139,36 @@
                         <span class="setting-card__body">Crash capture and report preparation do not silently submit analytics or diagnostic data.</span>
                     </span>
                 </div>
+
+                @*
+                    Off by default, matching every other diagnostics default on this
+                    page. The id this enables is random and per-install (see
+                    DiagnosticsInstallIdentity) -- never derived from this device or
+                    the signed-in account -- and it only ever rides along inside a
+                    report the person themselves chooses to export above. Nothing on
+                    this page performs a network upload; this setting exists so that
+                    if a report is exported, whoever it's shared with can tell it
+                    apart from reports from other installs, and so the person can
+                    turn that off with one visible switch.
+                *@
+                <label class="setting-card setting-card--toggle" for="send-diagnostics-id">
+                    <span class="setting-card__copy">
+                        <span class="setting-card__title">Include an anonymous install id in exported reports</span>
+                        <span class="setting-card__body">Off by default. A random id, not derived from this device or your account, so support can tell reports from one install apart. Never sent automatically -- only ever included in a report you export above.</span>
+                    </span>
+                    <input id="send-diagnostics-id" type="checkbox" class="settings__toggle"
+                           data-testid="send-diagnostics-toggle" checked="@_sendDiagnosticsEnabled"
+                           disabled="@_busy" @onchange="OnSendDiagnosticsToggledAsync" />
+                </label>
+
+                @if (_sendDiagnosticsEnabled)
+                {
+                    <button type="button" class="btn btn--ghost btn--block"
+                            data-testid="reset-diagnostics-id" disabled="@_busy" @onclick="ResetDiagnosticsIdAsync">
+                        Reset diagnostics identifier
+                    </button>
+                }
+
                 @if (_pendingReport is not null)
                 {
                     <button type="button" class="btn btn--ghost btn--block"
@@ -158,11 +189,49 @@
     private string _expected = string.Empty;
     private string _steps = string.Empty;
     private bool _attachDiagnostics;
+    private bool _sendDiagnosticsEnabled;
     private bool _busy;
     private string? _message;
 
-    protected override async Task OnInitializedAsync() =>
+    protected override async Task OnInitializedAsync()
+    {
         _pendingReport = await PendingReports.LoadAsync();
+        _sendDiagnosticsEnabled = await InstallIdentity.IsEnabledAsync();
+    }
+
+    private async Task OnSendDiagnosticsToggledAsync(ChangeEventArgs args)
+    {
+        if (_busy) return;
+        var enabled = args.Value is bool value && value;
+        _busy = true;
+        try
+        {
+            // SetEnabledAsync clears the stored id itself when turning off, so a
+            // person who disables this and re-enables it later gets a fresh,
+            // unrelated id rather than picking the old one back up.
+            await InstallIdentity.SetEnabledAsync(enabled);
+            _sendDiagnosticsEnabled = enabled;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task ResetDiagnosticsIdAsync()
+    {
+        if (_busy) return;
+        _busy = true;
+        try
+        {
+            await InstallIdentity.ResetIdAsync();
+            _message = "Diagnostics identifier reset. The next report will use a new, unrelated id.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
 
     private async Task ExportAsync()
     {
@@ -172,11 +241,13 @@
         string? temporary = null;
         try
         {
+            var installId = _attachDiagnostics ? await InstallIdentity.GetIdForReportAsync() : null;
             var text = BugReportExportBuilder.Build(
                 _description,
                 _expected,
                 _steps,
-                _attachDiagnostics ? _pendingReport : null);
+                _attachDiagnostics ? _pendingReport : null,
+                installId);
             var name = $"meowssh-bug-report-{DateTime.UtcNow:yyyyMMdd-HHmmss}.txt";
             temporary = LocalFiles.CreateTemporaryPath(name);
             await File.WriteAllTextAsync(temporary, text);

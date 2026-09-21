@@ -68,6 +68,10 @@
         {
             <TailcatPhonePanel />
         }
+        else if (_section == "share")
+        {
+            <TailcatTemporarySharePanel />
+        }
         else if (_section == "connect")
         {
             <TailcatConnectPanel />
@@ -118,6 +122,7 @@
         new("devices", "Devices & keys", "Configure this phone and manage Tailcat identities.",
         [
             new("phone", "This phone"),
+            new("share", "Temporary share"),
             new("keys", "Tailcat identities"),
         ]),
         new("network", "Network & VPN", "Route device traffic through Tailcat.",

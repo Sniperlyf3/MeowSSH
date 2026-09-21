@@ -67,6 +67,13 @@
                 <span class="empty__glyph"><Icon Name="search" /></span>
                 <p class="empty__title">No matching hosts</p>
                 <p class="empty__body">Try a different name, address, group or tag.</p>
+                @* C7: this is empty-by-filter, not empty-by-default -- the
+                   vault may hold plenty of hosts, just none matching the
+                   current search. Offer to clear it rather than leaving the
+                   only way out as manually deleting the query text. *@
+                <button type="button" class="btn btn--ghost" data-testid="clear-host-search" @onclick="ClearSearch">
+                    Clear search
+                </button>
             </div>
         }
         else
@@ -117,6 +124,8 @@
         _ = InvokeAsync(async () => { await LoadAsync(); StateHasChanged(); });
 
     private Task Connect(HostRecord host) => OnHostSelected.InvokeAsync(host);
+
+    private void ClearSearch() => _query = "";
 
     private void ToggleSearch()
     {

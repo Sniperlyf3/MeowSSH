@@ -52,6 +52,35 @@ public sealed class PrivacyDiagnosticsTests(TestHostFixture fixture)
     }
 
     [Fact]
+    public async Task SendDiagnosticsToggleIsOffByDefaultAndGatesTheResetButton()
+    {
+        var page = await OpenAsync();
+
+        // Off by default, matching every other diagnostics default on this page --
+        // and with it off, there is no id yet to reset, so the button stays hidden.
+        await Assertions.Expect(page.GetByTestId("send-diagnostics-toggle")).Not.ToBeCheckedAsync();
+        await Assertions.Expect(page.GetByTestId("reset-diagnostics-id")).Not.ToBeVisibleAsync();
+
+        await page.GetByTestId("send-diagnostics-toggle").CheckAsync();
+        await Assertions.Expect(page.GetByTestId("reset-diagnostics-id")).ToBeVisibleAsync();
+
+        await page.GetByTestId("send-diagnostics-toggle").UncheckAsync();
+        await Assertions.Expect(page.GetByTestId("reset-diagnostics-id")).Not.ToBeVisibleAsync();
+    }
+
+    [Fact]
+    public async Task ResettingTheDiagnosticsIdentifierConfirmsInline()
+    {
+        var page = await OpenAsync();
+        await page.GetByTestId("send-diagnostics-toggle").CheckAsync();
+
+        await page.GetByTestId("reset-diagnostics-id").ClickAsync();
+
+        await Assertions.Expect(page.GetByTestId("bug-report-message"))
+            .ToContainTextAsync("Diagnostics identifier reset");
+    }
+
+    [Fact]
     public async Task BackReturnsToCompactSettingsRoot()
     {
         var page = await OpenAsync();

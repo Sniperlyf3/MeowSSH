@@ -2,8 +2,16 @@
 @using MeowSSH.Core.Ssh
 @using MeowSSH.UI.Services
 @inject ILocalFileTransferService LocalFiles
+@inject ITransferQueueService TransferQueue
+@inject IEntitlementService Entitlements
 @implements IDisposable
 
+@if (_showQueue)
+{
+    <TransferQueuePanel Sftp="Sftp" CurrentHostId="Host.Id" OnClosed="() => _showQueue = false" />
+}
+else
+{
 <div class="files" data-testid="files">
     <header class="topbar">
         <button type="button" class="btn btn--icon" aria-label="Back to hosts"
@@ -16,9 +24,16 @@
             <span class="session__address">@Host.Label</span>
         </span>
 
-        <button type="button" class="btn btn--icon" aria-label="Upload file"
+        <button type="button" class="btn btn--icon" aria-label="Upload file" title="Upload file"
                 data-testid="upload-file" @onclick="UploadAsync">
             <Icon Name="upload" />
+        </button>
+        @* Always visible rather than hidden for free users: a control that vanishes below
+           the Pro tier leaves no way to discover the feature exists at all. Queuing itself
+           explains the requirement (EnqueueAsync's message) if it is attempted anyway. *@
+        <button type="button" class="btn btn--icon" aria-label="Queue upload (MeowSSH Pro)"
+                data-testid="queue-upload" @onclick="QueueUploadAsync">
+            <Icon Name="queue" />
         </button>
         @* A crossed-out eye is genuinely ambiguous on a toggle: it could mean
            "hidden files are hidden" or "press to hide". The label states the
@@ -30,9 +45,13 @@
                 data-testid="toggle-hidden" @onclick="ToggleHidden">
             <Icon Name="@(_showHidden ? "eye" : "eye-off")" />
         </button>
-        <button type="button" class="btn btn--icon" aria-label="New folder"
+        <button type="button" class="btn btn--icon" aria-label="New folder" title="New folder"
                 data-testid="new-folder" @onclick="StartNewFolder">
             <Icon Name="folder-plus" />
+        </button>
+        <button type="button" class="btn btn--icon" aria-label="Transfer queue"
+                data-testid="open-transfer-queue" @onclick="() => _showQueue = true">
+            <Icon Name="queue" />
         </button>
     </header>
 
@@ -199,6 +218,16 @@
                         data-testid="download-file" @onclick="() => DownloadAsync(selected)">
                     <Icon Name="download" /> Download
                 </button>
+                @if (!Entitlements.Has(PremiumFeature.TransferQueue))
+                {
+                    <p class="form__hint" id="queue-download-hint" data-testid="queue-download-hint">Queuing downloads requires MeowSSH Pro.</p>
+                }
+                <button type="button" class="btn btn--ghost btn--block"
+                        disabled="@(!Entitlements.Has(PremiumFeature.TransferQueue))"
+                        aria-describedby="@(Entitlements.Has(PremiumFeature.TransferQueue) ? null : "queue-download-hint")"
+                        data-testid="queue-download" @onclick="() => QueueDownloadAsync(selected)">
+                    <Icon Name="queue" /> Queue download
+                </button>
             }
             <button type="button" class="btn btn--ghost btn--block"
                     data-testid="rename-file" @onclick="() => StartRename(selected)">
@@ -324,6 +353,7 @@
                   @bind="_textContent" @bind:event="oninput"></textarea>
     </div>
 }
+}
 
 @code {
     private const long MaxTextBytes = 1_500_000;
@@ -353,13 +383,21 @@
     private CancellationTokenSource? _transferCancellation;
     private string? _notice;
     private PendingUpload? _pendingUpload;
+    private bool _showQueue;
 
     [Parameter, EditorRequired] public HostRecord Host { get; set; } = default!;
     [Parameter, EditorRequired] public ISftpSession Sftp { get; set; } = default!;
     [Parameter] public EventCallback OnClosed { get; set; }
 
+    /// <summary>
+    /// Not called directly -- injecting it is what keeps a queued transfer's local file getting
+    /// cleaned up (and a completed download published) even after this page is disposed. See its
+    /// own remarks for why that can't be this page's job to do directly.
+    /// </summary>
+    [Inject] private TransferQueueLocalFileCleanup QueueCleanup { get; set; } = default!;
+
     private sealed record ErrorNotice(string Title, string Body);
-    private sealed record PendingUpload(LocalFileSelection File, string Destination);
+    private sealed record PendingUpload(LocalFileSelection File, string Destination, bool ForQueue = false);
 
     private IReadOnlyList<RemoteFile> Visible =>
         _entries is null
@@ -647,12 +685,104 @@
         }
     }
 
+    /// <summary>
+    /// Same pick-and-conflict-check flow as <see cref="UploadAsync"/>, but hands the transfer to
+    /// the Pro queue instead of running it immediately. Kept separate rather than parameterizing
+    /// <see cref="UploadAsync"/> so the free, already-covered immediate-upload path stays exactly
+    /// as it was.
+    /// </summary>
+    private async Task QueueUploadAsync()
+    {
+        LocalFileSelection? picked = null;
+        try
+        {
+            picked = await LocalFiles.PickFileAsync();
+            if (picked is null) return;
+
+            var destination = RemotePath.Join(_path, picked.Name);
+            RemoteFile? existing = null;
+            try
+            {
+                existing = await Sftp.StatAsync(destination);
+            }
+            catch (SshException ex) when (ex.Failure == SshFailure.NotFound)
+            {
+                // No conflict: continue with the normal queue path.
+            }
+
+            if (existing is not null)
+            {
+                if (existing.IsDirectory || existing.IsSymlink)
+                {
+                    _error = new(
+                        "Upload conflict",
+                        existing.IsDirectory
+                            ? $"A folder named {picked.Name} already exists here. Choose a different file name."
+                            : $"A symbolic link named {picked.Name} already exists here. MeowSSH will not overwrite links from an upload.");
+                    return;
+                }
+
+                _pendingUpload = new PendingUpload(picked, destination, ForQueue: true);
+                picked = null; // The confirmation sheet now owns this temporary file.
+                return;
+            }
+
+            await QueueUploadPickedAsync(picked, destination);
+            picked = null; // QueueUploadPickedAsync either handed the temp file to the queue or cleaned it up.
+        }
+        catch (Exception ex) when (ex is SshException or IOException or UnauthorizedAccessException)
+        {
+            _error = new("Could not queue upload", ex.Message);
+        }
+        finally
+        {
+            if (picked is not null) LocalFiles.DeleteTemporaryFile(picked.TemporaryPath);
+        }
+    }
+
+    private async Task QueueUploadPickedAsync(LocalFileSelection picked, string destination)
+    {
+        try
+        {
+            long? size = null;
+            try { size = new FileInfo(picked.TemporaryPath).Length; }
+            catch (IOException) { }
+
+            await TransferQueue.EnqueueAsync(Sftp, Host.Id, Host.Label, TransferDirection.Upload, picked.TemporaryPath, destination, size);
+            _notice = $"Queued upload of {picked.Name}.";
+            // The temp file now belongs to the queue (and TransferQueueLocalFileCleanup once it
+            // finishes with it) -- not deleted here.
+        }
+        catch (InvalidOperationException ex)
+        {
+            LocalFiles.DeleteTemporaryFile(picked.TemporaryPath);
+            _error = new("Could not queue upload", ex.Message);
+        }
+    }
+
+    private async Task QueueDownloadAsync(RemoteFile entry)
+    {
+        _selected = null;
+        var temporaryPath = LocalFiles.CreateTemporaryPath(entry.Name);
+        try
+        {
+            await TransferQueue.EnqueueAsync(Sftp, Host.Id, Host.Label, TransferDirection.Download, temporaryPath, entry.Path, entry.Size);
+            _notice = $"Queued download of {entry.Name}.";
+        }
+        catch (InvalidOperationException ex)
+        {
+            LocalFiles.DeleteTemporaryFile(temporaryPath);
+            _error = new("Could not queue download", ex.Message);
+        }
+    }
+
     private async Task ReplacePendingUploadAsync()
     {
         if (_pendingUpload is null) return;
         var pending = _pendingUpload;
         _pendingUpload = null;
-        await UploadPickedAsync(pending.File, pending.Destination);
+        if (pending.ForQueue) await QueueUploadPickedAsync(pending.File, pending.Destination);
+        else await UploadPickedAsync(pending.File, pending.Destination);
     }
 
     private void CancelPendingUpload()
