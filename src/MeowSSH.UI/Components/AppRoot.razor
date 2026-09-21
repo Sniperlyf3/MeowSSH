@@ -23,9 +23,17 @@
         <p class="visually-hidden" role="status">Starting MeowSSH</p>
     </div>
 }
-else if (Vault.State == VaultState.NotCreated)
+else if (Vault.State == VaultState.NotCreated || _settingUpVault)
 {
-    <VaultSetupScreen OnReady="OnUnlockedAsync" />
+    @* Vault.CreateAsync() flips Vault.State to Unlocked as soon as the vault
+       is created, before the recovery-code screen has shown or been
+       acknowledged -- on a real device that create call is genuinely async
+       (Keystore/crypto work), so Vault.StateChanged fires and this component
+       re-renders while VaultSetupScreen is still mid-flow, jumping straight
+       to the host list and skipping the code entirely. _settingUpVault keeps
+       this branch active regardless of Vault.State until the screen itself
+       says it is done. *@
+    <VaultSetupScreen OnReady="OnVaultSetupCompleteAsync" />
 }
 else if (Vault.State is not VaultState.Unlocked)
 {
@@ -145,6 +153,7 @@ else
     private bool _connectingForFiles;
     private Failure? _failure;
     private bool _ready;
+    private bool _settingUpVault;
 
     private sealed record EditorState(HostRecord? Host);
     private sealed record Failure(string Title, string Body);
@@ -194,6 +203,7 @@ else
         Vault.StateChanged += OnVaultChanged;
         Questions.Changed += OnQuestionsChanged;
         await Vault.InitializeAsync();
+        _settingUpVault = Vault.State == VaultState.NotCreated;
         _ready = true;
     }
 
@@ -202,6 +212,13 @@ else
 
     private Task OnUnlockedAsync()
     {
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private Task OnVaultSetupCompleteAsync()
+    {
+        _settingUpVault = false;
         StateHasChanged();
         return Task.CompletedTask;
     }
