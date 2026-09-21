@@ -18,7 +18,15 @@
     <AndroidExtractNativeLibraries>true</AndroidExtractNativeLibraries>
     <SupportedOSPlatformVersion>28.0</SupportedOSPlatformVersion>
 
-    <EnableTailcatVpn Condition="'$(EnableTailcatVpn)' == ''">true</EnableTailcatVpn>
+    <!-- Owner decision, 2026-09-20: full-device VPN excluded from v1, deferred
+         to a later release after a dedicated Play policy review (see
+         MeowSSHAPI's COMMERCIAL_LAUNCH_PLAN.md section 4). This default only
+         governs a build that doesn't pass the property explicitly; the real
+         Play release workflow (play-release.yml) already requires an explicit
+         include_tailcat_vpn choice on every release and defaults that input to
+         false, so this brings local/dev/demo builds in line with the same
+         policy rather than changing the actual release gate. -->
+    <EnableTailcatVpn Condition="'$(EnableTailcatVpn)' == ''">false</EnableTailcatVpn>
     <EnableProCloudSales Condition="'$(EnableProCloudSales)' == ''">false</EnableProCloudSales>
 
     <LicensingApiBaseUrl Condition="'$(LicensingApiBaseUrl)' == ''"></LicensingApiBaseUrl>

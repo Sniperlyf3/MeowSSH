@@ -74,6 +74,13 @@ jobs:
             -p:Version=0.1.${{ github.run_number }}
             -p:ApplicationDisplayVersion=0.1.${{ github.run_number }}
             -p:ApplicationVersion=${{ github.run_number }}
+            # EnableTailcatVpn now defaults to false (2026-09-20 owner decision:
+            # full-device VPN excluded from v1). This job's own libhev-socks5-tunnel.so
+            # presence check below only means anything if the feature is actually
+            # compiled in, so ask for it explicitly here -- the real
+            # play-release.yml release path makes its own explicit choice per
+            # release and is unaffected by this job.
+            -p:EnableTailcatVpn=true
           )
           if [[ -n "$CI_ANDROID_KEYSTORE_BASE64" ]]; then
             KEYSTORE="$RUNNER_TEMP/meowssh-ci.keystore"
@@ -133,6 +140,7 @@ jobs:
             -p:Version=0.1.${{ github.run_number }} \
             -p:ApplicationDisplayVersion=0.1.${{ github.run_number }} \
             -p:ApplicationVersion=${{ github.run_number }} \
+            -p:EnableTailcatVpn=true \
             2>&1 | tee "$LOG"
           if grep -E '/src/MeowSSH\.(App|Core|Android|UI)/.*IL[0-9]{4}' "$LOG"; then
             echo "::error::MeowSSH-owned code produced linker/AOT trim diagnostics."
