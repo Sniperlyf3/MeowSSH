@@ -14,6 +14,31 @@ namespace MeowSSH.UI.Tests;
 [Collection(nameof(TestHostCollection))]
 public sealed class HostNameOverflowAndEmptyStateTests(TestHostFixture fixture)
 {
+    /// <summary>
+    /// Forces genuine, environment-independent overflow on a row's name.
+    /// </summary>
+    /// <remarks>
+    /// "staging-db-replica-eu-west" is real sample data, chosen because it is
+    /// the audit's own documented borderline case -- its overflow is only a
+    /// handful of pixels, which is exactly why it is useless as a trigger for
+    /// tests about the marquee *mechanism* rather than about that specific
+    /// pixel budget. "Instrument Sans" (tokens.css) is never actually loaded
+    /// as a web font anywhere in this UI, so every environment silently falls
+    /// back to whatever generic sans-serif its own OS ships, and that
+    /// fallback's metrics differ enough between hosts to close a
+    /// single-digit-pixel overflow entirely: CI measured this exact row at
+    /// 0px where this sandbox measured ~16px, and 0px correctly did not
+    /// activate the marquee (found via real CI failure, not theorised). A
+    /// test asserting the marquee *does* activate needs overflow guaranteed
+    /// by something other than one string's width in one font stack, so this
+    /// injects a narrow max-width -- text-overflow:ellipsis already requires
+    /// overflow:hidden + white-space:nowrap + a bounded width on
+    /// .host__name, so this only tightens a bound already there, without
+    /// touching product CSS or the JS being tested.
+    /// </remarks>
+    private static Task<IElementHandle> ForceHostNameOverflowAsync(IPage page) =>
+        page.AddStyleTagAsync(new() { Content = ".host__name { max-width: 40px !important; }" });
+
     // C2: dot-only badges ---------------------------------------------------
 
     /// <summary>
@@ -81,6 +106,7 @@ public sealed class HostNameOverflowAndEmptyStateTests(TestHostFixture fixture)
     {
         var page = await fixture.NewPageAsync("/");
         await page.SetViewportSizeAsync(412, 915);
+        await ForceHostNameOverflowAsync(page);
 
         var row = page.GetByTestId("host-row").Filter(new() { HasTextString = "staging-db-replica-eu-west" });
         var name = row.Locator(".host__name");
@@ -126,6 +152,7 @@ public sealed class HostNameOverflowAndEmptyStateTests(TestHostFixture fixture)
         var page = await fixture.NewPageAsync("/");
         await page.SetViewportSizeAsync(412, 915);
         await page.EmulateMediaAsync(new() { ReducedMotion = ReducedMotion.Reduce });
+        await ForceHostNameOverflowAsync(page);
 
         var row = page.GetByTestId("host-row").Filter(new() { HasTextString = "staging-db-replica-eu-west" });
         await row.FocusAsync();
