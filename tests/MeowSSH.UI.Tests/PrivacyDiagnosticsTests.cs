@@ -5,9 +5,9 @@ namespace MeowSSH.UI.Tests;
 [Collection(nameof(TestHostCollection))]
 public sealed class PrivacyDiagnosticsTests(TestHostFixture fixture)
 {
-    private async Task<IPage> OpenAsync()
+    private async Task<IPage> OpenAsync(string query = "")
     {
-        var page = await fixture.NewPageAsync();
+        var page = await fixture.NewPageAsync("/" + query);
         await page.GetByTestId("tab-settings").ClickAsync();
         await page.GetByTestId("open-privacy-diagnostics").ClickAsync();
         await Assertions.Expect(page.GetByTestId("privacy-diagnostics-page")).ToBeVisibleAsync();
@@ -78,6 +78,43 @@ public sealed class PrivacyDiagnosticsTests(TestHostFixture fixture)
 
         await Assertions.Expect(page.GetByTestId("bug-report-message"))
             .ToContainTextAsync("Diagnostics identifier reset");
+    }
+
+    [Fact]
+    public async Task SendButtonOnlyAppearsWithAPendingReportAndDiagnosticsAttached()
+    {
+        var page = await OpenAsync("?seed-pending-report");
+
+        // A pending report exists, but "Attach anonymized crash diagnostics"
+        // starts unchecked (matching every other diagnostics default on this
+        // page), so there is nothing yet the send action would actually send.
+        await Assertions.Expect(page.GetByTestId("attach-bug-diagnostics")).Not.ToBeCheckedAsync();
+        await Assertions.Expect(page.GetByTestId("send-diagnostics")).ToHaveCountAsync(0);
+
+        await page.GetByTestId("attach-bug-diagnostics").CheckAsync();
+
+        await Assertions.Expect(page.GetByTestId("send-diagnostics")).ToBeVisibleAsync();
+    }
+
+    [Fact]
+    public async Task SendingUploadsTheReportAndConfirmsInline()
+    {
+        var page = await OpenAsync("?seed-pending-report");
+        await page.GetByTestId("attach-bug-diagnostics").CheckAsync();
+
+        await page.GetByTestId("send-diagnostics").ClickAsync();
+
+        await Assertions.Expect(page.GetByTestId("bug-report-message"))
+            .ToContainTextAsync("Diagnostics sent");
+    }
+
+    [Fact]
+    public async Task WithNoPendingReportThereIsNothingToSend()
+    {
+        var page = await OpenAsync();
+
+        await Assertions.Expect(page.GetByTestId("no-pending-diagnostics")).ToBeVisibleAsync();
+        await Assertions.Expect(page.GetByTestId("send-diagnostics")).ToHaveCountAsync(0);
     }
 
     [Fact]

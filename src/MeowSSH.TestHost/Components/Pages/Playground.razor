@@ -72,6 +72,7 @@ else
 @code {
     [Inject] private NavigationManager Navigation { get; set; } = default!;
     [Inject] private FakeVaultSession Vault { get; set; } = default!;
+    [Inject] private IPendingDiagnosticReportStore PendingReportStore { get; set; } = default!;
 
     private bool _multi;
     private bool _unlocked;
@@ -100,6 +101,20 @@ else
             _files = new FilesState(SampleHost, new FakeSftpSession());
         if (query.Contains("diagnostic", StringComparison.OrdinalIgnoreCase))
             _diagnosticReport = SampleDiagnosticReport();
+    }
+
+    // Distinct from "diagnostic" above: that flag shows the in-session
+    // DiagnosticReportPrompt (the save/discard sheet an app crash would
+    // raise), which never actually writes to IPendingDiagnosticReportStore.
+    // A UI test covering PrivacyDiagnosticsPage's "there's a pending report"
+    // branch (the "Send anonymized crash report" button included) needs a
+    // report already sitting in that store when the page opens, so this
+    // flag seeds it directly instead.
+    protected override async Task OnInitializedAsync()
+    {
+        var query = new Uri(Navigation.Uri).Query;
+        if (query.Contains("seed-pending-report", StringComparison.OrdinalIgnoreCase))
+            await PendingReportStore.SaveAsync(SampleDiagnosticReport());
     }
 
     private bool _sessionStarted;

@@ -2,6 +2,7 @@
 @inject IPendingDiagnosticReportStore PendingReports
 @inject ILocalFileTransferService LocalFiles
 @inject DiagnosticsInstallIdentity InstallIdentity
+@inject IDiagnosticReportUploadService ReportUploader
 
 <AppShell Title="Privacy & diagnostics" ActiveTab="settings">
     <Actions>
@@ -15,8 +16,9 @@
             <div class="settings__section">
                 <h2 class="section-label">Report a problem</h2>
                 <p class="setting-card__body">
-                    Describe what happened. MeowSSH can create a local report you can review and share with support.
-                    Nothing is uploaded automatically.
+                    Describe what happened. MeowSSH can create a local report you can review and share with support,
+                    or, if you attach anonymized crash diagnostics below, send just that diagnostic data directly.
+                    Nothing is uploaded automatically -- both actions require you to press a button below.
                 </p>
 
                 <label class="field">
@@ -94,6 +96,12 @@
                                 }
                             </div>
                         </details>
+
+                        <button type="button" class="btn btn--ghost btn--block"
+                                data-testid="send-diagnostics" disabled="@_busy"
+                                @onclick="SendDiagnosticsAsync">
+                            @(_busy ? "Sending…" : "Send anonymized crash report")
+                        </button>
                     }
                 }
                 else
@@ -145,16 +153,19 @@
                     page. The id this enables is random and per-install (see
                     DiagnosticsInstallIdentity) -- never derived from this device or
                     the signed-in account -- and it only ever rides along inside a
-                    report the person themselves chooses to export above. Nothing on
-                    this page performs a network upload; this setting exists so that
-                    if a report is exported, whoever it's shared with can tell it
-                    apart from reports from other installs, and so the person can
-                    turn that off with one visible switch.
+                    report the person themselves chooses to export or send above.
+                    This setting exists so that, if a report leaves the device --
+                    exported and shared manually, or sent with the button above --
+                    whoever receives it can tell it apart from reports from other
+                    installs, and so the person can turn that off with one visible
+                    switch. Turning it off does not stop "Send anonymized crash
+                    report" from working; it only stops that report from carrying an
+                    id (installId is passed as null to DiagnosticReportUploadService).
                 *@
                 <label class="setting-card setting-card--toggle" for="send-diagnostics-id">
                     <span class="setting-card__copy">
-                        <span class="setting-card__title">Include an anonymous install id in exported reports</span>
-                        <span class="setting-card__body">Off by default. A random id, not derived from this device or your account, so support can tell reports from one install apart. Never sent automatically -- only ever included in a report you export above.</span>
+                        <span class="setting-card__title">Include an anonymous install id in exported or sent reports</span>
+                        <span class="setting-card__body">Off by default. A random id, not derived from this device or your account, so support can tell reports from one install apart. Never sent on its own -- only ever included in a report you export or send above.</span>
                     </span>
                     <input id="send-diagnostics-id" type="checkbox" class="settings__toggle"
                            data-testid="send-diagnostics-toggle" checked="@_sendDiagnosticsEnabled"
@@ -261,6 +272,28 @@
         finally
         {
             if (temporary is not null) LocalFiles.DeleteTemporaryFile(temporary);
+            _busy = false;
+        }
+    }
+
+    private async Task SendDiagnosticsAsync()
+    {
+        // Mirrors ExportAsync's own guard shape, plus _pendingReport is null: there
+        // is nothing to send, unlike export, which can still produce a text file
+        // with just the typed description and no diagnostics attached.
+        if (_busy || _pendingReport is null || !_attachDiagnostics) return;
+        _busy = true;
+        _message = null;
+        try
+        {
+            var installId = await InstallIdentity.GetIdForReportAsync();
+            var sent = await ReportUploader.TryUploadAsync(_pendingReport, installId);
+            _message = sent
+                ? "Diagnostics sent. Thank you for helping improve MeowSSH."
+                : "Couldn't send diagnostics right now. Check your connection and try again, or export a report instead.";
+        }
+        finally
+        {
             _busy = false;
         }
     }

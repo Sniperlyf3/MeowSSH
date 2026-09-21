@@ -1,6 +1,6 @@
 # MeowSSH Privacy Policy
 
-_Last updated: 16 September 2026_
+_Last updated: 21 September 2026_
 
 MeowSSH is an Android SSH/SFTP and remote-operations client. This policy describes what the app handles, what leaves the device, and which features may involve third-party services.
 
@@ -54,7 +54,15 @@ Any future cloud-sync design should encrypt user configuration on the client bef
 
 ## Diagnostics and analytics
 
-MeowSSH should not collect terminal contents, commands, passwords, private keys, host credentials or full purchase tokens as crash/analytics payloads. If crash reporting or product analytics is added, this policy and the Play Data safety declaration must be updated before the telemetry-enabled build is released.
+MeowSSH can capture a sanitized local crash snapshot: exception type, sanitized message and stack trace, app version, platform, and a short list of recent high-level in-app actions. It does not include terminal contents, commands, host names, addresses, usernames, file names, passwords, private keys, host credentials or full purchase tokens. Capturing this snapshot happens entirely on the device and never uploads anything by itself.
+
+From the in-app "Report a problem" screen, a user can export a local text report to review and share manually, with or without the sanitized crash snapshot attached, or press "Send anonymized crash report" to submit just that snapshot to the MeowSSH diagnostics service over HTTPS. Nothing is sent automatically or in the background; sending happens only when the user presses that button.
+
+If the user turns on "Include an anonymous install id in exported or sent reports" (off by default), a random, opaque, per-install identifier is included with an exported or sent report. This identifier is never derived from the device, the signed-in account, or any other identifier this app uses elsewhere; it proves nothing about who is using the app and is never used to authenticate or authorize anything. It exists only so the maintainer can tell reports from one install apart from another and rate-limit abusive report volume. Leaving this setting off, or exporting/sending without attaching diagnostics, omits it entirely; resetting it replaces it with a new, unrelated identifier.
+
+The diagnostics service retains an accepted report only long enough to triage it and does not intentionally accept or retain terminal contents, commands, passwords, private keys, host credentials or full purchase tokens.
+
+This is a Data Safety-relevant feature. The Play Console Data Safety declaration for this app must be updated to reflect crash-diagnostics collection, and that submission reviewed, before a build with this feature is released to Play; that is a separate operator action from this document and is not represented as complete here.
 
 ## Data sharing and sale
 

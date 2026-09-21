@@ -64,6 +64,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<IDiagnosticsSendPreferenceStore>(_ => new FileDiagnosticsSendPreferenceStore(
             Path.Combine(FileSystem.AppDataDirectory, "diagnostics", "send-enabled")));
         builder.Services.AddSingleton<DiagnosticsInstallIdentity>();
+        builder.Services.AddSingleton<IDiagnosticReportUploadService, DiagnosticReportUploadService>();
         builder.Services.AddSingleton<DiagnosticBreadcrumbBuffer>();
         builder.Services.AddSingleton<DiagnosticCrashRecorder>();
         builder.Services.AddSingleton(LaunchBuildConfig.ExternalLinks);

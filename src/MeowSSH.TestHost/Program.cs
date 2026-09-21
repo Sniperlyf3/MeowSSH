@@ -83,6 +83,7 @@ builder.Services.AddScoped<IDiagnosticsInstallIdStore>(_ => new FileDiagnosticsI
 builder.Services.AddScoped<IDiagnosticsSendPreferenceStore>(_ => new FileDiagnosticsSendPreferenceStore(
     Path.Combine(Path.GetTempPath(), "meowssh-testhost-diagnostics-pref", Guid.NewGuid().ToString("N"))));
 builder.Services.AddScoped<DiagnosticsInstallIdentity>();
+builder.Services.AddScoped<IDiagnosticReportUploadService, FakeDiagnosticReportUploadService>();
 builder.Services.AddScoped(_ => new AppExternalLinks(
     new Uri("https://example.test/privacy"),
     new Uri("https://example.test/support"),
