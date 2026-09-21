@@ -271,7 +271,7 @@ else
     </div>
 }
 
-@if (_moveTarget is { } moveTarget)
+@if (_moveTarget is { } moveTarget && _pendingMove is null)
 {
     <div class="sheet" role="dialog" aria-label="Move file" data-testid="move-sheet">
         <p class="sheet__title">Move @moveTarget.Name</p>
@@ -289,6 +289,26 @@ else
             <button type="button" class="btn btn--primary btn--block"
                     data-testid="confirm-move" @onclick="MoveAsync">Move</button>
             <button type="button" class="btn btn--ghost btn--block" @onclick="CancelMove">Cancel</button>
+        </div>
+    </div>
+}
+
+@if (_pendingMove is { } pendingMove)
+{
+    <div class="sheet sheet--danger" role="alertdialog" aria-label="Move conflict" data-testid="move-conflict">
+        <p class="sheet__title">Replace @pendingMove.Target.Name?</p>
+        <p class="sheet__body">
+            A file with this name already exists in the destination folder. Replacing it will overwrite its contents and cannot be undone.
+        </p>
+        <div class="form__actions">
+            <button type="button" class="btn btn--danger btn--block"
+                    data-testid="replace-move" @onclick="ReplacePendingMoveAsync">
+                Replace file
+            </button>
+            <button type="button" class="btn btn--ghost btn--block"
+                    data-testid="cancel-move-conflict" @onclick="() => _pendingMove = null">
+                Cancel
+            </button>
         </div>
     </div>
 }
@@ -353,6 +373,26 @@ else
                   @bind="_textContent" @bind:event="oninput"></textarea>
     </div>
 }
+
+@if (_textConflict)
+{
+    <div class="sheet sheet--danger" role="alertdialog" aria-label="Save conflict" data-testid="save-conflict">
+        <p class="sheet__title">This file changed on the server</p>
+        <p class="sheet__body">
+            @_textTarget?.Name has been modified since you opened it. Saving now will overwrite those changes.
+        </p>
+        <div class="form__actions">
+            <button type="button" class="btn btn--danger btn--block"
+                    data-testid="overwrite-save" @onclick="PerformSaveTextAsync">
+                Overwrite anyway
+            </button>
+            <button type="button" class="btn btn--ghost btn--block"
+                    data-testid="cancel-save-conflict" @onclick="() => _textConflict = false">
+                Cancel
+            </button>
+        </div>
+    </div>
+}
 }
 
 @code {
@@ -370,6 +410,7 @@ else
     private RemoteFile? _moveTarget;
     private string _moveDestination = "";
     private string? _moveError;
+    private PendingMove? _pendingMove;
     private RemoteFile? _deleteTarget;
     private RemoteFile? _permissionsTarget;
     private string _permissionText = "";
@@ -378,6 +419,9 @@ else
     private string _textContent = "";
     private string _textOriginal = "";
     private bool _textSaving;
+    private bool _textConflict;
+    private DateTimeOffset _textOpenedModifiedAt;
+    private long _textOpenedSize;
     private string? _transferStatus;
     private double? _transferFraction;
     private CancellationTokenSource? _transferCancellation;
@@ -398,6 +442,7 @@ else
 
     private sealed record ErrorNotice(string Title, string Body);
     private sealed record PendingUpload(LocalFileSelection File, string Destination, bool ForQueue = false);
+    private sealed record PendingMove(RemoteFile Target, string Destination, RemoteFile Existing);
 
     private IReadOnlyList<RemoteFile> Visible =>
         _entries is null
@@ -428,6 +473,7 @@ else
         _selected = null;
         CancelRename();
         CancelMove();
+        _pendingMove = null;
         await LoadAsync();
     }
 
@@ -565,7 +611,69 @@ else
                 }
             }
 
-            await Sftp.RenameAsync(_moveTarget.Path, RemotePath.Join(destination, _moveTarget.Name));
+            // Same conflict shape as UploadAsync's own pre-check: rather than let
+            // Sftp.RenameAsync fail on collision and surface whatever message the
+            // server happens to return, stat the target name first so a same-named
+            // file gets the same explicit replace-or-cancel choice an upload does.
+            var targetPath = RemotePath.Join(destination, _moveTarget.Name);
+            RemoteFile? existing = null;
+            try
+            {
+                existing = await Sftp.StatAsync(targetPath);
+            }
+            catch (SshException ex) when (ex.Failure == SshFailure.NotFound)
+            {
+                // No conflict: continue with the normal move path.
+            }
+
+            if (existing is not null)
+            {
+                if (existing.IsDirectory || existing.IsSymlink)
+                {
+                    _moveError = existing.IsDirectory
+                        ? $"A folder named {_moveTarget.Name} already exists in that destination. Choose a different destination."
+                        : $"A symbolic link named {_moveTarget.Name} already exists there. MeowSSH will not overwrite links from a move.";
+                    return;
+                }
+
+                _pendingMove = new PendingMove(_moveTarget, destination, existing);
+                return;
+            }
+
+            await PerformMoveAsync(_moveTarget, destination);
+        }
+        catch (SshException ex)
+        {
+            _moveError = ex.Message;
+        }
+    }
+
+    private async Task ReplacePendingMoveAsync()
+    {
+        if (_pendingMove is null) return;
+        var pending = _pendingMove;
+        _pendingMove = null;
+        try
+        {
+            // SFTP rename does not overwrite an existing destination (the same
+            // reason a plain move onto an occupied name used to just surface
+            // whatever error the server happened to return) -- the confirmed
+            // replace has to clear the old file out of the way first.
+            await Sftp.DeleteAsync(pending.Existing);
+        }
+        catch (SshException ex)
+        {
+            _moveError = ex.Message;
+            return;
+        }
+        await PerformMoveAsync(pending.Target, pending.Destination);
+    }
+
+    private async Task PerformMoveAsync(RemoteFile target, string destination)
+    {
+        try
+        {
+            await Sftp.RenameAsync(target.Path, RemotePath.Join(destination, target.Name));
             CancelMove();
             await LoadAsync();
         }
@@ -870,6 +978,8 @@ else
             _textTarget = entry;
             _textContent = text;
             _textOriginal = text;
+            _textOpenedModifiedAt = entry.ModifiedAt;
+            _textOpenedSize = entry.Size;
             EndTransfer();
         }
         catch (OperationCanceledException)
@@ -895,6 +1005,38 @@ else
     private async Task SaveTextAsync()
     {
         if (_textTarget is null || _textSaving) return;
+
+        // Same "check before writing" shape as MoveAsync's own conflict check,
+        // applied to the one thing that can change out from under an open text
+        // editor: the file itself. A plain re-upload would silently discard
+        // whatever changed on the server since OpenTextAsync captured this
+        // baseline, with no sign anything was lost.
+        try
+        {
+            var current = await Sftp.StatAsync(_textTarget.Path);
+            if (current.ModifiedAt != _textOpenedModifiedAt || current.Size != _textOpenedSize)
+            {
+                _textConflict = true;
+                return;
+            }
+        }
+        catch (SshException ex) when (ex.Failure == SshFailure.NotFound)
+        {
+            // Nothing to conflict with -- saving will just recreate the file.
+        }
+        catch (SshException ex)
+        {
+            _error = new("Could not save file", ex.Message);
+            return;
+        }
+
+        await PerformSaveTextAsync();
+    }
+
+    private async Task PerformSaveTextAsync()
+    {
+        if (_textTarget is null || _textSaving) return;
+        _textConflict = false;
         _textSaving = true;
         var temporaryPath = LocalFiles.CreateTemporaryPath(_textTarget.Name);
         try
@@ -928,6 +1070,7 @@ else
         _textTarget = null;
         _textContent = "";
         _textOriginal = "";
+        _textConflict = false;
     }
 
     private IProgress<TransferProgress> TransferProgressReporter() =>

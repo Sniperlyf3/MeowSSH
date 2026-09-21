@@ -92,6 +92,14 @@
   background: var(--ground);
 }
 
+/* The save-conflict sheet is a plain .sheet (z-index: 10), which the
+   full-screen .text-viewer (z-index: 50) it opens on top of would otherwise
+   cover -- not just visually, but for pointer events too, so its own
+   buttons would be unreachable. */
+[data-testid="save-conflict"] {
+  z-index: 60;
+}
+
 .text-editor {
   width: 100%;
   height: 100%;

@@ -170,6 +170,97 @@ public class FileBrowserTests(TestHostFixture fixture)
         await Assertions.Expect(page.GetByTestId("move-sheet")).ToBeVisibleAsync();
     }
 
+    private static async Task ReturnToHomeAsync(IPage page)
+    {
+        await page.GetByTestId("crumb").First.ClickAsync();
+        await Entry(page, "home").ClickAsync();
+        await Entry(page, "deploy").ClickAsync();
+    }
+
+    [Fact]
+    public async Task MovingOntoAnExistingNameShowsAConflictPromptRatherThanFailingSilently()
+    {
+        var page = await OpenFilesAsync();
+
+        // Give /var its own start.sh -- no conflict there yet, so this is a plain upload.
+        await page.GetByTestId("crumb").First.ClickAsync();
+        await Entry(page, "var").ClickAsync();
+        await page.GetByTestId("upload-file").ClickAsync();
+        await Assertions.Expect(Entry(page, "start.sh")).ToBeVisibleAsync();
+        await ReturnToHomeAsync(page);
+
+        await Actions(page, "start.sh").ClickAsync();
+        await page.GetByTestId("move-file").ClickAsync();
+        await page.GetByTestId("move-destination").FillAsync("/var");
+        await page.GetByTestId("confirm-move").ClickAsync();
+
+        await Assertions.Expect(page.GetByTestId("move-conflict")).ToBeVisibleAsync();
+        await Assertions.Expect(page.GetByTestId("move-conflict")).ToContainTextAsync("Replace start.sh?");
+        await Assertions.Expect(page.GetByTestId("move-sheet")).ToHaveCountAsync(0);
+
+        await page.GetByTestId("cancel-move-conflict").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("move-conflict")).ToHaveCountAsync(0);
+        await Assertions.Expect(page.GetByTestId("move-sheet")).ToBeVisibleAsync();
+        await Assertions.Expect(Entry(page, "start.sh")).ToBeVisibleAsync();
+    }
+
+    [Fact]
+    public async Task ConfirmingAMoveConflictReplacesTheDestinationFileRatherThanDuplicatingIt()
+    {
+        var page = await OpenFilesAsync();
+
+        await page.GetByTestId("crumb").First.ClickAsync();
+        await Entry(page, "var").ClickAsync();
+        await page.GetByTestId("upload-file").ClickAsync();
+        await Assertions.Expect(Entry(page, "start.sh")).ToBeVisibleAsync();
+        await ReturnToHomeAsync(page);
+
+        await Actions(page, "start.sh").ClickAsync();
+        await page.GetByTestId("move-file").ClickAsync();
+        await page.GetByTestId("move-destination").FillAsync("/var");
+        await page.GetByTestId("confirm-move").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("move-conflict")).ToBeVisibleAsync();
+
+        await page.GetByTestId("replace-move").ClickAsync();
+
+        await Assertions.Expect(page.GetByTestId("move-conflict")).ToHaveCountAsync(0);
+        await Assertions.Expect(page.GetByTestId("move-sheet")).ToHaveCountAsync(0);
+        await Assertions.Expect(Entry(page, "start.sh")).ToHaveCountAsync(0);
+
+        await page.GetByTestId("crumb").First.ClickAsync();
+        await Entry(page, "var").ClickAsync();
+        await Assertions.Expect(Entry(page, "start.sh")).ToHaveCountAsync(1);
+    }
+
+    [Fact]
+    public async Task MoveRejectsADirectoryNameCollisionWithoutOfferingToReplaceIt()
+    {
+        var page = await OpenFilesAsync();
+
+        await page.GetByTestId("new-folder").ClickAsync();
+        await page.GetByTestId("new-folder-name").FillAsync("shared-name");
+        await page.GetByTestId("create-folder").ClickAsync();
+        await Assertions.Expect(Entry(page, "shared-name")).ToBeVisibleAsync();
+
+        await page.GetByTestId("crumb").First.ClickAsync();
+        await Entry(page, "var").ClickAsync();
+        await page.GetByTestId("new-folder").ClickAsync();
+        await page.GetByTestId("new-folder-name").FillAsync("shared-name");
+        await page.GetByTestId("create-folder").ClickAsync();
+        await Assertions.Expect(Entry(page, "shared-name")).ToBeVisibleAsync();
+        await ReturnToHomeAsync(page);
+
+        await Actions(page, "shared-name").ClickAsync();
+        await page.GetByTestId("move-file").ClickAsync();
+        await page.GetByTestId("move-destination").FillAsync("/var");
+        await page.GetByTestId("confirm-move").ClickAsync();
+
+        await Assertions.Expect(page.GetByTestId("move-error"))
+            .ToContainTextAsync("already exists in that destination");
+        await Assertions.Expect(page.GetByTestId("move-sheet")).ToBeVisibleAsync();
+        await Assertions.Expect(page.GetByTestId("move-conflict")).ToHaveCountAsync(0);
+    }
+
     [Fact]
     public async Task TheFileBrowserDoesNotScrollSideways()
     {

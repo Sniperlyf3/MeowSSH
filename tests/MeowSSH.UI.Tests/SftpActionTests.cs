@@ -129,6 +129,62 @@ public class SftpActionTests(TestHostFixture fixture)
         await Assertions.Expect(page.GetByTestId("file-notice")).ToContainTextAsync("Saved to");
     }
 
+    private static async Task ReplaceStartShViaQueueAsync(IPage page)
+    {
+        // Goes through the Pro transfer queue rather than an immediate upload
+        // specifically because the queue's completion never calls FilesPage's
+        // own LoadAsync -- the exact gap a stale-baseline save conflict needs:
+        // the server copy changes but this page's own listing does not.
+        await page.GetByTestId("queue-upload").ClickAsync();
+        await page.GetByTestId("replace-upload").ClickAsync();
+        await page.GetByTestId("open-transfer-queue").ClickAsync();
+        await Assertions.Expect(page.Locator("[data-testid=transfer-queue-item]").GetByText("Completed"))
+            .ToBeVisibleAsync();
+        await page.GetByTestId("transfer-queue-close").ClickAsync();
+    }
+
+    [Fact]
+    public async Task SavingAfterTheServerCopyChangedShowsAConflictPromptRatherThanSilentlyDiscardingIt()
+    {
+        var page = await OpenFilesAsync();
+        await ReplaceStartShViaQueueAsync(page);
+
+        await Actions(page, "start.sh").ClickAsync();
+        await page.GetByTestId("view-text").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("text-content"))
+            .ToHaveValueAsync("#!/bin/sh\necho uploaded replacement\n");
+
+        await page.GetByTestId("text-content").FillAsync("#!/bin/sh\necho edited locally\n");
+        await page.GetByTestId("save-text").ClickAsync();
+
+        await Assertions.Expect(page.GetByTestId("save-conflict")).ToBeVisibleAsync();
+        await Assertions.Expect(page.GetByTestId("save-conflict")).ToContainTextAsync("start.sh");
+
+        await page.GetByTestId("cancel-save-conflict").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("save-conflict")).ToHaveCountAsync(0);
+        await Assertions.Expect(page.GetByTestId("text-viewer")).ToBeVisibleAsync();
+        await Assertions.Expect(page.GetByTestId("text-content"))
+            .ToHaveValueAsync("#!/bin/sh\necho edited locally\n");
+    }
+
+    [Fact]
+    public async Task OverwritingASaveConflictSavesTheEditAnyway()
+    {
+        var page = await OpenFilesAsync();
+        await ReplaceStartShViaQueueAsync(page);
+
+        await Actions(page, "start.sh").ClickAsync();
+        await page.GetByTestId("view-text").ClickAsync();
+        await page.GetByTestId("text-content").FillAsync("#!/bin/sh\necho edited locally\n");
+        await page.GetByTestId("save-text").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("save-conflict")).ToBeVisibleAsync();
+
+        await page.GetByTestId("overwrite-save").ClickAsync();
+
+        await Assertions.Expect(page.GetByTestId("save-conflict")).ToHaveCountAsync(0);
+        await Assertions.Expect(page.GetByTestId("file-notice")).ToContainTextAsync("Saved");
+    }
+
     [Fact]
     public async Task LargeFileDoesNotTryToOpenAsText()
     {
