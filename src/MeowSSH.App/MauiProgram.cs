@@ -39,7 +39,11 @@ public static class MauiProgram
             "dev.sniperlyf3.meowssh"));
         builder.Services.AddSingleton(_ => new HttpClient());
         builder.Services.AddSingleton<LicensingApiGrantProvider>();
+#if FORCE_PRO_ENTITLEMENT
+        builder.Services.AddSingleton<IEntitlementGrantProvider>(_ => new AlwaysProEntitlementGrantProvider(TimeProvider.System));
+#else
         builder.Services.AddSingleton<IEntitlementGrantProvider>(sp => sp.GetRequiredService<LicensingApiGrantProvider>());
+#endif
         builder.Services.AddSingleton<IManagedDerpGrantProvider>(sp => sp.GetRequiredService<LicensingApiGrantProvider>());
         builder.Services.AddSingleton<IManagedDerpRegistrationService, ManagedDerpRegistrationService>();
         builder.Services.AddSingleton<IManagedDerpUsageService, ManagedDerpUsageService>();
