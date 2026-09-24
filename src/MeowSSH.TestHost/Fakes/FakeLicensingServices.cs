@@ -31,14 +31,23 @@ public sealed class FakeEntitlementService : IEntitlementService
         DateTimeOffset.MaxValue,
         "test-pro");
 
+    private static readonly EntitlementSnapshot VerifiedProCloud = VerifiedPro with
+    {
+        Tier = EntitlementTier.ProCloud,
+        GrantId = "test-pro-cloud",
+    };
+
     private static readonly EntitlementSnapshot Unverified = EntitlementSnapshot.Free(DateTimeOffset.UnixEpoch);
 
     public EntitlementSnapshot Current { get; }
 
+    /// <remarks>"procloud" selects the subscription tier cloud backup needs.</remarks>
     public FakeEntitlementService(NavigationManager navigation)
     {
         var query = new Uri(navigation.Uri).Query;
-        Current = query.Contains("free", StringComparison.OrdinalIgnoreCase) ? Unverified : VerifiedPro;
+        Current = query.Contains("free", StringComparison.OrdinalIgnoreCase) ? Unverified
+            : query.Contains("procloud", StringComparison.OrdinalIgnoreCase) ? VerifiedProCloud
+            : VerifiedPro;
     }
 
     public event EventHandler? Changed

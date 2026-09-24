@@ -60,7 +60,13 @@ internal sealed partial class LicensingApiJsonContext : JsonSerializerContext
 {
 }
 
-public sealed class LicensingApiGrantProvider : IEntitlementGrantProvider, IManagedDerpGrantProvider
+/// <summary>A fresh, locally verified paid grant to present to MeowSSHAPI's cloud endpoints.</summary>
+public interface ICloudEntitlementGrantSource
+{
+    Task<SignedEntitlementGrant> GetPaidGrantAsync(CancellationToken cancellationToken = default);
+}
+
+public sealed class LicensingApiGrantProvider : IEntitlementGrantProvider, IManagedDerpGrantProvider, ICloudEntitlementGrantSource
 {
     private readonly IStorePurchaseService _store;
     private readonly IPlayIntegrityService _integrity;
@@ -163,6 +169,22 @@ public sealed class LicensingApiGrantProvider : IEntitlementGrantProvider, IMana
         }
     }
 
+    public async Task<SignedEntitlementGrant> GetPaidGrantAsync(CancellationToken cancellationToken = default)
+    {
+        if (!_options.IsConfigured)
+            throw new InvalidOperationException("The MeowSSH cloud service is not configured in this build.");
+        var purchases = await GetPurchasesAsync(cancellationToken).ConfigureAwait(false);
+        if (purchases.Length == 0)
+            throw new InvalidOperationException("No MeowSSH purchase was found on this Google account.");
+
+        var grant = await RequestPaidGrantAsync(purchases, cancellationToken).ConfigureAwait(false)
+            ?? throw new SecurityException("Google Play Integrity did not return a token, so the purchase could not be verified.");
+        // Same signature/package/tier checks the entitlement snapshot gets, so
+        // nothing unverified is ever forwarded to the cloud endpoints.
+        VerifyGrant(grant, _timeProvider.GetUtcNow());
+        return grant;
+    }
+
     private async Task<EntitlementSnapshot> VerifyPurchasesAsync(CancellationToken cancellationToken)
     {
         var now = _timeProvider.GetUtcNow();
@@ -171,10 +193,19 @@ public sealed class LicensingApiGrantProvider : IEntitlementGrantProvider, IMana
         var purchases = await GetPurchasesAsync(cancellationToken).ConfigureAwait(false);
         if (purchases.Length == 0) return EntitlementSnapshot.Free(now);
 
+        var grant = await RequestPaidGrantAsync(purchases, cancellationToken).ConfigureAwait(false);
+        return grant is null ? EntitlementSnapshot.Free(now) : VerifyGrant(grant, now);
+    }
+
+    /// <summary>Null when Play Integrity returns no token.</summary>
+    private async Task<SignedEntitlementGrant?> RequestPaidGrantAsync(
+        LicensingVerificationPurchase[] purchases,
+        CancellationToken cancellationToken)
+    {
         var requestId = Base64UrlEncode(RandomNumberGenerator.GetBytes(24));
         var integrityNonce = CreateIntegrityNonce(_options.PackageName, purchases, requestId);
         var integrityToken = await _integrity.RequestTokenAsync(integrityNonce, cancellationToken).ConfigureAwait(false);
-        if (string.IsNullOrWhiteSpace(integrityToken)) return EntitlementSnapshot.Free(now);
+        if (string.IsNullOrWhiteSpace(integrityToken)) return null;
 
         var verificationRequest = new LicensingVerificationRequest(
             _options.PackageName,
@@ -190,13 +221,11 @@ public sealed class LicensingApiGrantProvider : IEntitlementGrantProvider, IMana
             cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
 
-        var grant = await response.Content.ReadFromJsonAsync(
+        return await response.Content.ReadFromJsonAsync(
                 LicensingApiJsonContext.Default.SignedEntitlementGrant,
                 cancellationToken)
             .ConfigureAwait(false)
             ?? throw new SecurityException("The licensing server returned an empty entitlement grant.");
-
-        return VerifyGrant(grant, now);
     }
 
     public static string CreateIntegrityNonce(

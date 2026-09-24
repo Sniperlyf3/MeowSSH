@@ -1,6 +1,6 @@
 # MeowSSH Privacy Policy
 
-_Last updated: 21 September 2026_
+_Last updated: 24 September 2026_
 
 MeowSSH is an Android SSH/SFTP and remote-operations client. This policy describes what the app handles, what leaves the device, and which features may involve third-party services.
 
@@ -48,9 +48,18 @@ Session logging and command-monitoring features are local features unless a futu
 
 ## Backups and cloud features
 
-The current backup feature is local and encrypted. MeowSSH Pro Cloud is not offered for new purchase in the production build until cloud backup/sync is implemented and this policy has been updated to document what is uploaded, retention, deletion and account recovery behavior.
+Encrypted local backup exports the vault file to a location the user chooses on the device. It never leaves the device unless the user moves it.
 
-Any future cloud-sync design should encrypt user configuration on the client before upload where practical, and must not require the service to receive plaintext private SSH keys.
+**Encrypted cloud backup (MeowSSH Pro Cloud).** Nothing is uploaded unless the user turns cloud backup on and enters their vault recovery code to confirm it. After that, each "Back up now" uploads the vault file exactly as it is already encrypted on the device, over HTTPS, to the MeowSSH service.
+
+- **What the service receives and keeps:** the encrypted file, its size and creation time, and an opaque locator for it. The file is encrypted on the device with a key the service never receives, so the service cannot read the hosts, usernames, passwords, private keys or anything else inside.
+- **What identifies a backup:** a secret derived on the device from the user's recovery code. It is not linked to the user's Google account, email address, device identifiers or purchase details, and the recovery code itself is never uploaded or stored.
+- **Proving the subscription:** each upload includes a signed Pro Cloud entitlement grant. That grant is not stored with the backup.
+- **Retention:** the service keeps the five most recent versions, and each new upload replaces the oldest.
+- **Deletion:** "Delete cloud backups" erases every stored version immediately. "Turn off on this phone" stops uploads and forgets the device's copy of the locator secret, but leaves stored versions in place so they can still be restored.
+- **Restoring and account recovery:** a backup can be restored on any device from the recovery code alone, with or without an active subscription. MeowSSH cannot recover a lost recovery code, and without it a cloud backup can be neither found nor decrypted.
+
+Cross-device sync is not offered yet.
 
 ## Diagnostics and analytics
 
@@ -76,7 +85,7 @@ No software can guarantee the security of a compromised device, remote host, thi
 
 ## Retention and deletion
 
-Local MeowSSH data remains on the device until the user deletes it, clears the relevant history, removes the app, or restores/replaces the local vault as applicable. Google Play, the MeowSSH licensing service, and third-party relay infrastructure may have separate operational log or retention practices. MeowSSH does not intentionally send terminal contents, passwords or private SSH keys to the licensing service.
+Local MeowSSH data remains on the device until the user deletes it, clears the relevant history, removes the app, or restores/replaces the local vault as applicable. Encrypted cloud backups remain on the MeowSSH service until the user deletes them or newer uploads replace them (see "Backups and cloud features"); removing the app does not delete them. Google Play, the MeowSSH licensing service, and third-party relay infrastructure may have separate operational log or retention practices. MeowSSH does not intentionally send terminal contents, passwords or private SSH keys to the licensing service.
 
 ## Children
 

@@ -31,6 +31,12 @@ public sealed class FakeEncryptedVaultBackupService : IEncryptedVaultBackupServi
         return ValueTask.CompletedTask;
     }
 
+    public ValueTask RestoreFromCloudAsync(
+        ReadOnlyMemory<byte> backup,
+        string recoveryCode,
+        CancellationToken cancellationToken = default) =>
+        RestoreAsync(backup, recoveryCode, cancellationToken);
+
     public ValueTask RebindDeviceKeyAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
