@@ -239,7 +239,7 @@ public class TerminalTests(TestHostFixture fixture)
         Assert.Equal("140", await page.EvaluateAsync<string>(
             "() => localStorage.getItem('meowssh.terminal.zoom')"));
 
-        await page.ReloadAsync();
+        await TestHostFixture.ReloadAsync(page);
         await page.GetByTestId("tab-settings").ClickAsync();
         await page.GetByTestId("open-appearance-settings").ClickAsync();
         await Assertions.Expect(page.GetByTestId("terminal-zoom-value")).ToHaveTextAsync("140%");
