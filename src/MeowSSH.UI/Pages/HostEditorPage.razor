@@ -1,6 +1,7 @@
 @inject IHostEditor Editor
 @inject IHostDirectory Hosts
 @inject ISerialDeviceService SerialDevices
+@inject IEntitlementService Entitlements
 
 <AppShell Title="@(IsNew ? "New connection" : "Edit connection")" ActiveTab="hosts">
     <Actions>
@@ -173,7 +174,7 @@
                 <summary>
                     <span>
                         <strong>Organisation</strong>
-                        <small>Group, tags and favorite</small>
+                        <small>Group, tags, favorite and terminal theme</small>
                     </span>
                     <Icon Name="chevron" />
                 </summary>
@@ -201,6 +202,26 @@
                             <small>Keep this host in a Favorites section near the top of the list.</small>
                         </span>
                     </label>
+
+                    @if (_protocol != HostProtocol.Local)
+                    {
+                        var themesUnlocked = Entitlements.Has(PremiumFeature.PremiumCustomization);
+                        <label class="field">
+                            <span class="field__label">Terminal theme <span class="action-pro-badge">PRO</span></span>
+                            <select class="field__input" data-testid="host-terminal-theme"
+                                    disabled="@(!themesUnlocked)" @bind="_terminalTheme">
+                                <option value="">App theme</option>
+                                @foreach (var option in TerminalThemeCatalog.All)
+                                {
+                                    <option value="@option.Id">@option.Name</option>
+                                }
+                                <option value="@TerminalThemeCatalog.CustomId">Custom</option>
+                            </select>
+                            <span class="field__hint" data-testid="host-terminal-theme-hint">@(themesUnlocked
+                                ? "Sessions to this host always open in this theme — try Production Red for live systems."
+                                : "A per-host theme is part of MeowSSH Pro. Sessions use the app theme.")</span>
+                        </label>
+                    }
                 </div>
             </details>
 
@@ -306,6 +327,7 @@
     private string _group = "";
     private string _tags = "";
     private bool _isFavorite;
+    private string _terminalTheme = "";
     private string _address = "";
     private string _username = "";
     private int _port = 22;
@@ -331,7 +353,8 @@
     [Parameter] public EventCallback OnCancelled { get; set; }
 
     private bool IsNew => Host is null;
-    private bool HasOrganisationSettings => !string.IsNullOrWhiteSpace(_group) || !string.IsNullOrWhiteSpace(_tags) || _isFavorite;
+    private bool HasOrganisationSettings => !string.IsNullOrWhiteSpace(_group) || !string.IsNullOrWhiteSpace(_tags) || _isFavorite
+        || !string.IsNullOrEmpty(_terminalTheme);
     private bool HasAdvancedSettings => !string.IsNullOrWhiteSpace(_jumpHostId) || !string.IsNullOrWhiteSpace(_proxyUrl) || _forwardAgent || !_autoReconnect;
 
     private static (HostProtocol Value, string Label)[] Protocols =>
@@ -447,6 +470,7 @@
             _group = host.Group ?? "";
             _tags = string.Join(", ", host.Tags);
             _isFavorite = host.IsFavorite;
+            _terminalTheme = host.TerminalTheme ?? "";
             _address = host.Address;
             _username = host.Username ?? "";
             _port = host.Port;
@@ -552,6 +576,9 @@
                 Label = _label.Trim(),
                 Group = string.IsNullOrWhiteSpace(_group) ? null : _group.Trim(),
                 IsFavorite = _isFavorite,
+                // Kept even without Pro (the picker is just disabled): saving an
+                // unrelated edit after a lapse must not erase the host's theme.
+                TerminalTheme = string.IsNullOrEmpty(_terminalTheme) ? null : _terminalTheme,
                 Address = _protocol == HostProtocol.Local ? "" : _address.Trim(),
                 Port = _port,
                 Username = string.IsNullOrWhiteSpace(_username) ? null : _username.Trim(),

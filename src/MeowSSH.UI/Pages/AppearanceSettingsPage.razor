@@ -1,5 +1,6 @@
 @implements IAsyncDisposable
 @inject IJSRuntime Js
+@inject IEntitlementService Entitlements
 
 <div class="appearance-page" data-testid="appearance-settings-page">
     <header class="topbar appearance-page__topbar">
@@ -18,13 +19,22 @@
             <h2 class="section-label">Theme</h2>
             <p class="appearance-page__intro">Choose a terminal look with a live visual preview. Changes apply immediately to open and future sessions.</p>
 
+            @if (_premiumPaused)
+            {
+                <p class="setting-card__body" role="status" data-testid="appearance-theme-paused">
+                    Your saved @TerminalThemeCatalog.NameOf(_theme) theme needs MeowSSH Pro, so terminals use Meow Dark for now. It comes back as soon as Pro is active again.
+                </p>
+            }
+
             <div class="theme-grid" role="radiogroup" aria-label="Terminal theme" data-testid="theme-grid">
-                @foreach (var option in Themes)
+                @foreach (var option in TerminalThemeCatalog.All)
                 {
                     var selected = string.Equals(_theme, option.Id, StringComparison.Ordinal);
+                    var locked = option.IsPremium && !_premium;
                     <button type="button"
-                            class="theme-card @(selected ? "is-selected" : "")"
+                            class="theme-card @(selected ? "is-selected" : "") @(locked ? "is-locked" : "")"
                             role="radio" aria-checked="@(selected ? "true" : "false")"
+                            title="@(locked ? "Requires MeowSSH Pro" : null)"
                             data-testid="theme-@option.Id"
                             @onclick="() => SelectThemeAsync(option.Id)">
                         <span class="theme-preview" style="background:@option.Background;color:@option.Foreground">
@@ -39,15 +49,80 @@
                         </span>
                         <span class="theme-card__footer">
                             <span>
-                                <strong>@option.Name</strong>
+                                <strong>@option.Name @if (option.IsPremium) { <span class="action-pro-badge">PRO</span> }</strong>
                                 <small>@option.Description</small>
                             </span>
                             <span class="theme-card__check" aria-hidden="true">@(selected ? "✓" : "")</span>
                         </span>
                     </button>
                 }
+
+                @{
+                    var customSelected = string.Equals(_theme, TerminalThemeCatalog.CustomId, StringComparison.Ordinal);
+                }
+                <button type="button"
+                        class="theme-card @(customSelected ? "is-selected" : "") @(_premium ? "" : "is-locked")"
+                        role="radio" aria-checked="@(customSelected ? "true" : "false")"
+                        title="@(_premium ? null : "Requires MeowSSH Pro")"
+                        data-testid="theme-custom"
+                        @onclick="() => SelectThemeAsync(TerminalThemeCatalog.CustomId)">
+                    <span class="theme-preview" style="background:@_custom.Background;color:@_custom.Foreground">
+                        <span class="theme-preview__line">Your colours</span>
+                        <span class="theme-preview__line muted">on the @TerminalThemeCatalog.NameOf(_custom.Base) palette</span>
+                        <span class="theme-preview__line">$ <span class="theme-preview__cursor" style="background:@_custom.Cursor"></span></span>
+                    </span>
+                    <span class="theme-card__footer">
+                        <span>
+                            <strong>Custom <span class="action-pro-badge">PRO</span></strong>
+                            <small>Pick your own background, text and cursor colours.</small>
+                        </span>
+                        <span class="theme-card__check" aria-hidden="true">@(customSelected ? "✓" : "")</span>
+                    </span>
+                </button>
             </div>
+
+            @if (_proHint)
+            {
+                <p class="setting-card__body" role="status" data-testid="appearance-pro-hint">
+                    Premium themes, custom colours and per-host themes are part of MeowSSH Pro.
+                </p>
+            }
         </div>
+
+        @if (_premium && string.Equals(_theme, TerminalThemeCatalog.CustomId, StringComparison.Ordinal))
+        {
+            <div class="settings__section" data-testid="custom-theme-editor">
+                <h2 class="section-label">Custom theme</h2>
+                <label class="setting-card" for="custom-theme-base">
+                    <span class="setting-card__copy">
+                        <span class="setting-card__title">Base palette</span>
+                        <span class="setting-card__body">The 16 terminal colours programs use for output.</span>
+                    </span>
+                    <select id="custom-theme-base" class="field__input settings__select" data-testid="custom-theme-base"
+                            value="@_custom.Base" @onchange="e => UpdateCustomAsync(_custom with { Base = e.Value?.ToString() ?? TerminalThemeCatalog.DefaultId })">
+                        @foreach (var option in TerminalThemeCatalog.All)
+                        {
+                            <option value="@option.Id">@option.Name</option>
+                        }
+                    </select>
+                </label>
+                <label class="setting-card" for="custom-theme-background">
+                    <span class="setting-card__copy"><span class="setting-card__title">Background</span></span>
+                    <input id="custom-theme-background" type="color" class="settings__color" data-testid="custom-theme-background"
+                           value="@_custom.Background" @onchange="e => UpdateCustomAsync(_custom with { Background = e.Value?.ToString() ?? _custom.Background })" />
+                </label>
+                <label class="setting-card" for="custom-theme-foreground">
+                    <span class="setting-card__copy"><span class="setting-card__title">Text</span></span>
+                    <input id="custom-theme-foreground" type="color" class="settings__color" data-testid="custom-theme-foreground"
+                           value="@_custom.Foreground" @onchange="e => UpdateCustomAsync(_custom with { Foreground = e.Value?.ToString() ?? _custom.Foreground })" />
+                </label>
+                <label class="setting-card" for="custom-theme-cursor">
+                    <span class="setting-card__copy"><span class="setting-card__title">Cursor</span></span>
+                    <input id="custom-theme-cursor" type="color" class="settings__color" data-testid="custom-theme-cursor"
+                           value="@_custom.Cursor" @onchange="e => UpdateCustomAsync(_custom with { Cursor = e.Value?.ToString() ?? _custom.Cursor })" />
+                </label>
+            </div>
+        }
 
         <div class="settings__section">
             <h2 class="section-label">Text</h2>
@@ -129,29 +204,20 @@
     private string _cursorStyle = DefaultCursorStyle;
     private bool _cursorBlink = true;
     private int _scrollback = DefaultScrollback;
+    private bool _premium;
+    private bool _premiumPaused;
+    private bool _proHint;
+    private CustomTheme _custom = new(DefaultTheme, "#0b0e13", "#e7ebf2", "#ff8a5b");
 
     [Parameter] public EventCallback OnClosed { get; set; }
 
-    private static readonly ThemeOption[] Themes =
-    [
-        new("meow-dark", "Meow Dark", "Deep graphite with MeowSSH coral accents.", "#0b0e13", "#e7ebf2", "#ff8a5b", "#3fbf8f", "#e3b341", "#59a9ff", "#4fc4cf"),
-        new("solarized-dark", "Solarized Dark", "Low-contrast classic for long terminal sessions.", "#002b36", "#839496", "#93a1a1", "#859900", "#b58900", "#268bd2", "#2aa198"),
-        new("solarized-light", "Solarized Light", "Warm light background with balanced contrast.", "#fdf6e3", "#657b83", "#586e75", "#859900", "#b58900", "#268bd2", "#2aa198"),
-        new("dracula", "Dracula", "High-contrast purple and cyan developer palette.", "#282a36", "#f8f8f2", "#f8f8f2", "#50fa7b", "#f1fa8c", "#bd93f9", "#8be9fd"),
-    ];
-
-    private sealed record ThemeOption(
-        string Id, string Name, string Description,
-        string Background, string Foreground, string Cursor,
-        string Green, string Yellow, string Blue, string Cyan)
-    {
-        public string Red => Id == "solarized-dark" || Id == "solarized-light" ? "#dc322f" : Id == "dracula" ? "#ff5555" : "#f2555a";
-    }
+    private sealed record CustomTheme(string Base, string Background, string Foreground, string Cursor);
 
     private sealed class TerminalPreferences
     {
         public int Zoom { get; set; } = DefaultZoom;
         public string Theme { get; set; } = DefaultTheme;
+        public string EffectiveTheme { get; set; } = DefaultTheme;
         public string CursorStyle { get; set; } = DefaultCursorStyle;
         public bool CursorBlink { get; set; } = true;
         public int Scrollback { get; set; } = DefaultScrollback;
@@ -160,9 +226,12 @@
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender) return;
+        _premium = Entitlements.Has(PremiumFeature.PremiumCustomization);
         try
         {
             _module = await Js.InvokeAsync<IJSObjectReference>("import", "./_content/MeowSSH.UI/js/terminal.js");
+            await _module.InvokeVoidAsync("setPremiumAllowed", _premium);
+            _custom = await _module.InvokeAsync<CustomTheme>("getCustomTheme");
             Apply(await _module.InvokeAsync<TerminalPreferences>("getPreferences"));
         }
         catch
@@ -176,6 +245,7 @@
     {
         _zoom = preferences.Zoom;
         _theme = preferences.Theme;
+        _premiumPaused = !string.Equals(preferences.Theme, preferences.EffectiveTheme, StringComparison.Ordinal);
         _cursorStyle = preferences.CursorStyle;
         _cursorBlink = preferences.CursorBlink;
         _scrollback = preferences.Scrollback;
@@ -189,8 +259,30 @@
 
     private async Task SelectThemeAsync(string theme)
     {
+        // Not just a hidden button: a non-Pro tap must not store the choice.
+        if (TerminalThemeCatalog.IsPremium(theme) && !_premium)
+        {
+            _proHint = true;
+            return;
+        }
+        _proHint = false;
         _theme = theme;
+        _premiumPaused = false;
         await SetAsync("theme", theme);
+    }
+
+    private async Task UpdateCustomAsync(CustomTheme theme)
+    {
+        if (!_premium || _module is null) return;
+        try
+        {
+            await _module.InvokeVoidAsync("setCustomTheme", theme);
+            _custom = theme;
+        }
+        catch (JSException)
+        {
+            // terminal.js refused a value (not #rrggbb); keep the last good theme.
+        }
     }
 
     private async Task OnZoomChangedAsync(ChangeEventArgs e)
@@ -219,6 +311,7 @@
     {
         if (_module is null) return;
         Apply(await _module.InvokeAsync<TerminalPreferences>("resetPreferences"));
+        _custom = await _module.InvokeAsync<CustomTheme>("getCustomTheme");
     }
 
     public async ValueTask DisposeAsync()

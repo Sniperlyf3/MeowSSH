@@ -74,6 +74,14 @@ public sealed record HostRecord
     /// <summary>Pin this host near the top of the host list.</summary>
     public bool IsFavorite { get; init; }
 
+    /// <summary>
+    /// Terminal theme id for sessions to this host (e.g. a red theme for
+    /// production), or null to follow the app-wide theme. A Pro feature, but
+    /// stored regardless of tier: the renderer ignores it without Pro, so a
+    /// lapsed purchase hides the choice rather than erasing it.
+    /// </summary>
+    public string? TerminalTheme { get; init; }
+
     /// <summary>USB serial line settings. Ignored unless <see cref="Protocol"/> is Serial.</summary>
     public int SerialBaudRate { get; init; } = 115200;
     public int SerialDataBits { get; init; } = 8;

@@ -15,7 +15,19 @@ const storageKeys = {
     cursorStyle: "meowssh.terminal.cursorStyle",
     cursorBlink: "meowssh.terminal.cursorBlink",
     scrollback: "meowssh.terminal.scrollback",
+    customTheme: "meowssh.terminal.customTheme",
 };
+
+const defaultThemeId = "meow-dark";
+const customThemeId = "custom";
+
+// Pro-only (PremiumFeature.PremiumCustomization), along with the custom theme
+// and per-host themes. Enforced here, where the theme is applied, not just by
+// the Appearance page: a stored premium choice from a lapsed or refunded
+// purchase renders as the default, and returns untouched if Pro does.
+const premiumThemeIds = new Set(["nord", "gruvbox-dark", "one-dark", "tokyo-night", "production-red"]);
+let premiumAllowed = false;
+const hexColor = /^#[0-9a-f]{6}$/i;
 
 const themes = {
     "meow-dark": {
@@ -54,7 +66,122 @@ const themes = {
         brightGreen: "#69ff94", brightYellow: "#ffffa5", brightBlue: "#d6acff",
         brightMagenta: "#ff92df", brightCyan: "#a4ffff", brightWhite: "#ffffff",
     },
+    nord: {
+        background: "#2e3440", foreground: "#d8dee9", cursor: "#d8dee9", cursorAccent: "#2e3440",
+        selectionBackground: "rgba(136, 192, 208, 0.25)", black: "#3b4252", red: "#bf616a",
+        green: "#a3be8c", yellow: "#ebcb8b", blue: "#81a1c1", magenta: "#b48ead",
+        cyan: "#88c0d0", white: "#e5e9f0", brightBlack: "#4c566a", brightRed: "#bf616a",
+        brightGreen: "#a3be8c", brightYellow: "#ebcb8b", brightBlue: "#81a1c1",
+        brightMagenta: "#b48ead", brightCyan: "#8fbcbb", brightWhite: "#eceff4",
+    },
+    "gruvbox-dark": {
+        background: "#282828", foreground: "#ebdbb2", cursor: "#ebdbb2", cursorAccent: "#282828",
+        selectionBackground: "rgba(235, 219, 178, 0.22)", black: "#282828", red: "#cc241d",
+        green: "#98971a", yellow: "#d79921", blue: "#458588", magenta: "#b16286",
+        cyan: "#689d6a", white: "#a89984", brightBlack: "#928374", brightRed: "#fb4934",
+        brightGreen: "#b8bb26", brightYellow: "#fabd2f", brightBlue: "#83a598",
+        brightMagenta: "#d3869b", brightCyan: "#8ec07c", brightWhite: "#ebdbb2",
+    },
+    "one-dark": {
+        background: "#282c34", foreground: "#abb2bf", cursor: "#528bff", cursorAccent: "#282c34",
+        selectionBackground: "rgba(97, 175, 239, 0.25)", black: "#282c34", red: "#e06c75",
+        green: "#98c379", yellow: "#e5c07b", blue: "#61afef", magenta: "#c678dd",
+        cyan: "#56b6c2", white: "#abb2bf", brightBlack: "#5c6370", brightRed: "#e06c75",
+        brightGreen: "#98c379", brightYellow: "#e5c07b", brightBlue: "#61afef",
+        brightMagenta: "#c678dd", brightCyan: "#56b6c2", brightWhite: "#ffffff",
+    },
+    "tokyo-night": {
+        background: "#1a1b26", foreground: "#c0caf5", cursor: "#c0caf5", cursorAccent: "#1a1b26",
+        selectionBackground: "rgba(122, 162, 247, 0.25)", black: "#15161e", red: "#f7768e",
+        green: "#9ece6a", yellow: "#e0af68", blue: "#7aa2f7", magenta: "#bb9af7",
+        cyan: "#7dcfff", white: "#a9b1d6", brightBlack: "#414868", brightRed: "#f7768e",
+        brightGreen: "#9ece6a", brightYellow: "#e0af68", brightBlue: "#7aa2f7",
+        brightMagenta: "#bb9af7", brightCyan: "#7dcfff", brightWhite: "#c0caf5",
+    },
+    // Meant for per-host use: a session that is unmistakably production.
+    "production-red": {
+        background: "#2a0f12", foreground: "#f5e1e3", cursor: "#ff5c5c", cursorAccent: "#2a0f12",
+        selectionBackground: "rgba(255, 92, 92, 0.30)", black: "#1a0709", red: "#ff5c5c",
+        green: "#7fd18b", yellow: "#f2c66d", blue: "#7aa9ff", magenta: "#e38bd6",
+        cyan: "#6fd6d6", white: "#e8d3d5", brightBlack: "#6e3a40", brightRed: "#ff8080",
+        brightGreen: "#9be3a6", brightYellow: "#f7d890", brightBlue: "#9dc0ff",
+        brightMagenta: "#eeaae5", brightCyan: "#93e4e4", brightWhite: "#fff5f6",
+    },
 };
+
+function isKnownTheme(id) {
+    return id === customThemeId || Object.hasOwn(themes, id);
+}
+
+function isPremiumTheme(id) {
+    return id === customThemeId || premiumThemeIds.has(id);
+}
+
+/** Called with the app's entitlement by every page that creates or configures a terminal. */
+export function setPremiumAllowed(value) {
+    const next = value === true;
+    if (next === premiumAllowed) return;
+    premiumAllowed = next;
+    window.dispatchEvent(new CustomEvent(preferenceEvent));
+}
+
+export function getCustomTheme() {
+    const fallback = {
+        base: defaultThemeId,
+        background: themes[defaultThemeId].background,
+        foreground: themes[defaultThemeId].foreground,
+        cursor: themes[defaultThemeId].cursor,
+    };
+    try {
+        const stored = JSON.parse(localStorage.getItem(storageKeys.customTheme) ?? "null");
+        if (!stored) return fallback;
+        return {
+            base: Object.hasOwn(themes, stored.base) ? stored.base : fallback.base,
+            background: hexColor.test(stored.background) ? stored.background : fallback.background,
+            foreground: hexColor.test(stored.foreground) ? stored.foreground : fallback.foreground,
+            cursor: hexColor.test(stored.cursor) ? stored.cursor : fallback.cursor,
+        };
+    } catch {
+        return fallback;
+    }
+}
+
+export function setCustomTheme(value) {
+    if (!value || !Object.hasOwn(themes, value.base) ||
+        ![value.background, value.foreground, value.cursor].every(color => hexColor.test(color))) {
+        throw new Error("A custom theme needs a built-in base and three #rrggbb colours.");
+    }
+    localStorage.setItem(storageKeys.customTheme, JSON.stringify({
+        base: value.base, background: value.background, foreground: value.foreground, cursor: value.cursor,
+    }));
+    window.dispatchEvent(new CustomEvent(preferenceEvent));
+}
+
+/** The id that actually renders for a requested theme, after the Pro gate. */
+function effectiveThemeId(id) {
+    if (!isKnownTheme(id)) return defaultThemeId;
+    return isPremiumTheme(id) && !premiumAllowed ? defaultThemeId : id;
+}
+
+function resolveTheme(id) {
+    const effective = effectiveThemeId(id);
+    if (effective !== customThemeId) return themes[effective];
+    const custom = getCustomTheme();
+    return {
+        ...themes[custom.base],
+        background: custom.background,
+        foreground: custom.foreground,
+        cursor: custom.cursor,
+        cursorAccent: custom.background,
+    };
+}
+
+/** A per-host theme is itself a Pro feature, whichever theme it names. */
+function sessionThemeId(session, preferences) {
+    return premiumAllowed && session.hostTheme && isKnownTheme(session.hostTheme)
+        ? session.hostTheme
+        : preferences.theme;
+}
 
 function boundedInteger(key, fallback, min, max) {
     const value = Number.parseInt(localStorage.getItem(key) ?? "", 10);
@@ -68,11 +195,13 @@ function booleanPreference(key, fallback) {
 }
 
 export function getPreferences() {
-    const requestedTheme = localStorage.getItem(storageKeys.theme) ?? "meow-dark";
+    const requestedTheme = localStorage.getItem(storageKeys.theme) ?? defaultThemeId;
     const requestedCursor = localStorage.getItem(storageKeys.cursorStyle) ?? "block";
+    const theme = isKnownTheme(requestedTheme) ? requestedTheme : defaultThemeId;
     return {
         zoom: boundedInteger(storageKeys.zoom, 100, 80, 160),
-        theme: Object.hasOwn(themes, requestedTheme) ? requestedTheme : "meow-dark",
+        theme,
+        effectiveTheme: effectiveThemeId(theme),
         cursorStyle: ["block", "bar", "underline"].includes(requestedCursor) ? requestedCursor : "block",
         cursorBlink: booleanPreference(storageKeys.cursorBlink, true),
         scrollback: boundedInteger(storageKeys.scrollback, 5000, 1000, 50000),
@@ -96,7 +225,7 @@ function applyPreferences(session) {
     const preferences = getPreferences();
     const terminal = session.terminal;
     terminal.options.fontSize = session.baseFontSize * preferences.zoom / 100;
-    terminal.options.theme = themes[preferences.theme];
+    terminal.options.theme = resolveTheme(sessionThemeId(session, preferences));
     terminal.options.cursorStyle = preferences.cursorStyle;
     terminal.options.cursorBlink = preferences.cursorBlink;
     terminal.options.scrollback = preferences.scrollback;
@@ -107,6 +236,8 @@ export function create(elementId, dotNetRef, options) {
     const element = document.getElementById(elementId);
     if (!element) throw new Error(`Terminal container "${elementId}" is not in the document.`);
 
+    setPremiumAllowed(options.premium === true);
+    const hostTheme = typeof options.hostTheme === "string" ? options.hostTheme : null;
     const preferences = getPreferences();
     const terminal = new window.Terminal({
         allowProposedApi: true,
@@ -116,7 +247,7 @@ export function create(elementId, dotNetRef, options) {
         fontSize: options.fontSize * preferences.zoom / 100,
         letterSpacing: 0,
         scrollback: preferences.scrollback,
-        theme: themes[preferences.theme],
+        theme: resolveTheme(sessionThemeId({ hostTheme }, preferences)),
         screenReaderMode: false,
     });
 
@@ -157,7 +288,7 @@ export function create(elementId, dotNetRef, options) {
 
     sessions.set(elementId, {
         terminal, fit, observer, viewport, keepFocus, preferenceListener, dotNetRef, encoder,
-        baseFontSize: options.fontSize, pending: [], frame: 0,
+        baseFontSize: options.fontSize, hostTheme, pending: [], frame: 0,
     });
     return { cols: terminal.cols, rows: terminal.rows };
 }

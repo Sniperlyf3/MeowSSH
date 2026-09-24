@@ -50,6 +50,21 @@
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent, #ff8a5b) 24%, transparent), 0 8px 24px rgba(0,0,0,.18);
 }
 
+/* Still tappable (it explains why it is locked), but visibly not selectable. */
+.theme-card.is-locked .theme-preview {
+    opacity: .55;
+    filter: saturate(.6);
+}
+
+.settings__color {
+    width: 56px;
+    min-height: 44px;
+    padding: 4px;
+    border: 1px solid var(--border, rgba(255,255,255,.12));
+    border-radius: 10px;
+    background: transparent;
+}
+
 .theme-preview {
     display: flex;
     min-height: 116px;

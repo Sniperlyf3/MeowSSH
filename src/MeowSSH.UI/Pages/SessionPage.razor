@@ -53,7 +53,7 @@
     @if (_broadcastShell is not null)
     {
         <BroadcastTerminalControl SessionId="_broadcastShell.RegistrationId" />
-        <TerminalView Shell="_broadcastShell" OnWriteFailed="OnWriteFailed" />
+        <TerminalView Shell="_broadcastShell" OnWriteFailed="OnWriteFailed" HostTheme="@Host.TerminalTheme" />
     }
 
     @if (!IsConnected)
