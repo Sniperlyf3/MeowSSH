@@ -223,6 +223,10 @@ public class TerminalTests(TestHostFixture fixture)
         await Assertions.Expect(page.GetByTestId("settings-page")).ToBeVisibleAsync();
         await page.GetByTestId("open-appearance-settings").ClickAsync();
         await Assertions.Expect(page.GetByTestId("appearance-settings-page")).ToBeVisibleAsync();
+        // The value is set by script below, which skips Playwright's usual
+        // wait-for-enabled; without this the change could land before the
+        // page loaded its stored preferences.
+        await Assertions.Expect(page.GetByTestId("appearance-settings-page")).ToHaveAttributeAsync("data-ready", "true");
 
         var slider = page.GetByTestId("terminal-zoom");
         await slider.EvaluateAsync(

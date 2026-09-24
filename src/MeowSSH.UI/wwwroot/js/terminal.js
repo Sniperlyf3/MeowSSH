@@ -125,6 +125,17 @@ export function setPremiumAllowed(value) {
     window.dispatchEvent(new CustomEvent(preferenceEvent));
 }
 
+/**
+ * Everything the Appearance page needs in one interop round trip. Each extra
+ * await before the page has its state is a window in which a user's change
+ * can be overwritten by the late load (SettingsTabPersistsTerminalZoom caught
+ * exactly that when this took three calls).
+ */
+export function initializeAppearance(premium) {
+    setPremiumAllowed(premium);
+    return { preferences: getPreferences(), customTheme: getCustomTheme() };
+}
+
 export function getCustomTheme() {
     const fallback = {
         base: defaultThemeId,

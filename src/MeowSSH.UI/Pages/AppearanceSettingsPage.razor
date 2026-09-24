@@ -2,7 +2,7 @@
 @inject IJSRuntime Js
 @inject IEntitlementService Entitlements
 
-<div class="appearance-page" data-testid="appearance-settings-page">
+<div class="appearance-page" data-testid="appearance-settings-page" data-ready="@(_loaded ? "true" : "false")">
     <header class="topbar appearance-page__topbar">
         <button type="button" class="btn btn--icon" aria-label="Back to settings"
                 data-testid="appearance-back" @onclick="OnClosed">
@@ -35,7 +35,7 @@
                             class="theme-card @(selected ? "is-selected" : "") @(locked ? "is-locked" : "")"
                             role="radio" aria-checked="@(selected ? "true" : "false")"
                             title="@(locked ? "Requires MeowSSH Pro" : null)"
-                            data-testid="theme-@option.Id"
+                            data-testid="theme-@option.Id" disabled="@(!_loaded)"
                             @onclick="() => SelectThemeAsync(option.Id)">
                         <span class="theme-preview" style="background:@option.Background;color:@option.Foreground">
                             <span class="theme-preview__dots" aria-hidden="true">
@@ -64,7 +64,7 @@
                         class="theme-card @(customSelected ? "is-selected" : "") @(_premium ? "" : "is-locked")"
                         role="radio" aria-checked="@(customSelected ? "true" : "false")"
                         title="@(_premium ? null : "Requires MeowSSH Pro")"
-                        data-testid="theme-custom"
+                        data-testid="theme-custom" disabled="@(!_loaded)"
                         @onclick="() => SelectThemeAsync(TerminalThemeCatalog.CustomId)">
                     <span class="theme-preview" style="background:@_custom.Background;color:@_custom.Foreground">
                         <span class="theme-preview__line">Your colours</span>
@@ -135,7 +135,7 @@
             </label>
             <input id="terminal-zoom" class="range" type="range"
                    min="80" max="160" step="10" value="@_zoom"
-                   data-testid="terminal-zoom" @oninput="OnZoomChangedAsync" />
+                   data-testid="terminal-zoom" disabled="@(!_loaded)" @oninput="OnZoomChangedAsync" />
             <div class="settings__range-labels" aria-hidden="true">
                 <span>80%</span><span>160%</span>
             </div>
@@ -149,7 +149,7 @@
                     <span class="setting-card__body">Choose a block, vertical bar, or underline cursor.</span>
                 </span>
                 <select id="terminal-cursor-style" class="field__input settings__select"
-                        data-testid="terminal-cursor-style" value="@_cursorStyle" @onchange="OnCursorStyleChangedAsync">
+                        data-testid="terminal-cursor-style" disabled="@(!_loaded)" value="@_cursorStyle" @onchange="OnCursorStyleChangedAsync">
                     <option value="block">Block</option>
                     <option value="bar">Bar</option>
                     <option value="underline">Underline</option>
@@ -162,7 +162,7 @@
                     <span class="setting-card__body">Disable this if you prefer a completely static terminal.</span>
                 </span>
                 <input id="terminal-cursor-blink" type="checkbox" class="settings__toggle"
-                       data-testid="terminal-cursor-blink"
+                       data-testid="terminal-cursor-blink" disabled="@(!_loaded)"
                        @bind="_cursorBlink" @bind:after="OnCursorBlinkChangedAsync" />
             </label>
 
@@ -172,7 +172,7 @@
                     <span class="setting-card__body">More lines preserve more terminal history but consume more memory.</span>
                 </span>
                 <select id="terminal-scrollback" class="field__input settings__select"
-                        data-testid="terminal-scrollback" value="@_scrollback" @onchange="OnScrollbackChangedAsync">
+                        data-testid="terminal-scrollback" disabled="@(!_loaded)" value="@_scrollback" @onchange="OnScrollbackChangedAsync">
                     <option value="1000">1,000 lines</option>
                     <option value="5000">5,000 lines</option>
                     <option value="10000">10,000 lines</option>
@@ -185,7 +185,7 @@
         <div class="settings__section">
             <h2 class="section-label">Reset</h2>
             <button type="button" class="btn btn--ghost btn--block"
-                    data-testid="terminal-settings-reset" @onclick="ResetAsync">
+                    data-testid="terminal-settings-reset" disabled="@(!_loaded)" @onclick="ResetAsync">
                 Restore default appearance
             </button>
         </div>
@@ -211,7 +211,13 @@
 
     [Parameter] public EventCallback OnClosed { get; set; }
 
+    // Controls stay disabled until the stored preferences are known, so an
+    // early tap cannot be silently reverted by the load that follows it.
+    private bool _loaded;
+
     private sealed record CustomTheme(string Base, string Background, string Foreground, string Cursor);
+
+    private sealed record AppearanceState(TerminalPreferences Preferences, CustomTheme CustomTheme);
 
     private sealed class TerminalPreferences
     {
@@ -230,14 +236,15 @@
         try
         {
             _module = await Js.InvokeAsync<IJSObjectReference>("import", "./_content/MeowSSH.UI/js/terminal.js");
-            await _module.InvokeVoidAsync("setPremiumAllowed", _premium);
-            _custom = await _module.InvokeAsync<CustomTheme>("getCustomTheme");
-            Apply(await _module.InvokeAsync<TerminalPreferences>("getPreferences"));
+            var state = await _module.InvokeAsync<AppearanceState>("initializeAppearance", _premium);
+            _custom = state.CustomTheme;
+            Apply(state.Preferences);
         }
         catch
         {
             Apply(new TerminalPreferences());
         }
+        _loaded = true;
         StateHasChanged();
     }
 
