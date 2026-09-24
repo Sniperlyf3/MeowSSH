@@ -12,6 +12,11 @@ public class TerminalTests(TestHostFixture fixture)
         await Assertions.Expect(page.GetByTestId("terminal")).ToBeVisibleAsync();
         await Assertions.Expect(page.Locator(".xterm-screen")).ToBeVisibleAsync();
         await Assertions.Expect(page.GetByTestId("session")).ToContainTextAsync("prod-web-01");
+        // TerminalView focuses the terminal only after create, resize and the
+        // backlog write -- later than .xterm-screen appears. Typing before
+        // then drops the keys: TypedInputIsEchoedAndTheCommandRuns failed
+        // intermittently that way (prompt shown, "pwd" never echoed).
+        await Assertions.Expect(page.Locator(".xterm-helper-textarea")).ToBeFocusedAsync();
         return page;
     }
 
