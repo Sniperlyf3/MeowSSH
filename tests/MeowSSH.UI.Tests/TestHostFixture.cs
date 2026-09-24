@@ -112,8 +112,8 @@ public sealed class TestHostFixture : IAsyncLifetime
         await WaitForInteractiveAsync(page);
     }
 
-    private static Task WaitForInteractiveAsync(IPage page) =>
-        page.WaitForSelectorAsync("[data-testid=interactive]", new()
+    private static async Task WaitForInteractiveAsync(IPage page) =>
+        await page.WaitForSelectorAsync("[data-testid=interactive]", new()
         {
             State = WaitForSelectorState.Attached,
             Timeout = 30_000,
