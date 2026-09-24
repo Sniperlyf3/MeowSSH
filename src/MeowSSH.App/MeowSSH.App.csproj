@@ -29,6 +29,14 @@
     <EnableTailcatVpn Condition="'$(EnableTailcatVpn)' == ''">false</EnableTailcatVpn>
     <EnableProCloudSales Condition="'$(EnableProCloudSales)' == ''">false</EnableProCloudSales>
 
+    <!-- Sideload-testing-only escape hatch: grants the top entitlement tier
+         locally instead of asking LicensingApiGrantProvider, which fails
+         closed to Free whenever LicensingApiBaseUrl is blank. Never set by
+         any real release workflow (play-release.yml never passes it); it
+         exists so a build made before the licensing API is deployed can still
+         exercise Pro-gated UI. -->
+    <ForceProEntitlementForTesting Condition="'$(ForceProEntitlementForTesting)' == ''">false</ForceProEntitlementForTesting>
+
     <LicensingApiBaseUrl Condition="'$(LicensingApiBaseUrl)' == ''"></LicensingApiBaseUrl>
     <LicensingPublicKeySubjectPublicKeyInfoBase64 Condition="'$(LicensingPublicKeySubjectPublicKeyInfoBase64)' == ''"></LicensingPublicKeySubjectPublicKeyInfoBase64>
     <PrivacyPolicyUrl Condition="'$(PrivacyPolicyUrl)' == ''"></PrivacyPolicyUrl>
@@ -41,6 +49,10 @@
 
   <PropertyGroup Condition="'$(EnableTailcatVpn)' == 'true'">
     <DefineConstants>$(DefineConstants);TAILCAT_VPN</DefineConstants>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(ForceProEntitlementForTesting)' == 'true'">
+    <DefineConstants>$(DefineConstants);FORCE_PRO_ENTITLEMENT</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
