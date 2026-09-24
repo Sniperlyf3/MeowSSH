@@ -90,6 +90,12 @@ public static class MauiProgram
         builder.Services.AddSingleton<ITransferQueueService>(sp => sp.GetRequiredService<TransferQueueService>());
         builder.Services.AddSingleton<TransferQueueLocalFileCleanup>();
         builder.Services.AddSingleton<IEncryptedVaultBackupService, EncryptedVaultBackupService>();
+        builder.Services.AddSingleton<ICloudEntitlementGrantSource>(sp => sp.GetRequiredService<LicensingApiGrantProvider>());
+        builder.Services.AddSingleton<ICloudBackupCredentialStore, SecureStorageCloudBackupCredentialStore>();
+        builder.Services.AddSingleton<ICloudBackupApi>(sp => new HttpCloudBackupApi(
+            sp.GetRequiredService<HttpClient>(),
+            sp.GetRequiredService<LicensingApiOptions>()));
+        builder.Services.AddSingleton<ICloudVaultBackupService, CloudVaultBackupService>();
         builder.Services.AddSingleton<IPortForwardProfileStore>(_ => new FilePortForwardProfileStore(
             Path.Combine(FileSystem.AppDataDirectory, "port-forward-profiles.json")));
         builder.Services.AddSingleton<IPortForwardProfileService, PortForwardProfileService>();

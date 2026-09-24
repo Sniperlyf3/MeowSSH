@@ -1,0 +1,288 @@
+@using System.Security.Cryptography
+@using MeowSSH.Core.Services
+@using MeowSSH.Core.Storage
+@inject ICloudVaultBackupService Cloud
+@inject IEncryptedVaultBackupService Backups
+
+@*
+    Uploading needs Pro Cloud; restoring and deleting never do. A lapsed
+    subscriber drops to Free and must still be able to get their own vault
+    back, so the restore half below renders on every tier.
+*@
+
+<div class="settings__section" data-testid="cloud-backup-section">
+    <h2 class="section-label">Cloud backup <span class="action-pro-badge">PRO CLOUD</span></h2>
+    <div class="setting-card">
+        <span class="setting-card__copy">
+            <span class="setting-card__title">Encrypted copy on the MeowSSH service</span>
+            <span class="setting-card__body">Keeps your last @MaxVersions encrypted backups off this phone. The service stores only the encrypted vault and cannot read your hosts, passwords or keys. Your recovery code finds and unlocks it on a new phone; without it, nobody can.</span>
+        </span>
+    </div>
+
+    @if (_status is null)
+    {
+        <p class="setting-card__body" role="status">Checking cloud backup…</p>
+    }
+    else if (_status.Enabled)
+    {
+        <button type="button" class="btn btn--primary btn--block" data-testid="cloud-backup-now"
+                disabled="@(_busy || !Cloud.CanUpload)" @onclick="BackupNowAsync">Back up now</button>
+
+        @if (!Cloud.CanUpload)
+        {
+            <p class="setting-card__body" data-testid="cloud-backup-lapsed">Pro Cloud is not active, so new backups are paused. Existing cloud backups stay restorable.</p>
+        }
+
+        @if (_versions.Count == 0)
+        {
+            <p class="setting-card__body" data-testid="cloud-version-empty">No cloud backups yet.</p>
+        }
+        else
+        {
+            <ul class="setting-list" data-testid="cloud-version-list">
+                @foreach (var version in _versions.OrderByDescending(v => v.CreatedAtUtc))
+                {
+                    <li class="setting-card__body mono" data-testid="cloud-version">@FormatDate(version.CreatedAtUtc) · @FormatBytes(version.SizeBytes)</li>
+                }
+            </ul>
+        }
+
+        <button type="button" class="btn btn--ghost btn--block" data-testid="cloud-disable"
+                disabled="@_busy" @onclick="DisableAsync">Turn off on this phone</button>
+
+        <label class="forward-option">
+            <input type="checkbox" data-testid="cloud-delete-confirm" @bind="_confirmDelete" />
+            <span>
+                <strong>Delete every cloud backup</strong>
+                <small>Erases all stored versions from the MeowSSH service immediately. The vault on this phone is not touched.</small>
+            </span>
+        </label>
+        <button type="button" class="btn btn--danger btn--block" data-testid="cloud-delete"
+                disabled="@(_busy || !_confirmDelete)" @onclick="DeleteAsync">Delete cloud backups</button>
+    }
+    else if (Cloud.CanUpload)
+    {
+        @if (_status.NeedsRecoveryCode)
+        {
+            <div class="notice" data-testid="cloud-needs-code">
+                <Icon Name="shield" />
+                <div>
+                    <p class="notice__title">Vault changed</p>
+                    <p class="notice__body">A different vault was restored since cloud backup was turned on. Enter this vault's recovery code to back it up.</p>
+                </div>
+            </div>
+        }
+        <label class="field">
+            <span class="field__label">Recovery code</span>
+            <input class="field__input mono" type="password" autocomplete="off" spellcheck="false"
+                   data-testid="cloud-enable-code" @bind="_enableCode" @bind:event="oninput" />
+        </label>
+        <button type="button" class="btn btn--primary btn--block" data-testid="cloud-enable"
+                disabled="@(_busy || string.IsNullOrWhiteSpace(_enableCode))" @onclick="EnableAsync">Turn on cloud backup</button>
+    }
+    else
+    {
+        <p class="setting-card__body" data-testid="cloud-backup-upsell">Backing up to the cloud needs MeowSSH Pro Cloud. You can still restore a cloud backup below.</p>
+    }
+
+    @if (!_restoring)
+    {
+        <button type="button" class="btn btn--ghost btn--block" data-testid="cloud-restore-start"
+                disabled="@_busy" @onclick="StartRestore">Restore from cloud</button>
+    }
+    else
+    {
+        <div class="settings__section" data-testid="cloud-restore-form">
+            <h2 class="section-label">Restore from cloud</h2>
+            <label class="field">
+                <span class="field__label">Recovery code of the vault to restore</span>
+                <input class="field__input mono" type="password" autocomplete="off" spellcheck="false"
+                       data-testid="cloud-restore-code" @bind="_restoreCode" @bind:event="oninput" />
+            </label>
+            <button type="button" class="btn btn--ghost btn--block" data-testid="cloud-restore-find"
+                    disabled="@(_busy || string.IsNullOrWhiteSpace(_restoreCode))" @onclick="FindAsync">Find backups</button>
+
+            @if (_found is { Count: 0 })
+            {
+                <p class="setting-card__body" data-testid="cloud-restore-none">No cloud backups match that recovery code.</p>
+            }
+            else if (_found is not null)
+            {
+                <div class="setting-list" role="radiogroup" aria-label="Backup to restore">
+                    @foreach (var version in _found.OrderByDescending(v => v.CreatedAtUtc))
+                    {
+                        <label class="forward-option">
+                            <input type="radio" name="cloud-restore-version" data-testid="cloud-restore-version"
+                                   checked="@(_selectedVersion == version.Id)" @onchange="() => _selectedVersion = version.Id" />
+                            <span class="mono">@FormatDate(version.CreatedAtUtc) · @FormatBytes(version.SizeBytes)</span>
+                        </label>
+                    }
+                </div>
+                <label class="forward-option">
+                    <input type="checkbox" data-testid="cloud-restore-confirm" @bind="_confirmRestore" />
+                    <span>
+                        <strong>Replace this phone's current vault</strong>
+                        <small>The backup is checked with your recovery code before anything on this phone changes. If replacing fails, the current vault is put back.</small>
+                    </span>
+                </label>
+                <button type="button" class="btn btn--danger btn--block" data-testid="cloud-restore"
+                        disabled="@(_busy || !_confirmRestore || _selectedVersion is null)" @onclick="RestoreAsync">Restore this backup</button>
+            }
+            <button type="button" class="btn btn--ghost btn--block" disabled="@_busy" @onclick="CancelRestore">Cancel</button>
+        </div>
+    }
+
+    @if (_needsRebind)
+    {
+        <button type="button" class="btn btn--primary btn--block" data-testid="cloud-rebind"
+                disabled="@_busy" @onclick="RebindAsync">Enable biometric unlock on this phone</button>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(_message))
+    {
+        <p class="setting-card__body" role="status" data-testid="cloud-backup-message">@_message</p>
+    }
+</div>
+
+@code {
+    private const int MaxVersions = 5;
+
+    private CloudBackupStatus? _status;
+    private IReadOnlyList<CloudBackupVersion> _versions = [];
+    private bool _busy;
+    private string? _message;
+    private string _enableCode = "";
+    private bool _confirmDelete;
+    private bool _restoring;
+    private string _restoreCode = "";
+    private IReadOnlyList<CloudBackupVersion>? _found;
+    private string? _selectedVersion;
+    private bool _confirmRestore;
+    private bool _needsRebind;
+
+    protected override Task OnInitializedAsync() => RefreshAsync();
+
+    private async Task RefreshAsync()
+    {
+        try
+        {
+            _status = await Cloud.GetStatusAsync();
+            _versions = _status.Enabled ? await Cloud.ListAsync() : [];
+        }
+        catch (Exception exception) when (IsExpected(exception))
+        {
+            _status ??= new CloudBackupStatus(Enabled: false, NeedsRecoveryCode: false);
+            _message = exception.Message;
+        }
+    }
+
+    private Task EnableAsync() => RunAsync(async () =>
+    {
+        await Cloud.EnableAsync(_enableCode.Trim());
+        _enableCode = "";
+        await Cloud.BackupNowAsync();
+        await RefreshAsync();
+        _message = "Cloud backup is on. Your vault was backed up just now.";
+    }, clearOnFailure: () => _enableCode = "");
+
+    private Task BackupNowAsync() => RunAsync(async () =>
+    {
+        await Cloud.BackupNowAsync();
+        await RefreshAsync();
+        _message = "Backed up to the cloud.";
+    });
+
+    private Task DisableAsync() => RunAsync(async () =>
+    {
+        await Cloud.DisableAsync();
+        await RefreshAsync();
+        _message = "Cloud backup is off on this phone. Existing cloud backups were kept.";
+    });
+
+    private Task DeleteAsync() => RunAsync(async () =>
+    {
+        await Cloud.DeleteAllAsync();
+        _confirmDelete = false;
+        await RefreshAsync();
+        _message = "Every cloud backup was deleted.";
+    });
+
+    private void StartRestore()
+    {
+        _restoring = true;
+        _found = null;
+        _selectedVersion = null;
+        _confirmRestore = false;
+        _message = null;
+    }
+
+    private void CancelRestore()
+    {
+        _restoring = false;
+        _restoreCode = "";
+        _found = null;
+        _selectedVersion = null;
+        _confirmRestore = false;
+    }
+
+    private Task FindAsync() => RunAsync(async () =>
+    {
+        _found = await Cloud.FindAsync(_restoreCode.Trim());
+        _selectedVersion = _found.OrderByDescending(v => v.CreatedAtUtc).FirstOrDefault()?.Id;
+    });
+
+    private Task RestoreAsync() => RunAsync(async () =>
+    {
+        await Cloud.RestoreAsync(_restoreCode.Trim(), _selectedVersion!);
+        CancelRestore();
+        _needsRebind = true;
+        await RefreshAsync();
+        _message = "Cloud backup restored. Enable biometric unlock for this phone when ready.";
+    });
+
+    private Task RebindAsync() => RunAsync(async () =>
+    {
+        await Backups.RebindDeviceKeyAsync();
+        _needsRebind = false;
+        _message = "Biometric unlock is now bound to the restored vault.";
+    });
+
+    private async Task RunAsync(Func<Task> action, Action? clearOnFailure = null)
+    {
+        if (_busy) return;
+        _busy = true;
+        _message = null;
+        try
+        {
+            await action();
+        }
+        catch (Exception exception) when (IsExpected(exception))
+        {
+            clearOnFailure?.Invoke();
+            _message = exception is CryptographicException
+                ? "The recovery code is incorrect or the backup was altered."
+                : exception.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    // Broad on purpose: anything escaping a click handler stops the renderer,
+    // and a network page shows a message far more usefully than a dead screen.
+    // HttpRequestException/JsonException cover a response body failing
+    // mid-read after the status line already succeeded.
+    private static bool IsExpected(Exception exception) => exception is
+        InvalidOperationException or CloudBackupException or CryptographicException or VaultFormatException
+        or DeviceKeyUnavailableException or HttpRequestException or System.Text.Json.JsonException;
+
+    private static string FormatDate(DateTimeOffset value) => value.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+
+    private static string FormatBytes(long bytes) => bytes switch
+    {
+        < 1024 => $"{bytes} B",
+        < 1024 * 1024 => $"{bytes / 1024d:F1} KiB",
+        _ => $"{bytes / (1024d * 1024d):F1} MiB",
+    };
+}

@@ -58,6 +58,8 @@ builder.Services.AddScoped<TransferQueueService>();
 builder.Services.AddScoped<ITransferQueueService>(sp => sp.GetRequiredService<TransferQueueService>());
 builder.Services.AddScoped<TransferQueueLocalFileCleanup>();
 builder.Services.AddScoped<IEncryptedVaultBackupService, FakeEncryptedVaultBackupService>();
+builder.Services.AddScoped<FakeCloudVaultBackupService>();
+builder.Services.AddScoped<ICloudVaultBackupService>(sp => sp.GetRequiredService<FakeCloudVaultBackupService>());
 builder.Services.AddScoped<IPortForwardProfileStore, MemoryPortForwardProfileStore>();
 builder.Services.AddScoped<IPortForwardProfileService, PortForwardProfileService>();
 builder.Services.AddScoped<FakeSshHardwareKeyStore>();

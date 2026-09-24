@@ -24,6 +24,17 @@ public interface IEncryptedVaultBackupService
         string recoveryCode,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// <see cref="RestoreAsync"/> without the Pro gate, for a backup the user
+    /// already stored in the cloud: a lapsed Pro Cloud subscriber drops to
+    /// Free, and must still be able to get their own vault back. The recovery
+    /// code is the real gate -- it is what decrypts the backup at all.
+    /// </summary>
+    ValueTask RestoreFromCloudAsync(
+        ReadOnlyMemory<byte> backup,
+        string recoveryCode,
+        CancellationToken cancellationToken = default);
+
     ValueTask RebindDeviceKeyAsync(CancellationToken cancellationToken = default);
 }
 
@@ -65,12 +76,26 @@ public sealed class EncryptedVaultBackupService(
         return bytes;
     }
 
-    public async ValueTask RestoreAsync(
+    public ValueTask RestoreAsync(
         ReadOnlyMemory<byte> backup,
         string recoveryCode,
         CancellationToken cancellationToken = default)
     {
         RequirePro();
+        return RestoreVerifiedAsync(backup, recoveryCode, cancellationToken);
+    }
+
+    public ValueTask RestoreFromCloudAsync(
+        ReadOnlyMemory<byte> backup,
+        string recoveryCode,
+        CancellationToken cancellationToken = default) =>
+        RestoreVerifiedAsync(backup, recoveryCode, cancellationToken);
+
+    private async ValueTask RestoreVerifiedAsync(
+        ReadOnlyMemory<byte> backup,
+        string recoveryCode,
+        CancellationToken cancellationToken)
+    {
         ArgumentException.ThrowIfNullOrWhiteSpace(recoveryCode);
         var imported = ValidateStructure(backup).ToArray();
 
@@ -98,7 +123,9 @@ public sealed class EncryptedVaultBackupService(
 
     public async ValueTask RebindDeviceKeyAsync(CancellationToken cancellationToken = default)
     {
-        RequirePro();
+        // Not Pro-gated: it only re-wraps the already-unlocked vault for this
+        // phone's own key, and a Free user who just restored from the cloud
+        // would otherwise be left typing the recovery code at every unlock.
         if (!vault.IsUnlocked)
             throw new InvalidOperationException("Unlock the restored vault before enabling biometric unlock on this device.");
         await vault.RebindDeviceKeyAsync(deviceKeyStore, cancellationToken).ConfigureAwait(false);

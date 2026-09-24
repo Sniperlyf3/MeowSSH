@@ -41,6 +41,18 @@ Camera frames are used for QR scanning only. Confirm scanner implementation does
 
 If full-device VPN ships, perform a separate policy review. The app can route user-selected device traffic through a tunnel, which is a materially different policy surface from an SSH client.
 
+### Encrypted cloud backup (Pro Cloud)
+
+Built as of 2026-09-24. Nothing is sent until the user turns it on. Facts to base the declaration on — the release owner still has to make the call in Play Console:
+
+- **What is transmitted:** the vault file, already end-to-end encrypted on the device, sent over HTTPS. MeowSSH cannot decrypt it, and it contains app settings/configuration, which may include credentials.
+- **Identifier:** a random locator derived from the recovery code. It is not linked to the account, device or purchase.
+- **User control:** the user can delete their backups in the app at any time.
+- **Retention:** the five most recent versions are kept.
+- **Not collected:** cloud backup does not send plaintext hosts, usernames, passwords or keys, and does not send analytics.
+
+Whether end-to-end encrypted user content still counts as "collected" is a Play policy question to review against Google's current Data safety guidance at submission time, not settled here.
+
 ## Required production answers before submission
 
 The release owner must confirm, from the exact production AAB:
