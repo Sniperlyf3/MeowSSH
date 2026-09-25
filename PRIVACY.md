@@ -78,7 +78,8 @@ A heartbeat monitor watches a job the user runs, such as a nightly backup, from 
   The request itself is not logged beyond that timestamp. The IP address of whatever sends it is seen, as with any web request, but not stored.
 - **Identity:** a random secret generated on the phone and kept in Android secure storage. It is not linked to the Google account, purchase, vault or device identifiers.
 - **Checking for alerts:** while any monitor exists, Android runs a background check roughly every 15 minutes, including when MeowSSH is closed. The check asks the service for the monitors' states, and notifications are created on the phone. No push token or device identifier is sent to MeowSSH or Google for this.
-- **Deletion:** deleting a monitor in the app removes it from the service immediately, and its URL stops working. Monitors remain until deleted, including if Pro Cloud lapses. They stay listed and deletable, but background alerts stop.
+- **Deletion:** deleting a monitor in the app removes it from the service immediately, and its URL stops working. If Pro Cloud lapses, monitors stay listed and deletable, but background alerts stop.
+- **Automatic deletion:** if the app does not check your monitors for 180 days (for example because the phone was reset, or Pro Cloud ended and the Heartbeats page was never opened), the service deletes them and their ping URLs stop working. Pings from your own servers do not count as the app checking in.
 
 ## Teams (MeowSSH Team)
 
@@ -94,7 +95,8 @@ A team lets its owner share host addresses with the people they invite. It is an
 - **Who sees what:** members see the team's name, members, shared hosts and shared Actions. Only the owner sees open invites and the activity log.
 - **Which hosts can be shared:** plain SSH hosts reached by name or IP address. Tailcat addresses are never shared, because the address itself grants access. Proxy settings, jump hosts and credentials are never shared.
 - **Identity:** a random secret generated on the phone and kept in Android secure storage, separate from the one heartbeat monitors use. It is not linked to the Google account, purchase, vault or device identifiers. Nothing is sent until the user starts or joins a team.
-- **Deletion:** leaving a team, or being removed, deletes the member's entry immediately. Deleting a team deletes everything above, including the activity log, immediately. Hosts a member already added to their own list stay in their vault.
+- **Deletion:** leaving a team, or being removed, deletes the member's entry immediately. Deleting a team deletes everything above, including the activity log, immediately. Hosts and Actions a member already added to their own lists stay on their phone.
+- **Automatic deletion:** a team that none of its members has opened or changed for 365 days is deleted from the service, with its members, shared hosts and Actions, open invites and activity log.
 
 ## Ask AI (MeowSSH Pro Cloud)
 
