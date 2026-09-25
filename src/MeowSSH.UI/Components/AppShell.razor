@@ -34,6 +34,10 @@
         {
             <CommandMonitoringPage OnNavigateToHosts="@(() => SelectTabAsync("hosts"))" />
         }
+        else if (_activeTool == "heartbeats")
+        {
+            <HeartbeatMonitorsPage />
+        }
         else if (_activeTool == "health")
         {
             <HostHealthDashboardPage OnNavigateToHosts="@(() => SelectTabAsync("hosts"))" />
@@ -84,6 +88,7 @@
         "actions" => "Actions",
         "monitoring" => "Monitoring",
         "health" => "Host Health",
+        "heartbeats" => "Heartbeats",
         "backup" => "Backup",
         "transferqueue" => "Transfer Queue",
         _ when _showToolsHub => "Tools",

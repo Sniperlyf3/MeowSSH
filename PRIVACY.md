@@ -65,6 +65,21 @@ Encrypted local backup exports the vault file to a location the user chooses on 
 - **Retention:** only the latest synced copy. Each sync replaces it, and it never takes the place of a backup version.
 - **Deletion:** "Delete cloud backups" also erases the synced copy immediately. A phone that finds its synced copy gone turns sync off rather than uploading the vault again. "Turn off on this phone" stops syncing on that phone only.
 
+## Heartbeat monitors (MeowSSH Pro Cloud)
+
+A heartbeat monitor watches a job the user runs, such as a nightly backup, from outside. The job requests a secret URL when it finishes, and if the requests stop or report a failure, the phone shows a notification. MeowSSH never connects to the user's servers for this and holds no SSH credentials for it.
+
+- **What the service keeps per monitor:**
+  - the name the user gives it;
+  - how often it should run, and the grace time;
+  - when it was created, last checked in, and last reported a failure;
+  - a one-way hash of its ping URL's secret.
+
+  The request itself is not logged beyond that timestamp. The IP address of whatever sends it is seen, as with any web request, but not stored.
+- **Identity:** a random secret generated on the phone and kept in Android secure storage. It is not linked to the Google account, purchase, vault or device identifiers.
+- **Checking for alerts:** while any monitor exists, Android runs a background check roughly every 15 minutes, including when MeowSSH is closed. The check asks the service for the monitors' states, and notifications are created on the phone. No push token or device identifier is sent to MeowSSH or Google for this.
+- **Deletion:** deleting a monitor in the app removes it from the service immediately, and its URL stops working. Monitors remain until deleted, including if Pro Cloud lapses. They stay listed and deletable, but background alerts stop.
+
 ## Ask AI (MeowSSH Pro Cloud)
 
 Ask AI explains terminal output or suggests a shell command. Nothing is sent until the user opens Ask AI and presses Explain or Suggest a command. Even then, the only thing sent is what the panel shows: the user's selection, or the last lines on screen, which the user can edit or clear first, plus any question they type. Host names, addresses, usernames, passwords and keys are not added to it.

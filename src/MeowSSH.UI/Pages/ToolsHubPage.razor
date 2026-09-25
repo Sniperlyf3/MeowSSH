@@ -23,6 +23,14 @@
                 <Icon Name="chevron" />
             </button>
 
+            <button type="button" class="setting-card" data-testid="open-tool-heartbeats" @onclick="OpenHeartbeats">
+                <span class="setting-card__copy">
+                    <span class="setting-card__title">Heartbeat monitors <span class="tier-badge">Pro Cloud</span></span>
+                    <span class="setting-card__body">Get notified when a cron job or script stops running, even with the app closed.</span>
+                </span>
+                <Icon Name="chevron" />
+            </button>
+
             <button type="button" class="setting-card" data-testid="open-tool-health" @onclick="OpenHealth">
                 <span class="setting-card__copy">
                     <span class="setting-card__title">Host health</span>
@@ -69,6 +77,7 @@
     private Task OpenActions() => OnSelected.InvokeAsync("actions");
     private Task OpenMonitoring() => OnSelected.InvokeAsync("monitoring");
     private Task OpenHealth() => OnSelected.InvokeAsync("health");
+    private Task OpenHeartbeats() => OnSelected.InvokeAsync("heartbeats");
     private Task OpenTailcat() => OnSelected.InvokeAsync("tailcat");
     private Task OpenBackup() => OnSelected.InvokeAsync("backup");
     private Task OpenTransferQueue() => OnSelected.InvokeAsync("transferqueue");
