@@ -6,7 +6,7 @@ MeowSSH is an Android SSH/SFTP and remote-operations client. This policy describ
 
 ## Core SSH, SFTP, terminal and local configuration
 
-Host profiles, credentials, private keys, session preferences, Tailcat configuration, Actions, logs and local backups are stored on the user's device. The MeowSSH vault encrypts sensitive stored configuration. MeowSSH does not operate a service that receives terminal contents, remote shell commands, passwords or private SSH keys as part of normal SSH/SFTP use.
+Host profiles, credentials, private keys, session preferences, Tailcat configuration, Actions, logs and local backups are stored on the user's device. The MeowSSH vault encrypts sensitive stored configuration. MeowSSH does not operate a service that receives terminal contents, remote shell commands, passwords or private SSH keys as part of normal SSH/SFTP use. The one exception is Ask AI (below). It sends only text the user chooses, and only when they press a button.
 
 Connections to hosts chosen by the user necessarily send network traffic to those hosts and to any network infrastructure required to reach them.
 
@@ -64,6 +64,17 @@ Encrypted local backup exports the vault file to a location the user chooses on 
 - **What the service receives and keeps:** one encrypted copy of the vault file, kept apart from the backup versions. Its size and a hash of the encrypted bytes, used to tell phones apart from stale copies, are also kept. As with backups, the service cannot read anything inside.
 - **Retention:** only the latest synced copy. Each sync replaces it, and it never takes the place of a backup version.
 - **Deletion:** "Delete cloud backups" also erases the synced copy immediately. A phone that finds its synced copy gone turns sync off rather than uploading the vault again. "Turn off on this phone" stops syncing on that phone only.
+
+## Ask AI (MeowSSH Pro Cloud)
+
+Ask AI explains terminal output or suggests a shell command. Nothing is sent until the user opens Ask AI and presses Explain or Suggest a command. Even then, the only thing sent is what the panel shows: the user's selection, or the last lines on screen, which the user can edit or clear first, plus any question they type. Host names, addresses, usernames, passwords and keys are not added to it.
+
+- **Where it goes:** over HTTPS to the MeowSSH service, which passes it to Anthropic's Claude API to write the answer. Anthropic processes it under its own commercial terms and data policies.
+- **What MeowSSH keeps:** nothing of the text or the answer. The service logs only outcome codes (for example "quota exceeded"), plus daily request counts per entitlement grant to enforce usage limits. Counts expire after two days.
+- **Proving the subscription:** each request carries a signed Pro Cloud entitlement grant, which is not stored.
+- **Suggested commands** are never run for the user. "Insert at prompt" types a single-line command without pressing Enter, and multi-line suggestions are not inserted.
+
+Users should not send secrets through Ask AI. If terminal output contains a password or key, the user should remove it from the text box before sending.
 
 ## Diagnostics and analytics
 

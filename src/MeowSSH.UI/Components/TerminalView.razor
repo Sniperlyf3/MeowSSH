@@ -16,6 +16,9 @@
         <button type="button" class="keybar__key keybar__key--action"
                 data-testid="key-clear" title="Clear visible terminal"
                 @onpointerdown:preventDefault @onclick="ClearTerminalAsync">Clear</button>
+        <button type="button" class="keybar__key keybar__key--action"
+                data-testid="key-ai" title="Ask AI about the output"
+                @onpointerdown:preventDefault @onclick="OpenAskAiAsync">Ask AI</button>
 
         <span class="keybar__divider" aria-hidden="true"></span>
 
@@ -36,6 +39,12 @@
                     @onclick="() => SendKeyAsync(key)">@key.Label</button>
         }
     </div>
+
+    @if (_askAi is { } context)
+    {
+        <AskAiPanel Context="@context.Text" FromSelection="@context.FromSelection"
+                    OnClose="CloseAskAi" OnInsert="InsertSuggestionAsync" />
+    }
 </div>
 
 @code {
@@ -194,6 +203,36 @@
     {
         if (_module is null) return;
         await _module.InvokeAsync<bool>("pasteClipboard", _elementId);
+    }
+
+    private sealed record AssistContext(string Selection, string Recent);
+    private sealed record AskAiContext(string Text, bool FromSelection);
+    private AskAiContext? _askAi;
+
+    /// <summary>How much of the screen Ask AI offers when nothing is selected.</summary>
+    private const int AskAiRecentLines = 40;
+
+    private async Task OpenAskAiAsync()
+    {
+        if (_module is null) return;
+        var context = await _module.InvokeAsync<AssistContext>("getAssistContext", _elementId, AskAiRecentLines);
+        _askAi = string.IsNullOrWhiteSpace(context.Selection)
+            ? new AskAiContext(context.Recent, FromSelection: false)
+            : new AskAiContext(context.Selection, FromSelection: true);
+    }
+
+    private void CloseAskAi() => _askAi = null;
+
+    private async Task InsertSuggestionAsync(string command)
+    {
+        _askAi = null;
+        if (_module is null) return;
+        // Pasted text still arrives through OnInputAsync, which applies an
+        // armed Ctrl or Alt: left armed, Alt would prefix the command with
+        // ESC and Ctrl would mangle it.
+        _ctrlArmed = false;
+        _altArmed = false;
+        await _module.InvokeAsync<bool>("insertText", _elementId, command);
     }
 
     private async Task ClearTerminalAsync()

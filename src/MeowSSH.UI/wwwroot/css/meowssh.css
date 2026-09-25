@@ -839,6 +839,15 @@ h1:focus, h2:focus, h3:focus, [tabindex="-1"]:focus { outline: none; box-shadow:
 }
 
 .sheet--danger { border-top-color: var(--danger); }
+
+/* Ask AI: a sheet over the terminal, capped so the output being asked about
+   stays partly visible above it, and scrolling rather than growing. */
+.ai-panel { max-height: 80dvh; overflow-y: auto; }
+.ai-panel__header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.ai-panel__input { resize: vertical; min-height: 6rem; font-size: var(--text-sm); }
+.ai-panel__actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.ai-panel__answer { white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--text-sm); line-height: 1.5; }
+.ai-panel__command { display: block; padding: var(--space-2); border-radius: var(--radius-sm); background: var(--surface-sunken); overflow-x: auto; white-space: pre; }
 .sheet__title { font-size: var(--text-base); font-weight: 600; }
 .sheet__body { color: var(--text-muted); font-size: var(--text-sm); line-height: 1.5; }
 .sheet--danger .sheet__title { color: var(--danger); }

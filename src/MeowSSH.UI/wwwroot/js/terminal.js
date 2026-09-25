@@ -369,6 +369,39 @@ export async function pasteClipboard(elementId) {
     }
 }
 
+/**
+ * What Ask AI offers to send: the xterm selection if there is one, otherwise
+ * the last lines of the screen. Returned for the user to review and edit --
+ * nothing here sends anything anywhere.
+ */
+export function getAssistContext(elementId, maxLines) {
+    const session = sessions.get(elementId);
+    if (!session) return { selection: "", recent: "" };
+    const terminal = session.terminal;
+    const selection = terminal.hasSelection() ? terminal.getSelection() : "";
+
+    const buffer = terminal.buffer.active;
+    const end = buffer.baseY + buffer.cursorY;
+    const lines = [];
+    for (let i = Math.max(0, end - maxLines + 1); i <= end; i++) {
+        lines.push(buffer.getLine(i)?.translateToString(true) ?? "");
+    }
+    return { selection, recent: lines.join("\n").replace(/\s+$/, "") };
+}
+
+/**
+ * Types an AI-suggested command at the prompt without running it. Through
+ * xterm's own paste, so a shell with bracketed paste on treats it as pasted
+ * text; the caller passes one line only, so there is no newline to execute.
+ */
+export function insertText(elementId, text) {
+    const session = sessions.get(elementId);
+    if (!session) return false;
+    session.terminal.paste(text.replace(/[\r\n]+/g, ""));
+    session.terminal.focus();
+    return true;
+}
+
 export function clearTerminal(elementId) {
     const session = sessions.get(elementId);
     if (!session) return;
