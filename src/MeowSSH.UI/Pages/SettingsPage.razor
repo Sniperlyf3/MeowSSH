@@ -39,9 +39,9 @@ else if (_showPlan)
                         <span class="setting-card__status" data-testid="plan-status">@PlanStatus</span>
                     </div>
 
-                    @if (_products.Count > 0 && Entitlements.Current.Tier == EntitlementTier.Free)
+                    @if (Upgrades.Count > 0)
                     {
-                        @foreach (var product in _products)
+                        @foreach (var product in Upgrades)
                         {
                             <button type="button" class="setting-card"
                                     data-testid="purchase-@PurchaseTestId(product)"
@@ -476,6 +476,13 @@ else
         _showSessionLogs = false;
         _showSessionLogSettings = true;
     }
+
+    // Every product above the current tier, not only while Free: a Pro user
+    // otherwise had no way in the app to move up to Pro Cloud or Team.
+    private List<StoreProduct> Upgrades =>
+    [
+        .. _products.Where(p => MeowSshProducts.TierFor(p.ProductId) > Entitlements.Current.Tier),
+    ];
 
     private static string ProductName(StoreProduct product) =>
         string.IsNullOrWhiteSpace(product.DisplayName) ? product.ProductId : product.DisplayName;

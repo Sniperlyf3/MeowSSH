@@ -90,4 +90,16 @@ public static class MeowSshProducts
     public const string ProCloud = "meowssh_pro_cloud";
     public const string ProCloudMonthlyBasePlan = "monthly";
     public const string ProCloudYearlyBasePlan = "yearly";
+
+    /// <summary>A subscription with the same monthly/yearly base plan ids as Pro Cloud.</summary>
+    public const string Team = "meowssh_team";
+
+    /// <summary>What a product grants once the server verifies it; Free for anything unknown.</summary>
+    public static EntitlementTier TierFor(string productId) => productId switch
+    {
+        ProLifetime => EntitlementTier.Pro,
+        ProCloud => EntitlementTier.ProCloud,
+        Team => EntitlementTier.Team,
+        _ => EntitlementTier.Free,
+    };
 }

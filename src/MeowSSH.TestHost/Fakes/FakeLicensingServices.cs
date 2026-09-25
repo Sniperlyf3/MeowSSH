@@ -83,6 +83,7 @@ public sealed class FakeStorePurchaseService : IStorePurchaseService
         new StoreProduct(MeowSshProducts.ProLifetime, "MeowSSH Pro", "$39.99", "inapp"),
         new StoreProduct(MeowSshProducts.ProCloud, "MeowSSH Pro Cloud — Monthly", "$2.99", "subs", MeowSshProducts.ProCloudMonthlyBasePlan),
         new StoreProduct(MeowSshProducts.ProCloud, "MeowSSH Pro Cloud — Yearly", "$24.99", "subs", MeowSshProducts.ProCloudYearlyBasePlan),
+        new StoreProduct(MeowSshProducts.Team, "MeowSSH Team — Monthly", "$9.99", "subs", MeowSshProducts.ProCloudMonthlyBasePlan),
     ];
 
     public Task<IReadOnlyList<StoreProduct>> GetProductsAsync(CancellationToken cancellationToken = default)

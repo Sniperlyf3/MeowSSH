@@ -28,6 +28,7 @@
          policy rather than changing the actual release gate. -->
     <EnableTailcatVpn Condition="'$(EnableTailcatVpn)' == ''">false</EnableTailcatVpn>
     <EnableProCloudSales Condition="'$(EnableProCloudSales)' == ''">false</EnableProCloudSales>
+    <EnableTeamSales Condition="'$(EnableTeamSales)' == ''">false</EnableTeamSales>
 
     <!-- Sideload-testing-only escape hatch: grants the top entitlement tier
          locally instead of asking LicensingApiGrantProvider, which fails
@@ -62,6 +63,7 @@
     <AssemblyMetadata Include="MeowSSH.Launch.SupportUrl" Value="$(SupportUrl)" />
     <AssemblyMetadata Include="MeowSSH.Launch.TermsOfServiceUrl" Value="$(TermsOfServiceUrl)" />
     <AssemblyMetadata Include="MeowSSH.Commercial.ProCloudSalesEnabled" Value="$(EnableProCloudSales)" />
+    <AssemblyMetadata Include="MeowSSH.Commercial.TeamSalesEnabled" Value="$(EnableTeamSales)" />
     <AssemblyMetadata Include="MeowSSH.Tailcat.DerpMapUrl" Value="$(TailcatDerpMapUrl)" />
   </ItemGroup>
 

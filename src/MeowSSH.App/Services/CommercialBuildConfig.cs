@@ -9,9 +9,14 @@ namespace MeowSSH.App.Services;
 internal static class CommercialBuildConfig
 {
     private const string ProCloudSalesEnabledKey = "MeowSSH.Commercial.ProCloudSalesEnabled";
+    private const string TeamSalesEnabledKey = "MeowSSH.Commercial.TeamSalesEnabled";
 
     public static bool ProCloudSalesEnabled =>
         bool.TryParse(GetMetadata(ProCloudSalesEnabledKey), out var enabled) && enabled;
+
+    /// <summary>Off unless the build sets EnableTeamSales=true; see ProCloudSalesEnabled for why.</summary>
+    public static bool TeamSalesEnabled =>
+        bool.TryParse(GetMetadata(TeamSalesEnabledKey), out var enabled) && enabled;
 
     private static string GetMetadata(string key) =>
         typeof(CommercialBuildConfig).Assembly
