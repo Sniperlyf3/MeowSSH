@@ -69,6 +69,7 @@ Built as of 2026-09-25. Nothing is sent until the user creates a monitor.
   - periodic status checks from WorkManager while monitors exist.
 - **Not transmitted:** host names, addresses, credentials, push tokens, or device identifiers.
 - **User control:** delete a monitor in the app and it is removed immediately.
+- **Retention:** monitors the app has not checked for 180 days are deleted automatically.
 - **Background work:** the app schedules periodic work only while at least one monitor exists, and cancels it when the last is deleted.
 
 ### Teams (Team tier)
@@ -85,6 +86,7 @@ Built as of 2026-09-25. Team is not on sale yet. Nothing is sent until the user 
 - **Likely Data safety categories:** the display name as "Personal info → Name", and shared host addresses and Action commands as "App activity → other user-generated content", collected for app functionality and shared only with the other members of the same team.
 - **Not transmitted:** passwords, private keys, passphrases, tailcat addresses, proxy settings, session content, push tokens or device identifiers.
 - **User control:** leave or delete a team in the app and the data is removed immediately.
+- **Retention:** a team no member has opened or changed for 365 days is deleted automatically.
 
 ### Ask AI (Pro Cloud hosted AI)
 
