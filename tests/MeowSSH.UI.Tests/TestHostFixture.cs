@@ -95,12 +95,14 @@ public sealed class TestHostFixture : IAsyncLifetime
     }
 
     /// <summary>Opens a phone-sized page, the only viewport this app ships to.</summary>
-    public async Task<IPage> NewPageAsync(string path = "/")
+    /// <param name="touch">A touchscreen, for gestures only a finger makes (long press, drag-select).</param>
+    public async Task<IPage> NewPageAsync(string path = "/", bool touch = false)
     {
         var context = await Browser.NewContextAsync(new()
         {
             ViewportSize = new ViewportSize { Width = 390, Height = 844 },
             IsMobile = false,
+            HasTouch = touch,
         });
         await RetireOldContextsAsync(context);
         var page = await context.NewPageAsync();
