@@ -6,9 +6,21 @@
 <div class="terminal" data-testid="terminal">
     <div class="terminal__surface" id="@_elementId"></div>
 
+    @if (_hasSelection)
+    {
+        @* Where the finger already is after a long press; the key bar's Copy
+           works too, but on a phone this is the one people look for. *@
+        <button type="button" class="terminal__selection-copy" data-testid="selection-copy"
+                @onpointerdown:preventDefault @onclick="CopySelectionAsync">Copy</button>
+    }
+    @if (_copyStatus is { } status)
+    {
+        <p class="terminal__toast" role="status" data-testid="terminal-copy-status">@status</p>
+    }
+
     <div class="keybar" role="toolbar" aria-label="Terminal keys" data-testid="keybar">
         <button type="button" class="keybar__key keybar__key--action"
-                data-testid="key-copy" title="Copy selection"
+                data-testid="key-copy" title="Copy the selection, or the whole screen if nothing is selected"
                 @onpointerdown:preventDefault @onclick="CopySelectionAsync">Copy</button>
         <button type="button" class="keybar__key keybar__key--action"
                 data-testid="key-paste" title="Paste clipboard"
@@ -193,10 +205,49 @@
     private async Task SendKeyAsync(QuickKey key) =>
         await WriteAsync(ApplyModifiers(key.Bytes));
 
+    private bool _hasSelection;
+    private string? _copyStatus;
+    private CancellationTokenSource? _copyStatusTimer;
+
+    [JSInvokable]
+    public Task OnSelectionChangedAsync(bool hasSelection)
+    {
+        if (_hasSelection == hasSelection) return Task.CompletedTask;
+        _hasSelection = hasSelection;
+        return InvokeAsync(StateHasChanged);
+    }
+
     private async Task CopySelectionAsync()
     {
         if (_module is null) return;
-        await _module.InvokeAsync<bool>("copySelection", _elementId);
+        // The key used to fail silently with nothing selected, which on a
+        // phone (where nothing could be selected at all) meant it looked broken.
+        var result = await _module.InvokeAsync<string>("copySelection", _elementId);
+        ShowCopyStatus(result switch
+        {
+            "selection" => "Copied",
+            "screen" => "Copied the screen",
+            "empty" => "Nothing to copy yet",
+            _ => "Copy is not available here",
+        });
+    }
+
+    private void ShowCopyStatus(string text)
+    {
+        _copyStatus = text;
+        _copyStatusTimer?.Cancel();
+        _copyStatusTimer?.Dispose();
+        var timer = _copyStatusTimer = new CancellationTokenSource();
+        _ = Task.Delay(TimeSpan.FromSeconds(2.5), timer.Token).ContinueWith(task =>
+        {
+            if (task.IsCanceled) return;
+            _ = InvokeAsync(() =>
+            {
+                if (timer.IsCancellationRequested) return;
+                _copyStatus = null;
+                StateHasChanged();
+            });
+        }, TaskScheduler.Default);
     }
 
     private async Task PasteClipboardAsync()
@@ -293,6 +344,8 @@
 
     public async ValueTask DisposeAsync()
     {
+        _copyStatusTimer?.Cancel();
+        _copyStatusTimer?.Dispose();
         if (_subscribedShell is not null) _subscribedShell.OutputReceived -= OnOutput;
         if (_module is not null)
         {

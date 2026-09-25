@@ -6,6 +6,8 @@
   bytes so escape sequences and split UTF-8 sequences are not rewritten.
 */
 
+import { copyText } from "./clipboard.js";
+
 const sessions = new Map();
 const preferenceEvent = "meowssh-terminal-settings-changed";
 
@@ -273,6 +275,10 @@ export function create(elementId, dotNetRef, options) {
         textarea.setAttribute("enterkeyhint", "send");
     }
 
+    const touchSelection = attachTouchSelection(element, terminal);
+    terminal.onSelectionChange(() =>
+        dotNetRef.invokeMethodAsync("OnSelectionChangedAsync", terminal.hasSelection()).catch(() => { /* circuit gone */ }));
+
     const encoder = new TextEncoder();
     terminal.onData(data => dotNetRef.invokeMethodAsync("OnInputAsync", encoder.encode(data)));
     terminal.onResize(({ cols, rows }) => dotNetRef.invokeMethodAsync("OnResizeAsync", cols, rows));
@@ -298,7 +304,7 @@ export function create(elementId, dotNetRef, options) {
     window.addEventListener(preferenceEvent, preferenceListener);
 
     sessions.set(elementId, {
-        terminal, fit, observer, viewport, keepFocus, preferenceListener, dotNetRef, encoder,
+        terminal, fit, observer, viewport, keepFocus, preferenceListener, dotNetRef, encoder, touchSelection,
         baseFontSize: options.fontSize, hostTheme, pending: [], frame: 0,
     });
     return { cols: terminal.cols, rows: terminal.rows };
@@ -339,19 +345,143 @@ export function fit(elementId) {
     return { cols: session.terminal.cols, rows: session.terminal.rows };
 }
 
+/**
+ * Copies the selection, or the visible screen when nothing is selected --
+ * on a phone the whole screen is often exactly what is wanted, and it needs
+ * no selection gesture at all.
+ * @returns {"selection"|"screen"|"empty"|"failed"} what happened, for the caller to say.
+ */
 export async function copySelection(elementId) {
     const session = sessions.get(elementId);
-    if (!session) return false;
-    const text = session.terminal.getSelection();
-    if (!text) return false;
-    try {
-        await navigator.clipboard.writeText(text);
-        session.terminal.focus();
-        return true;
-    } catch {
-        session.terminal.focus();
-        return false;
+    if (!session) return "failed";
+    const terminal = session.terminal;
+    const fromSelection = terminal.hasSelection();
+    const text = fromSelection ? terminal.getSelection() : visibleText(terminal);
+    if (!text.trim()) return "empty";
+    // clipboard.js, not navigator.clipboard directly: the Android web view
+    // does not always offer it, and the selection-based fallback there works.
+    const copied = await copyText(text);
+    if (copied && fromSelection) terminal.clearSelection();
+    terminal.focus();
+    return copied ? (fromSelection ? "selection" : "screen") : "failed";
+}
+
+function visibleText(terminal) {
+    const buffer = terminal.buffer.active;
+    const lines = [];
+    for (let row = 0; row < terminal.rows; row++) {
+        lines.push(buffer.getLine(buffer.viewportY + row)?.translateToString(true) ?? "");
     }
+    return lines.join("\n").replace(/\s+$/, "");
+}
+
+const longPressMs = 450;
+const moveTolerancePx = 10;
+
+/**
+ * Touch selection. xterm.js selects only with a mouse: on a phone a finger
+ * scrolls, and a long press becomes a context menu -- for which xterm moves
+ * its hidden input textarea under the finger, so Android offers that
+ * textarea's paste and password-autofill popup and nothing can be selected
+ * or copied. Here a long press selects the word under the finger instead,
+ * dragging after it extends the selection, and a tap clears it.
+ */
+function attachTouchSelection(element, terminal) {
+    let timer = 0;
+    let start = null;
+    let anchor = null; // { start, end } cell indexes of the long-pressed word
+    let selecting = false;
+
+    const cellAt = (x, y) => {
+        const screen = element.querySelector(".xterm-screen");
+        if (!screen) return null;
+        const rect = screen.getBoundingClientRect();
+        const col = Math.min(terminal.cols - 1, Math.max(0, Math.floor((x - rect.left) / (rect.width / terminal.cols))));
+        const row = Math.min(terminal.rows - 1, Math.max(0, Math.floor((y - rect.top) / (rect.height / terminal.rows))));
+        return { col, row: terminal.buffer.active.viewportY + row };
+    };
+
+    const index = cell => cell.row * terminal.cols + cell.col;
+
+    const selectRange = (from, to) => {
+        const first = Math.min(from, to);
+        terminal.select(first % terminal.cols, Math.floor(first / terminal.cols), Math.abs(to - from) + 1);
+    };
+
+    // Whitespace-delimited, not xterm's word rule: what people copy from a
+    // shell is a path, a host, an IP or a hash, all of which contain
+    // punctuation a "word" would stop at.
+    const wordAt = cell => {
+        const text = terminal.buffer.active.getLine(cell.row)?.translateToString(false) ?? "";
+        const base = cell.row * terminal.cols;
+        if (!text[cell.col] || /\s/.test(text[cell.col])) return { start: index(cell), end: index(cell) };
+        let from = cell.col;
+        let to = cell.col;
+        while (from > 0 && !/\s/.test(text[from - 1])) from--;
+        while (to < text.length - 1 && !/\s/.test(text[to + 1])) to++;
+        return { start: base + from, end: base + to };
+    };
+
+    const cancel = () => {
+        clearTimeout(timer);
+        timer = 0;
+    };
+
+    element.addEventListener("touchstart", event => {
+        cancel();
+        if (event.touches.length !== 1) return;
+        const touch = event.touches[0];
+        start = { x: touch.clientX, y: touch.clientY, moved: false };
+        timer = setTimeout(() => {
+            timer = 0;
+            const cell = cellAt(start.x, start.y);
+            if (!cell) return;
+            anchor = wordAt(cell);
+            selecting = true;
+            selectRange(anchor.start, anchor.end);
+            navigator.vibrate?.(10);
+        }, longPressMs);
+    }, { passive: true });
+
+    element.addEventListener("touchmove", event => {
+        const touch = event.touches[0];
+        if (!touch || !start) return;
+        if (!selecting) {
+            if (Math.hypot(touch.clientX - start.x, touch.clientY - start.y) > moveTolerancePx) {
+                start.moved = true;
+                cancel();
+            }
+            return;
+        }
+        // Dragging extends the selection instead of scrolling the terminal.
+        event.preventDefault();
+        const cell = cellAt(touch.clientX, touch.clientY);
+        if (!cell) return;
+        const at = index(cell);
+        if (at >= anchor.start) selectRange(anchor.start, Math.max(at, anchor.end));
+        else selectRange(at, anchor.end);
+    }, { passive: false });
+
+    const end = () => {
+        const wasTap = timer !== 0 && start && !start.moved;
+        cancel();
+        if (selecting) {
+            selecting = false;
+        } else if (wasTap && terminal.hasSelection()) {
+            terminal.clearSelection();
+        }
+        start = null;
+    };
+    element.addEventListener("touchend", end);
+    element.addEventListener("touchcancel", end);
+
+    // Capture phase, before xterm sees it and moves its textarea under the
+    // finger: the popup that follows is the paste/autofill menu for that
+    // textarea, never a selection.
+    const suppressContextMenu = event => event.preventDefault();
+    element.addEventListener("contextmenu", suppressContextMenu, true);
+
+    return { cancel };
 }
 
 export async function pasteClipboard(elementId) {
@@ -413,6 +543,7 @@ export function dispose(elementId) {
     const session = sessions.get(elementId);
     if (!session) return;
     if (session.frame !== 0) cancelAnimationFrame(session.frame);
+    session.touchSelection.cancel();
     session.observer.disconnect();
     session.viewport?.removeEventListener("resize", session.keepFocus);
     window.removeEventListener(preferenceEvent, session.preferenceListener);
