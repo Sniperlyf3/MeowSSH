@@ -1,0 +1,400 @@
+@using MeowSSH.Core.Model
+@using MeowSSH.Core.Services
+@inject ITeamService Teams
+@inject IHostDirectory HostDirectory
+@inject IHostEditor HostEditor
+@inject IJSRuntime Js
+
+@*
+    A team is an address book plus who may see it. Hosts go out as label,
+    address, port and user name; every member signs in with their own key or
+    password from their own vault, so nothing the team holds can open a server.
+*@
+
+<section class="settings" data-testid="team-page">
+    <div class="settings__section">
+        <h2 class="section-label">Team <span class="action-pro-badge">TEAM</span></h2>
+        <div class="setting-card">
+            <span class="setting-card__copy">
+                <span class="setting-card__title">Share hosts with the people you work with</span>
+                <span class="setting-card__body">The owner shares host addresses; everyone signs in with their own key or password. No passwords or keys are ever shared, and there is no account to create.</span>
+            </span>
+        </div>
+    </div>
+
+    @if (_loading)
+    {
+        <p class="setting-card__body" role="status">Loading…</p>
+    }
+    else if (_team is null)
+    {
+        <div class="settings__section" data-testid="team-join-form">
+            <h2 class="section-label">Join a team</h2>
+            @if (Teams.CanJoin)
+            {
+                <label class="field">
+                    <span class="field__label">Invite code</span>
+                    <input class="field__input mono" type="text" maxlength="40" autocomplete="off" placeholder="XXXXX-XXXXX-XXXXX-XXXXX"
+                           data-testid="team-join-code" disabled="@_busy" @bind="_joinCode" @bind:event="oninput" />
+                </label>
+                <label class="field">
+                    <span class="field__label">Your name in the team</span>
+                    <input class="field__input" type="text" maxlength="40" data-testid="team-join-name" disabled="@_busy" @bind="_joinName" @bind:event="oninput" />
+                </label>
+                <button type="button" class="btn btn--primary btn--block" data-testid="team-join"
+                        disabled="@(_busy || string.IsNullOrWhiteSpace(_joinCode) || string.IsNullOrWhiteSpace(_joinName))" @onclick="JoinAsync">Join team</button>
+            }
+            else
+            {
+                <p class="setting-card__body" data-testid="team-join-upsell">Joining a team needs MeowSSH Pro.</p>
+            }
+        </div>
+
+        <div class="settings__section" data-testid="team-create-form">
+            <h2 class="section-label">Start a team</h2>
+            @if (Teams.CanOwn)
+            {
+                <label class="field">
+                    <span class="field__label">Team name</span>
+                    <input class="field__input" type="text" maxlength="60" data-testid="team-create-name" disabled="@_busy" @bind="_teamName" @bind:event="oninput" />
+                </label>
+                <label class="field">
+                    <span class="field__label">Your name in the team</span>
+                    <input class="field__input" type="text" maxlength="40" data-testid="team-create-owner" disabled="@_busy" @bind="_ownerName" @bind:event="oninput" />
+                </label>
+                <button type="button" class="btn btn--primary btn--block" data-testid="team-create"
+                        disabled="@(_busy || string.IsNullOrWhiteSpace(_teamName) || string.IsNullOrWhiteSpace(_ownerName))" @onclick="CreateAsync">Start team</button>
+            }
+            else
+            {
+                <p class="setting-card__body" data-testid="team-create-upsell">Starting a team needs MeowSSH Team.</p>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="settings__section">
+            <div class="ai-panel__header">
+                <h2 class="section-label" data-testid="team-name">@_team.Name</h2>
+                <button type="button" class="btn btn--ghost" data-testid="team-refresh" disabled="@_busy" @onclick="RefreshAsync">Refresh</button>
+            </div>
+            <p class="setting-card__body" data-testid="team-role">@(_team.IsOwner ? "You own this team." : "You are a member of this team.")</p>
+        </div>
+
+        <div class="settings__section">
+            <h2 class="section-label">Shared hosts</h2>
+            @if (_team.Hosts.Count == 0)
+            {
+                <p class="setting-card__body" data-testid="team-no-hosts">@(_team.IsOwner ? "Nothing shared yet. Share one of your hosts below." : "The owner has not shared any hosts yet.")</p>
+            }
+            else
+            {
+                <ul class="setting-list">
+                    @foreach (var shared in _team.Hosts)
+                    {
+                        var inVault = _vaultHosts.Any(h => TeamHosts.Matches(h, shared));
+                        <li class="setting-card" data-testid="team-host">
+                            <span class="setting-card__copy">
+                                <span class="setting-card__title">@shared.Label</span>
+                                <span class="setting-card__body mono" data-testid="team-host-address">@Address(shared)</span>
+                            </span>
+                            @if (inVault)
+                            {
+                                <span class="setting-card__body" data-testid="team-host-added">In your hosts</span>
+                            }
+                            else
+                            {
+                                <button type="button" class="btn btn--ghost" data-testid="team-host-add" disabled="@_busy"
+                                        @onclick="() => AddToMyHostsAsync(shared)">Add to my hosts</button>
+                            }
+                            @if (_team.IsOwner)
+                            {
+                                <button type="button" class="btn btn--danger" data-testid="team-host-remove" disabled="@_busy"
+                                        @onclick="() => UnshareAsync(shared.Id)">Stop sharing</button>
+                            }
+                        </li>
+                    }
+                </ul>
+            }
+
+            @if (_team.IsOwner && Teams.CanOwn)
+            {
+                var shareable = Shareable();
+                @if (shareable.Count > 0)
+                {
+                    <label class="field">
+                        <span class="field__label">Share one of your hosts</span>
+                        <select class="field__input" data-testid="team-share-select" disabled="@_busy" @bind="_shareHostId">
+                            <option value="">Choose a host</option>
+                            @foreach (var host in shareable)
+                            {
+                                <option value="@host.Id">@host.Label (@host.DisplayAddress)</option>
+                            }
+                        </select>
+                    </label>
+                    <button type="button" class="btn btn--primary btn--block" data-testid="team-share"
+                            disabled="@(_busy || string.IsNullOrEmpty(_shareHostId))" @onclick="ShareAsync">Share address</button>
+                }
+                <p class="setting-card__body">Only the label, address, port and user name are shared. Tailcat hosts stay on this phone: their address is itself the way in.</p>
+            }
+        </div>
+
+        <div class="settings__section">
+            <h2 class="section-label">Members</h2>
+            <ul class="setting-list">
+                @foreach (var member in _team.Members)
+                {
+                    <li class="setting-card" data-testid="team-member">
+                        <span class="setting-card__copy">
+                            <span class="setting-card__title" data-testid="team-member-name">@member.DisplayName@(member.Id == _team.YourMemberId ? " (you)" : "")</span>
+                            <span class="setting-card__body">@(member.Role == TeamRoles.Owner ? "Owner" : "Member") · joined @member.JoinedAtUtc.ToLocalTime().ToString("yyyy-MM-dd")</span>
+                        </span>
+                        @if (_team.IsOwner && member.Role != TeamRoles.Owner)
+                        {
+                            <button type="button" class="btn btn--danger" data-testid="team-member-remove" disabled="@_busy"
+                                    @onclick="() => RemoveMemberAsync(member.Id)">Remove</button>
+                        }
+                    </li>
+                }
+            </ul>
+        </div>
+
+        @if (_team.IsOwner)
+        {
+            <div class="settings__section" data-testid="team-invites">
+                <h2 class="section-label">Invites</h2>
+                @if (_newInvite is not null)
+                {
+                    <code class="ai-panel__command mono" data-testid="team-invite-code">@_newInvite.Code</code>
+                    <p class="setting-card__body">Send this code to one person. It works once, until @_newInvite.Invite.ExpiresAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm"), and is not shown again.</p>
+                    <button type="button" class="btn btn--ghost" data-testid="team-invite-copy" @onclick="() => CopyAsync(_newInvite.Code)">Copy code</button>
+                }
+                @if (Teams.CanOwn)
+                {
+                    <button type="button" class="btn btn--primary btn--block" data-testid="team-invite-create" disabled="@_busy" @onclick="InviteAsync">Create invite code</button>
+                }
+                else
+                {
+                    <p class="setting-card__body" data-testid="team-owner-lapsed">Your MeowSSH Team subscription is not active, so you cannot invite people or share hosts. You can still remove them, and delete the team.</p>
+                }
+                @foreach (var invite in _team.Invites)
+                {
+                    <div class="setting-card" data-testid="team-invite">
+                        <span class="setting-card__copy">
+                            <span class="setting-card__body">Open invite · expires @invite.ExpiresAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</span>
+                        </span>
+                        <button type="button" class="btn btn--ghost" data-testid="team-invite-revoke" disabled="@_busy"
+                                @onclick="() => RevokeAsync(invite.Id)">Revoke</button>
+                    </div>
+                }
+            </div>
+
+            <div class="settings__section" data-testid="team-audit">
+                <div class="ai-panel__header">
+                    <h2 class="section-label">Activity</h2>
+                    <button type="button" class="btn btn--ghost" data-testid="team-audit-load" disabled="@_busy" @onclick="LoadAuditAsync">@(_audit is null ? "Show" : "Refresh")</button>
+                </div>
+                @if (_audit is not null)
+                {
+                    <ul class="setting-list">
+                        @foreach (var entry in _audit)
+                        {
+                            <li class="setting-card__body" data-testid="team-audit-entry">@entry.AtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm") · @Describe(entry)</li>
+                        }
+                    </ul>
+                }
+                <p class="setting-card__body">Records changes to the team, not who connected to what.</p>
+            </div>
+        }
+
+        <div class="settings__section">
+            @if (_team.IsOwner)
+            {
+                <button type="button" class="btn btn--danger btn--block" data-testid="team-delete" disabled="@_busy" @onclick="DeleteAsync">@(_confirmingDelete ? "Tap again to delete the team for everyone" : "Delete team")</button>
+            }
+            else
+            {
+                <button type="button" class="btn btn--danger btn--block" data-testid="team-leave" disabled="@_busy" @onclick="LeaveAsync">Leave team</button>
+                <p class="setting-card__body">Hosts you added to your own list stay there.</p>
+            }
+        </div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(_message))
+    {
+        <p class="setting-card__body" role="status" data-testid="team-message">@_message</p>
+    }
+</section>
+
+@code {
+    private TeamInfo? _team;
+    private IReadOnlyList<HostRecord> _vaultHosts = [];
+    private IReadOnlyList<TeamAuditEntry>? _audit;
+    private CreatedTeamInvite? _newInvite;
+    private string _joinCode = "";
+    private string _joinName = "";
+    private string _teamName = "";
+    private string _ownerName = "";
+    private string _shareHostId = "";
+    private bool _loading = true;
+    private bool _busy;
+    private bool _confirmingDelete;
+    private string? _message;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RunAsync(ReloadAsync);
+        _loading = false;
+    }
+
+    private Task RefreshAsync() => RunAsync(ReloadAsync);
+
+    // Unguarded, like the heartbeat page's: every action below calls it from
+    // inside its own RunAsync, where the busy guard would skip the reload.
+    private async Task ReloadAsync()
+    {
+        _vaultHosts = [.. (await HostDirectory.GetHostsAsync()).Select(s => s.Host).Where(h => !h.IsDeleted)];
+        _team = await Teams.GetMineAsync();
+        if (_team is null || !_team.IsOwner) _audit = null;
+    }
+
+    private Task JoinAsync() => RunAsync(async () =>
+    {
+        _team = await Teams.JoinAsync(_joinCode, _joinName);
+        _joinCode = "";
+        _message = $"You joined {_team.Name}. Add its hosts to your list, then choose your own key or password for each.";
+    });
+
+    private Task CreateAsync() => RunAsync(async () =>
+    {
+        _team = await Teams.CreateAsync(_teamName, _ownerName);
+        _teamName = "";
+        _message = "Team started. Create an invite code for each person you want to add.";
+    });
+
+    private Task InviteAsync() => RunAsync(async () =>
+    {
+        _newInvite = await Teams.CreateInviteAsync();
+        await ReloadAsync();
+    });
+
+    private Task RevokeAsync(string inviteId) => RunAsync(async () =>
+    {
+        await Teams.RevokeInviteAsync(inviteId);
+        if (_newInvite?.Invite.Id == inviteId) _newInvite = null;
+        await ReloadAsync();
+        _message = "Invite revoked. That code no longer works.";
+    });
+
+    private Task ShareAsync() => RunAsync(async () =>
+    {
+        var host = _vaultHosts.FirstOrDefault(h => h.Id.ToString() == _shareHostId)
+            ?? throw new InvalidOperationException("That host is no longer in your list.");
+        await Teams.ShareHostAsync(host);
+        _shareHostId = "";
+        await ReloadAsync();
+        _message = $"{host.Label} is shared. Members add it to their own list and sign in as themselves.";
+    });
+
+    private Task UnshareAsync(string hostId) => RunAsync(async () =>
+    {
+        await Teams.UnshareHostAsync(hostId);
+        await ReloadAsync();
+        _message = "No longer shared. Members who already added it keep their own copy.";
+    });
+
+    private Task RemoveMemberAsync(string memberId) => RunAsync(async () =>
+    {
+        await Teams.RemoveMemberAsync(memberId);
+        await ReloadAsync();
+        _message = "Removed. They no longer see the team's hosts; hosts they already added stay on their phone.";
+    });
+
+    private Task AddToMyHostsAsync(TeamSharedHost shared) => RunAsync(async () =>
+    {
+        var host = TeamHosts.ToVaultHost(shared, _team!.Name);
+        await HostEditor.SaveHostAsync(host);
+        await ReloadAsync();
+        _message = $"{host.Label} added to your hosts. Open it there to choose your key or password.";
+    });
+
+    private Task LoadAuditAsync() => RunAsync(async () => _audit = await Teams.AuditAsync());
+
+    private Task LeaveAsync() => RunAsync(async () =>
+    {
+        await Teams.LeaveAsync();
+        await ReloadAsync();
+        _message = "You left the team.";
+    });
+
+    private Task DeleteAsync() => RunAsync(async () =>
+    {
+        if (!_confirmingDelete)
+        {
+            _confirmingDelete = true;
+            return;
+        }
+        _confirmingDelete = false;
+        await Teams.DeleteAsync();
+        _newInvite = null;
+        await ReloadAsync();
+        _message = "Team deleted. Its invites no longer work, and members no longer see its hosts.";
+    });
+
+    private async Task CopyAsync(string text)
+    {
+        try
+        {
+            await Js.InvokeVoidAsync("navigator.clipboard.writeText", text);
+            _message = "Copied.";
+        }
+        catch (JSException)
+        {
+            _message = "Copy is not available here; select the code and copy it.";
+        }
+    }
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        if (_busy) return;
+        _busy = true;
+        _message = null;
+        try
+        {
+            await action();
+        }
+        // Broad on purpose: anything escaping a handler stops the renderer,
+        // and these messages are written for the user.
+        catch (Exception exception) when (exception is InvalidOperationException or TeamException
+            or HttpRequestException or System.Text.Json.JsonException)
+        {
+            _message = exception.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private List<HostRecord> Shareable() =>
+    [
+        .. _vaultHosts.Where(h => TeamHosts.CanShare(h) && !_team!.Hosts.Any(s => TeamHosts.Matches(h, s)))
+            .OrderBy(h => h.Label, StringComparer.OrdinalIgnoreCase),
+    ];
+
+    private static string Address(TeamSharedHost host) =>
+        (host.Username.Length > 0 ? host.Username + "@" : "") + host.Host + (host.Port == 22 ? "" : $":{host.Port}");
+
+    private static string Describe(TeamAuditEntry entry) => entry.Action switch
+    {
+        "team_created" => $"{entry.ActorName} started the team",
+        "invite_created" => $"{entry.ActorName} created an invite",
+        "invite_revoked" => $"{entry.ActorName} revoked an invite",
+        "member_joined" => $"{entry.ActorName} joined",
+        "member_left" => $"{entry.ActorName} left",
+        "member_removed" => $"{entry.ActorName} removed {entry.Subject}",
+        "host_shared" => $"{entry.ActorName} shared {entry.Subject}",
+        "host_removed" => $"{entry.ActorName} stopped sharing {entry.Subject}",
+        _ => $"{entry.ActorName}: {entry.Action.Replace('_', ' ')}",
+    };
+}

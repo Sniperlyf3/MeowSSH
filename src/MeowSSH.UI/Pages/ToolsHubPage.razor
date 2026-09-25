@@ -44,6 +44,14 @@
     <section class="tools-hub__section" aria-labelledby="tools-network-title">
         <h3 class="section-label" id="tools-network-title">Network & data</h3>
         <div class="tools-hub__list">
+            <button type="button" class="setting-card" data-testid="open-tool-team" @onclick="OpenTeam">
+                <span class="setting-card__copy">
+                    <span class="setting-card__title">Team <span class="tier-badge">Team</span></span>
+                    <span class="setting-card__body">Share host addresses with your team. Everyone signs in with their own key.</span>
+                </span>
+                <Icon Name="chevron" />
+            </button>
+
             <button type="button" class="setting-card" data-testid="open-tool-tailcat" @onclick="OpenTailcat">
                 <span class="setting-card__copy">
                     <span class="setting-card__title">Tailcat</span>
@@ -78,6 +86,7 @@
     private Task OpenMonitoring() => OnSelected.InvokeAsync("monitoring");
     private Task OpenHealth() => OnSelected.InvokeAsync("health");
     private Task OpenHeartbeats() => OnSelected.InvokeAsync("heartbeats");
+    private Task OpenTeam() => OnSelected.InvokeAsync("team");
     private Task OpenTailcat() => OnSelected.InvokeAsync("tailcat");
     private Task OpenBackup() => OnSelected.InvokeAsync("backup");
     private Task OpenTransferQueue() => OnSelected.InvokeAsync("transferqueue");

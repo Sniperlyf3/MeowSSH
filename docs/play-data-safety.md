@@ -71,6 +71,20 @@ Built as of 2026-09-25. Nothing is sent until the user creates a monitor.
 - **User control:** delete a monitor in the app and it is removed immediately.
 - **Background work:** the app schedules periodic work only while at least one monitor exists, and cancels it when the last is deleted.
 
+### Teams (Team tier)
+
+Built as of 2026-09-25. Team is not on sale yet. Nothing is sent until the user starts or joins a team.
+
+- **What is transmitted:**
+  - the team name and each member's display name, which the users type;
+  - shared hosts' labels, host names or IP addresses, ports and optional user names, which the owner chooses to share;
+  - invite codes, which the server stores only as hashes;
+  - a random per-install member secret, sent as a bearer credential and stored only as a hash.
+- **Stored by the service:** an activity log of team changes (joins, leaves, removals, invites, host shares), with display names and times. It is not a record of connections or session activity.
+- **Likely Data safety categories:** the display name as "Personal info → Name", and shared host addresses as "App activity → other user-generated content", collected for app functionality and shared only with the other members of the same team.
+- **Not transmitted:** passwords, private keys, passphrases, tailcat addresses, proxy settings, session content, push tokens or device identifiers.
+- **User control:** leave or delete a team in the app and the data is removed immediately.
+
 ### Ask AI (Pro Cloud hosted AI)
 
 Built as of 2026-09-25, and off on the service until an operator enables it with a model provider key.

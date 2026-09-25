@@ -80,6 +80,21 @@ A heartbeat monitor watches a job the user runs, such as a nightly backup, from 
 - **Checking for alerts:** while any monitor exists, Android runs a background check roughly every 15 minutes, including when MeowSSH is closed. The check asks the service for the monitors' states, and notifications are created on the phone. No push token or device identifier is sent to MeowSSH or Google for this.
 - **Deletion:** deleting a monitor in the app removes it from the service immediately, and its URL stops working. Monitors remain until deleted, including if Pro Cloud lapses. They stay listed and deletable, but background alerts stop.
 
+## Teams (MeowSSH Team)
+
+A team lets its owner share host addresses with the people they invite. It is an address book only: no password, private key or other credential is ever shared, and each member signs in to a server with their own key or password from their own vault.
+
+- **What the service keeps per team:**
+  - the team's name;
+  - each member's chosen display name, role (owner or member) and join date;
+  - for each shared host: its label, host name or IP address, port and, if the owner includes one, a user name;
+  - open invites, as one-way hashes of their codes, with their expiry times;
+  - an activity log of changes to the team: who created it, who joined, left or was removed, which invites were created or revoked, and which hosts were shared or unshared, each with the time and the display name of whoever did it. It does not record connections or anything typed in a session.
+- **Who sees what:** members see the team's name, members and shared hosts. Only the owner sees open invites and the activity log.
+- **Which hosts can be shared:** plain SSH hosts reached by name or IP address. Tailcat addresses are never shared, because the address itself grants access. Proxy settings, jump hosts and credentials are never shared.
+- **Identity:** a random secret generated on the phone and kept in Android secure storage, separate from the one heartbeat monitors use. It is not linked to the Google account, purchase, vault or device identifiers. Nothing is sent until the user starts or joins a team.
+- **Deletion:** leaving a team, or being removed, deletes the member's entry immediately. Deleting a team deletes everything above, including the activity log, immediately. Hosts a member already added to their own list stay in their vault.
+
 ## Ask AI (MeowSSH Pro Cloud)
 
 Ask AI explains terminal output or suggests a shell command. Nothing is sent until the user opens Ask AI and presses Explain or Suggest a command. Even then, the only thing sent is what the panel shows: the user's selection, or the last lines on screen, which the user can edit or clear first, plus any question they type. Host names, addresses, usernames, passwords and keys are not added to it.
