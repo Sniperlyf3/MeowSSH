@@ -3,6 +3,7 @@
 @inject ITeamService Teams
 @inject IHostDirectory HostDirectory
 @inject IHostEditor HostEditor
+@inject ICommandActionService Actions
 @inject IJSRuntime Js
 
 @*
@@ -139,6 +140,81 @@
             }
         </div>
 
+        <div class="settings__section" data-testid="team-actions">
+            <h2 class="section-label">Shared Actions</h2>
+            @if (_team.Actions.Count == 0)
+            {
+                <p class="setting-card__body" data-testid="team-no-actions">@(_team.IsOwner ? "No Actions shared yet." : "The owner has not shared any Actions yet.")</p>
+            }
+            else
+            {
+                @if (_sshHosts.Count > 0)
+                {
+                    <label class="field">
+                        <span class="field__label">Add to my Actions, running on</span>
+                        <select class="field__input" data-testid="team-action-host" disabled="@_busy" @bind="_actionHostId">
+                            <option value="">Choose one of your hosts</option>
+                            @foreach (var host in _sshHosts)
+                            {
+                                <option value="@host.Id">@host.Label</option>
+                            }
+                        </select>
+                    </label>
+                }
+                else
+                {
+                    <p class="setting-card__body" data-testid="team-action-no-hosts">Add an SSH host first; a shared Action runs on hosts you choose.</p>
+                }
+                <ul class="setting-list">
+                    @foreach (var shared in _team.Actions)
+                    {
+                        var mine = _myActions.Any(a => TeamActions.Matches(a, shared));
+                        <li class="setting-card" data-testid="team-action">
+                            <span class="setting-card__copy">
+                                <span class="setting-card__title">@shared.Name</span>
+                                <code class="ai-panel__command mono" data-testid="team-action-command">@shared.Command</code>
+                            </span>
+                            @if (mine)
+                            {
+                                <span class="setting-card__body" data-testid="team-action-added">In your Actions</span>
+                            }
+                            else
+                            {
+                                <button type="button" class="btn btn--ghost" data-testid="team-action-add" disabled="@(_busy || string.IsNullOrEmpty(_actionHostId))"
+                                        @onclick="() => AddToMyActionsAsync(shared)">Add to my Actions</button>
+                            }
+                            @if (_team.IsOwner)
+                            {
+                                <button type="button" class="btn btn--danger" data-testid="team-action-remove" disabled="@_busy"
+                                        @onclick="() => UnshareActionAsync(shared.Id)">Stop sharing</button>
+                            }
+                        </li>
+                    }
+                </ul>
+            }
+
+            @if (_team.IsOwner && Teams.CanOwn)
+            {
+                var shareable = ShareableActions();
+                @if (shareable.Count > 0)
+                {
+                    <label class="field">
+                        <span class="field__label">Share one of your Actions</span>
+                        <select class="field__input" data-testid="team-action-share-select" disabled="@_busy" @bind="_shareActionId">
+                            <option value="">Choose an Action</option>
+                            @foreach (var action in shareable)
+                            {
+                                <option value="@action.Id">@action.Name</option>
+                            }
+                        </select>
+                    </label>
+                    <button type="button" class="btn btn--primary btn--block" data-testid="team-action-share"
+                            disabled="@(_busy || string.IsNullOrEmpty(_shareActionId))" @onclick="ShareActionAsync">Share command</button>
+                }
+                <p class="setting-card__body">The command is shared exactly as written, so never put a password or token in it: use a variable such as {{token}}, which each person fills in when they run it. Which hosts it runs on is not shared.</p>
+            }
+        </div>
+
         <div class="settings__section">
             <h2 class="section-label">Members</h2>
             <ul class="setting-list">
@@ -229,6 +305,10 @@
 @code {
     private TeamInfo? _team;
     private IReadOnlyList<HostRecord> _vaultHosts = [];
+    private IReadOnlyList<HostRecord> _sshHosts = [];
+    private IReadOnlyList<CommandAction> _myActions = [];
+    private string _actionHostId = "";
+    private string _shareActionId = "";
     private IReadOnlyList<TeamAuditEntry>? _audit;
     private CreatedTeamInvite? _newInvite;
     private string _joinCode = "";
@@ -254,6 +334,8 @@
     private async Task ReloadAsync()
     {
         _vaultHosts = [.. (await HostDirectory.GetHostsAsync()).Select(s => s.Host).Where(h => !h.IsDeleted)];
+        _sshHosts = [.. _vaultHosts.Where(h => h.Protocol == HostProtocol.Ssh).OrderBy(h => h.Label, StringComparer.OrdinalIgnoreCase)];
+        _myActions = await Actions.GetAllAsync();
         _team = await Teams.GetMineAsync();
         if (_team is null || !_team.IsOwner) _audit = null;
     }
@@ -318,6 +400,32 @@
         _message = $"{host.Label} added to your hosts. Open it there to choose your key or password.";
     });
 
+    private Task ShareActionAsync() => RunAsync(async () =>
+    {
+        var action = _myActions.FirstOrDefault(a => a.Id.ToString() == _shareActionId)
+            ?? throw new InvalidOperationException("That Action no longer exists.");
+        await Teams.ShareActionAsync(action);
+        _shareActionId = "";
+        await ReloadAsync();
+        _message = $"{action.Name} is shared. Members add it to their own Actions and choose their own hosts.";
+    });
+
+    private Task UnshareActionAsync(string actionId) => RunAsync(async () =>
+    {
+        await Teams.UnshareActionAsync(actionId);
+        await ReloadAsync();
+        _message = "No longer shared. Members who already added it keep their own copy.";
+    });
+
+    private Task AddToMyActionsAsync(TeamSharedAction shared) => RunAsync(async () =>
+    {
+        var host = _sshHosts.FirstOrDefault(h => h.Id.ToString() == _actionHostId)
+            ?? throw new InvalidOperationException("Choose which of your hosts it should run on.");
+        await Actions.SaveAsync(TeamActions.ToCommandAction(shared, host.Id));
+        await ReloadAsync();
+        _message = $"{shared.Name} added to your Actions, running on {host.Label}. Change its hosts there.";
+    });
+
     private Task LoadAuditAsync() => RunAsync(async () => _audit = await Teams.AuditAsync());
 
     private Task LeaveAsync() => RunAsync(async () =>
@@ -365,7 +473,7 @@
         }
         // Broad on purpose: anything escaping a handler stops the renderer,
         // and these messages are written for the user.
-        catch (Exception exception) when (exception is InvalidOperationException or TeamException
+        catch (Exception exception) when (exception is InvalidOperationException or TeamException or ArgumentException
             or HttpRequestException or System.Text.Json.JsonException)
         {
             _message = exception.Message;
@@ -382,6 +490,12 @@
             .OrderBy(h => h.Label, StringComparer.OrdinalIgnoreCase),
     ];
 
+    private List<CommandAction> ShareableActions() =>
+    [
+        .. _myActions.Where(a => !_team!.Actions.Any(s => TeamActions.Matches(a, s)))
+            .OrderBy(a => a.Name, StringComparer.OrdinalIgnoreCase),
+    ];
+
     private static string Address(TeamSharedHost host) =>
         (host.Username.Length > 0 ? host.Username + "@" : "") + host.Host + (host.Port == 22 ? "" : $":{host.Port}");
 
@@ -395,6 +509,8 @@
         "member_removed" => $"{entry.ActorName} removed {entry.Subject}",
         "host_shared" => $"{entry.ActorName} shared {entry.Subject}",
         "host_removed" => $"{entry.ActorName} stopped sharing {entry.Subject}",
+        "action_shared" => $"{entry.ActorName} shared the Action {entry.Subject}",
+        "action_removed" => $"{entry.ActorName} stopped sharing the Action {entry.Subject}",
         _ => $"{entry.ActorName}: {entry.Action.Replace('_', ' ')}",
     };
 }

@@ -88,9 +88,10 @@ A team lets its owner share host addresses with the people they invite. It is an
   - the team's name;
   - each member's chosen display name, role (owner or member) and join date;
   - for each shared host: its label, host name or IP address, port and, if the owner includes one, a user name;
+  - for each shared Action: its name, command text and timeout. Runtime variables stay as placeholders such as `{{branch}}`; the values people type when running them are never sent. Which hosts an Action runs on is never shared;
   - open invites, as one-way hashes of their codes, with their expiry times;
-  - an activity log of changes to the team: who created it, who joined, left or was removed, which invites were created or revoked, and which hosts were shared or unshared, each with the time and the display name of whoever did it. It does not record connections or anything typed in a session.
-- **Who sees what:** members see the team's name, members and shared hosts. Only the owner sees open invites and the activity log.
+  - an activity log of changes to the team: who created it, who joined, left or was removed, which invites were created or revoked, and which hosts and Actions were shared or unshared, each with the time and the display name of whoever did it. It does not record connections or anything typed in a session.
+- **Who sees what:** members see the team's name, members, shared hosts and shared Actions. Only the owner sees open invites and the activity log.
 - **Which hosts can be shared:** plain SSH hosts reached by name or IP address. Tailcat addresses are never shared, because the address itself grants access. Proxy settings, jump hosts and credentials are never shared.
 - **Identity:** a random secret generated on the phone and kept in Android secure storage, separate from the one heartbeat monitors use. It is not linked to the Google account, purchase, vault or device identifiers. Nothing is sent until the user starts or joins a team.
 - **Deletion:** leaving a team, or being removed, deletes the member's entry immediately. Deleting a team deletes everything above, including the activity log, immediately. Hosts a member already added to their own list stay in their vault.
