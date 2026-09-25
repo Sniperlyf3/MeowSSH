@@ -840,6 +840,13 @@ h1:focus, h2:focus, h3:focus, [tabindex="-1"]:focus { outline: none; box-shadow:
 
 .sheet--danger { border-top-color: var(--danger); }
 
+/* Heartbeat monitors: a state badge readable at a glance, colour plus word. */
+.heartbeat { flex-direction: column; align-items: stretch; gap: var(--space-2); }
+.heartbeat__state { align-self: flex-start; padding: 0 var(--space-2); border-radius: var(--radius-sm); font-size: var(--text-sm); font-weight: 600; background: var(--surface-sunken); }
+.heartbeat__state--up { color: var(--ok); }
+.heartbeat__state--late { color: var(--warn); }
+.heartbeat__state--down, .heartbeat__state--failing { color: var(--danger); }
+
 /* Ask AI: a sheet over the terminal, capped so the output being asked about
    stays partly visible above it, and scrolling rather than growing. */
 .ai-panel { max-height: 80dvh; overflow-y: auto; }

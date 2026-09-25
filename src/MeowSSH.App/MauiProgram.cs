@@ -112,6 +112,16 @@ public static class MauiProgram
             sp.GetRequiredService<HttpClient>(),
             sp.GetRequiredService<LicensingApiOptions>()));
         builder.Services.AddSingleton<IHostedAiService, HostedAiService>();
+        builder.Services.AddSingleton<IHeartbeatMonitorApi>(sp => new HttpHeartbeatMonitorApi(
+            sp.GetRequiredService<HttpClient>(),
+            sp.GetRequiredService<LicensingApiOptions>()));
+        builder.Services.AddSingleton<IMonitorOwnerSecretStore, SecureStorageMonitorOwnerSecretStore>();
+        builder.Services.AddSingleton<IHeartbeatLocalStore>(_ => new FileHeartbeatLocalStore(
+            Path.Combine(FileSystem.AppDataDirectory, "heartbeat-monitors.json")));
+        builder.Services.AddSingleton<IHeartbeatAlertSink, AndroidHeartbeatAlertSink>();
+        builder.Services.AddSingleton<IHeartbeatCheckScheduler, AndroidHeartbeatCheckScheduler>();
+        builder.Services.AddSingleton<INotificationConsent, AndroidNotificationConsent>();
+        builder.Services.AddSingleton<IHeartbeatMonitorService, HeartbeatMonitorService>();
         builder.Services.AddSingleton<IPortForwardProfileStore>(_ => new FilePortForwardProfileStore(
             Path.Combine(FileSystem.AppDataDirectory, "port-forward-profiles.json")));
         builder.Services.AddSingleton<IPortForwardProfileService, PortForwardProfileService>();

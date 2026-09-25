@@ -1,0 +1,219 @@
+@using MeowSSH.Core.Services
+@inject IHeartbeatMonitorService Heartbeats
+@inject INotificationConsent Notifications
+@inject IJSRuntime Js
+
+@*
+    Monitors watch the user's own jobs from outside: each one gets a URL the
+    job requests when it finishes, and silence (or its /fail URL) raises a
+    notification on this phone. MeowSSH never logs in to the host for this,
+    so no credential leaves the vault.
+*@
+
+<section class="settings" data-testid="heartbeats-page">
+    <div class="settings__section">
+        <h2 class="section-label">Heartbeat monitors <span class="action-pro-badge">PRO CLOUD</span></h2>
+        <div class="setting-card">
+            <span class="setting-card__copy">
+                <span class="setting-card__title">Know when a job stops running</span>
+                <span class="setting-card__body">Add one line to a cron job or script. If it stops checking in, or reports a failure, this phone gets a notification, even when MeowSSH is closed. MeowSSH never logs in to your server for this.</span>
+            </span>
+        </div>
+    </div>
+
+    @if (Heartbeats.CanUse)
+    {
+        <div class="settings__section" data-testid="heartbeat-create-form">
+            <label class="field">
+                <span class="field__label">What does it watch?</span>
+                <input class="field__input" type="text" maxlength="60" placeholder="e.g. nightly database backup"
+                       data-testid="heartbeat-name" disabled="@_busy" @bind="_name" @bind:event="oninput" />
+            </label>
+            <label class="field">
+                <span class="field__label">It runs every</span>
+                <select class="field__input" data-testid="heartbeat-period" disabled="@_busy" @bind="_periodMinutes">
+                    @foreach (var (minutes, label) in Periods)
+                    {
+                        <option value="@minutes">@label</option>
+                    }
+                </select>
+            </label>
+            <label class="field">
+                <span class="field__label">Alert if it is later than</span>
+                <select class="field__input" data-testid="heartbeat-grace" disabled="@_busy" @bind="_graceMinutes">
+                    @foreach (var (minutes, label) in Graces)
+                    {
+                        <option value="@minutes">@label</option>
+                    }
+                </select>
+            </label>
+            <button type="button" class="btn btn--primary btn--block" data-testid="heartbeat-create"
+                    disabled="@(_busy || string.IsNullOrWhiteSpace(_name))" @onclick="CreateAsync">Add monitor</button>
+            @if (_notificationsDenied)
+            {
+                <p class="setting-card__body" role="alert" data-testid="heartbeat-notifications-off">Notifications are off for MeowSSH, so monitors cannot alert you. Turn them on in Android settings.</p>
+            }
+        </div>
+    }
+    else
+    {
+        <p class="setting-card__body" data-testid="heartbeat-upsell">Heartbeat monitors need MeowSSH Pro Cloud. Existing monitors stay listed below and can be deleted.</p>
+    }
+
+    <div class="settings__section">
+        <div class="ai-panel__header">
+            <h2 class="section-label">Your monitors</h2>
+            <button type="button" class="btn btn--ghost" data-testid="heartbeat-refresh" disabled="@_busy" @onclick="RefreshAsync">Refresh</button>
+        </div>
+
+        @if (_monitors is null)
+        {
+            <p class="setting-card__body" role="status">Loading…</p>
+        }
+        else if (_monitors.Count == 0)
+        {
+            <p class="setting-card__body" data-testid="heartbeat-empty">No monitors yet.</p>
+        }
+        else
+        {
+            <ul class="setting-list">
+                @foreach (var monitor in _monitors)
+                {
+                    <li class="setting-card heartbeat" data-testid="heartbeat-monitor">
+                        <span class="setting-card__copy">
+                            <span class="setting-card__title">@monitor.Name</span>
+                            <span class="heartbeat__state heartbeat__state--@monitor.State" data-testid="heartbeat-state">@Label(monitor.State)</span>
+                            <span class="setting-card__body">Every @Describe(monitor.PeriodSeconds) · @(monitor.LastPingAtUtc is { } last ? $"last ping {last.ToLocalTime():yyyy-MM-dd HH:mm}" : "no ping yet")</span>
+                        </span>
+
+                        @if (_pingUrls.TryGetValue(monitor.Id, out var url) && url is not null)
+                        {
+                            var command = $"curl -fsS -m 10 --retry 3 {url} > /dev/null";
+                            <code class="ai-panel__command mono" data-testid="heartbeat-command">@command</code>
+                            <p class="setting-card__body">Run it at the end of the job. To report a failure too: <span class="mono" data-testid="heartbeat-fail-hint">your-job &amp;&amp; curl -fsS @url || curl -fsS @(url)/fail</span></p>
+                            <button type="button" class="btn btn--ghost" data-testid="heartbeat-copy" @onclick="() => CopyAsync(command)">Copy command</button>
+                        }
+                        else
+                        {
+                            <p class="setting-card__body" data-testid="heartbeat-no-token">Its ping URL is only on the phone that created it.</p>
+                        }
+
+                        <button type="button" class="btn btn--danger" data-testid="heartbeat-delete" disabled="@_busy"
+                                @onclick="() => DeleteAsync(monitor.Id)">Delete</button>
+                    </li>
+                }
+            </ul>
+        }
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(_message))
+    {
+        <p class="setting-card__body" role="status" data-testid="heartbeat-message">@_message</p>
+    }
+</section>
+
+@code {
+    private static readonly (int Minutes, string Label)[] Periods =
+    [
+        (5, "5 minutes"), (15, "15 minutes"), (60, "hour"), (360, "6 hours"), (1440, "day"), (10080, "week"),
+    ];
+
+    private static readonly (int Minutes, string Label)[] Graces =
+    [
+        (5, "5 minutes"), (15, "15 minutes"), (60, "1 hour"), (360, "6 hours"),
+    ];
+
+    private IReadOnlyList<HeartbeatMonitorInfo>? _monitors;
+    private readonly Dictionary<string, Uri?> _pingUrls = new(StringComparer.Ordinal);
+    private string _name = "";
+    private int _periodMinutes = 1440;
+    private int _graceMinutes = 60;
+    private bool _busy;
+    private bool _notificationsDenied;
+    private string? _message;
+
+    protected override Task OnInitializedAsync() => RefreshAsync();
+
+    private Task RefreshAsync() => RunAsync(ReloadAsync);
+
+    // Unguarded on purpose: create and delete call it from inside their own
+    // RunAsync, where going through the busy guard again would silently skip
+    // the reload and leave the list showing what was there before.
+    private async Task ReloadAsync()
+    {
+        _monitors = await Heartbeats.ListAsync();
+        _pingUrls.Clear();
+        foreach (var monitor in _monitors) _pingUrls[monitor.Id] = await Heartbeats.PingUrlAsync(monitor.Id);
+    }
+
+    private Task CreateAsync() => RunAsync(async () =>
+    {
+        // Asked here, when a monitor is about to exist, rather than at app
+        // start: the prompt then has an obvious reason attached to it.
+        _notificationsDenied = !await Notifications.EnsureAsync();
+        await Heartbeats.CreateAsync(_name, TimeSpan.FromMinutes(_periodMinutes), TimeSpan.FromMinutes(_graceMinutes));
+        _name = "";
+        await ReloadAsync();
+        _message = "Monitor added. Add its command to the job, then it starts watching after the first ping.";
+    });
+
+    private Task DeleteAsync(string id) => RunAsync(async () =>
+    {
+        await Heartbeats.DeleteAsync(id);
+        await ReloadAsync();
+        _message = "Monitor deleted. Its ping URL no longer works.";
+    });
+
+    private async Task CopyAsync(string command)
+    {
+        try
+        {
+            await Js.InvokeVoidAsync("navigator.clipboard.writeText", command);
+            _message = "Command copied.";
+        }
+        catch (JSException)
+        {
+            _message = "Copy is not available here; select the command and copy it.";
+        }
+    }
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        if (_busy) return;
+        _busy = true;
+        _message = null;
+        try
+        {
+            await action();
+        }
+        // Broad on purpose: anything escaping a handler stops the renderer,
+        // and these messages are written for the user.
+        catch (Exception exception) when (exception is InvalidOperationException or HeartbeatMonitorException
+            or HttpRequestException or System.Text.Json.JsonException)
+        {
+            _monitors ??= [];
+            _message = exception.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private static string Label(string state) => state switch
+    {
+        HeartbeatStates.Up => "Up",
+        HeartbeatStates.Late => "Late",
+        HeartbeatStates.Down => "Down",
+        HeartbeatStates.Failing => "Failing",
+        _ => "Waiting for first ping",
+    };
+
+    private static string Describe(int seconds) => seconds switch
+    {
+        >= 7 * 86400 when seconds % (7 * 86400) == 0 => seconds == 7 * 86400 ? "week" : $"{seconds / (7 * 86400)} weeks",
+        >= 86400 when seconds % 86400 == 0 => seconds == 86400 ? "day" : $"{seconds / 86400} days",
+        >= 3600 when seconds % 3600 == 0 => seconds == 3600 ? "hour" : $"{seconds / 3600} hours",
+        _ => $"{seconds / 60} minutes",
+    };
+}

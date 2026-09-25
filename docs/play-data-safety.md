@@ -59,6 +59,18 @@ Built as of 2026-09-25, and off until the user turns it on. It needs cloud backu
 - **What is stored:** only the latest synced copy, apart from the backup versions. There is no extra identifier beyond the backup's locator.
 - **User control:** "Delete cloud backups" erases it too, and sync can be turned off per phone.
 
+### Heartbeat monitors (Pro Cloud push monitoring)
+
+Built as of 2026-09-25. Nothing is sent until the user creates a monitor.
+
+- **What is transmitted:**
+  - monitor names and schedules the user types;
+  - a random per-install owner secret, sent as a bearer credential and stored by the server only as a hash;
+  - periodic status checks from WorkManager while monitors exist.
+- **Not transmitted:** host names, addresses, credentials, push tokens, or device identifiers.
+- **User control:** delete a monitor in the app and it is removed immediately.
+- **Background work:** the app schedules periodic work only while at least one monitor exists, and cancels it when the last is deleted.
+
 ### Ask AI (Pro Cloud hosted AI)
 
 Built as of 2026-09-25, and off on the service until an operator enables it with a model provider key.
