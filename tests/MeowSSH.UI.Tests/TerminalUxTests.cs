@@ -52,7 +52,7 @@ public class TerminalUxTests(TestHostFixture fixture)
 
         await Assertions.Expect(page.GetByTestId("theme-dracula")).ToHaveAttributeAsync("aria-checked", "true");
 
-        await page.ReloadAsync();
+        await TestHostFixture.ReloadAsync(page);
         await page.GetByTestId("tab-settings").ClickAsync();
         await page.GetByTestId("open-appearance-settings").ClickAsync();
         await Assertions.Expect(page.GetByTestId("theme-dracula")).ToHaveAttributeAsync("aria-checked", "true");

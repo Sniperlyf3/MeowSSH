@@ -178,6 +178,9 @@ public static class VaultFile
             writer.WriteNullableString(host.Group);
             writer.WriteBoolean(host.IsFavorite);
         }
+
+        if (schemaVersion >= 5)
+            writer.WriteNullableString(host.TerminalTheme);
     }
 
     private static HostRecord ReadHost(ref VaultReader reader, int schemaVersion)
@@ -233,6 +236,8 @@ public static class VaultFile
             isFavorite = reader.ReadBoolean();
         }
 
+        var terminalTheme = schemaVersion >= 5 ? reader.ReadNullableString() : null;
+
         return new HostRecord
         {
             Id = id,
@@ -247,6 +252,7 @@ public static class VaultFile
             ForwardAgent = forwardAgent,
             Group = group,
             IsFavorite = isFavorite,
+            TerminalTheme = terminalTheme,
             SerialBaudRate = serialBaudRate,
             SerialDataBits = serialDataBits,
             SerialStopBits = serialStopBits,

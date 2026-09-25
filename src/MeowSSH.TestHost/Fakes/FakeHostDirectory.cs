@@ -15,7 +15,12 @@ public sealed class FakeHostDirectory : IHostDirectory, IHostEditor
     /// and a second public constructor it could also pick makes activation
     /// ambiguous and fails the whole host at startup.
     /// </summary>
-    private FakeHostDirectory(bool empty) => _hosts = empty ? [] : BuildSample();
+    private FakeHostDirectory(bool empty, bool hostTheme)
+    {
+        _hosts = empty ? [] : BuildSample();
+        if (hostTheme && _hosts.Count > 0)
+            _hosts[0] = _hosts[0] with { Host = _hosts[0].Host with { TerminalTheme = "dracula" } };
+    }
 
     /// <summary>
     /// The constructor DI uses. Starts with an empty vault when the page was
@@ -31,10 +36,17 @@ public sealed class FakeHostDirectory : IHostDirectory, IHostEditor
     /// untestable. This directory is scoped per circuit, so a test opting in
     /// gets its own empty vault without touching the sample one every other
     /// test is written against; no existing query string contains "nohosts"
-    /// ("newhost", the nearest, does not).
+    /// ("newhost", the nearest, does not). "hosttheme" gives the first sample
+    /// host the Dracula theme, which is otherwise only reachable by saving it
+    /// on a Pro page -- a page whose tier then cannot change, so the lapsed-Pro
+    /// render of a saved host theme would be untestable. A free palette on
+    /// purpose: a per-host theme is Pro whichever theme it names, and only a
+    /// free one proves that gate rather than the premium-palette gate.
     /// </remarks>
     public FakeHostDirectory(NavigationManager navigation)
-        : this(new Uri(navigation.Uri).Query.Contains("nohosts", StringComparison.OrdinalIgnoreCase))
+        : this(
+            new Uri(navigation.Uri).Query.Contains("nohosts", StringComparison.OrdinalIgnoreCase),
+            new Uri(navigation.Uri).Query.Contains("hosttheme", StringComparison.OrdinalIgnoreCase))
     {
     }
 

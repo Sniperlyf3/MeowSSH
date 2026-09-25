@@ -1,6 +1,7 @@
 @using MeowSSH.Core.Ssh
 @implements IAsyncDisposable
 @inject IJSRuntime Js
+@inject IEntitlementService Entitlements
 
 <div class="terminal" data-testid="terminal">
     <div class="terminal__surface" id="@_elementId"></div>
@@ -50,6 +51,9 @@
 
     [Parameter, EditorRequired] public ITerminalSession Shell { get; set; } = default!;
     [Parameter] public EventCallback<Exception> OnWriteFailed { get; set; }
+
+    /// <summary>The host's own theme (Pro); terminal.js ignores it without Pro.</summary>
+    [Parameter] public string? HostTheme { get; set; }
 
     private sealed record QuickKey(string Id, string Label, byte[] Bytes);
 
@@ -110,6 +114,8 @@
         {
             fontFamily = "'JetBrains Mono', ui-monospace, monospace",
             fontSize = 13,
+            premium = Entitlements.Has(PremiumFeature.PremiumCustomization),
+            hostTheme = HostTheme,
         });
 
         await Shell.ResizeAsync(size.Cols, size.Rows);

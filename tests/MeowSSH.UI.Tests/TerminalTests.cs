@@ -12,6 +12,11 @@ public class TerminalTests(TestHostFixture fixture)
         await Assertions.Expect(page.GetByTestId("terminal")).ToBeVisibleAsync();
         await Assertions.Expect(page.Locator(".xterm-screen")).ToBeVisibleAsync();
         await Assertions.Expect(page.GetByTestId("session")).ToContainTextAsync("prod-web-01");
+        // TerminalView focuses the terminal only after create, resize and the
+        // backlog write -- later than .xterm-screen appears. Typing before
+        // then drops the keys: TypedInputIsEchoedAndTheCommandRuns failed
+        // intermittently that way (prompt shown, "pwd" never echoed).
+        await Assertions.Expect(page.Locator(".xterm-helper-textarea")).ToBeFocusedAsync();
         return page;
     }
 
@@ -218,6 +223,10 @@ public class TerminalTests(TestHostFixture fixture)
         await Assertions.Expect(page.GetByTestId("settings-page")).ToBeVisibleAsync();
         await page.GetByTestId("open-appearance-settings").ClickAsync();
         await Assertions.Expect(page.GetByTestId("appearance-settings-page")).ToBeVisibleAsync();
+        // The value is set by script below, which skips Playwright's usual
+        // wait-for-enabled; without this the change could land before the
+        // page loaded its stored preferences.
+        await Assertions.Expect(page.GetByTestId("appearance-settings-page")).ToHaveAttributeAsync("data-ready", "true");
 
         var slider = page.GetByTestId("terminal-zoom");
         await slider.EvaluateAsync(
@@ -230,7 +239,7 @@ public class TerminalTests(TestHostFixture fixture)
         Assert.Equal("140", await page.EvaluateAsync<string>(
             "() => localStorage.getItem('meowssh.terminal.zoom')"));
 
-        await page.ReloadAsync();
+        await TestHostFixture.ReloadAsync(page);
         await page.GetByTestId("tab-settings").ClickAsync();
         await page.GetByTestId("open-appearance-settings").ClickAsync();
         await Assertions.Expect(page.GetByTestId("terminal-zoom-value")).ToHaveTextAsync("140%");

@@ -97,13 +97,27 @@ public sealed class TestHostFixture : IAsyncLifetime
         // Blazor server-renders the markup first and wires up handlers only once
         // the circuit connects. Acting before that point clicks a button that
         // exists but does nothing, which looks exactly like a broken feature.
+        await WaitForInteractiveAsync(page);
+        return page;
+    }
+
+    /// <summary>
+    /// A reload starts a new circuit and has exactly the same not-yet-wired
+    /// window as the first load. Tests that reloaded without this clicked into
+    /// it and intermittently timed out 30 s later waiting for the next screen.
+    /// </summary>
+    public static async Task ReloadAsync(IPage page)
+    {
+        await page.ReloadAsync();
+        await WaitForInteractiveAsync(page);
+    }
+
+    private static async Task WaitForInteractiveAsync(IPage page) =>
         await page.WaitForSelectorAsync("[data-testid=interactive]", new()
         {
             State = WaitForSelectorState.Attached,
             Timeout = 30_000,
         });
-        return page;
-    }
 
     private async Task WaitForReadyAsync()
     {

@@ -95,4 +95,49 @@ public sealed class VaultMigrationTests
         Assert.Equal(host.Id, Assert.Single(reopened.Hosts).Id);
         Assert.Equal(credential.Id, Assert.Single(reopened.Credentials).Id);
     }
+
+    [Fact]
+    public void Schema4VaultOpensWithNoPerHostThemeAndKeepsItsGroupAndFavorite()
+    {
+        using var keyRing = VaultKeyRing.CreateNew();
+        var document = VaultDocument.CreateEmpty("device") with
+        {
+            Revision = 7,
+            Hosts =
+            [
+                new HostRecord
+                {
+                    Id = Guid.NewGuid(),
+                    Label = "db-primary",
+                    Address = "10.0.0.5",
+                    Group = "production",
+                    IsFavorite = true,
+                    // Did not exist in schema 4; must not leak into its bytes.
+                    TerminalTheme = "must-not-exist-in-v4",
+                },
+            ],
+        };
+
+        var schema4Bytes = VaultFile.Write(document, keyRing, schemaVersion: 4);
+        var host = Assert.Single(VaultFile.Read(schema4Bytes, keyRing).Hosts);
+
+        Assert.Null(host.TerminalTheme);
+        Assert.Equal("production", host.Group);
+        Assert.True(host.IsFavorite);
+    }
+
+    [Fact]
+    public void ThePerHostThemeRoundTripsThroughTheCurrentSchema()
+    {
+        using var keyRing = VaultKeyRing.CreateNew();
+        var document = VaultDocument.CreateEmpty("device") with
+        {
+            Revision = 1,
+            Hosts = [new HostRecord { Id = Guid.NewGuid(), Label = "prod", Address = "x", TerminalTheme = "danger" }],
+        };
+
+        var reopened = VaultFile.Read(VaultFile.Write(document, keyRing), keyRing);
+
+        Assert.Equal("danger", Assert.Single(reopened.Hosts).TerminalTheme);
+    }
 }
