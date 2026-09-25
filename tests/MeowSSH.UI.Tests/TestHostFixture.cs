@@ -15,6 +15,17 @@ namespace MeowSSH.UI.Tests;
 /// </remarks>
 public sealed class TestHostFixture : IAsyncLifetime
 {
+    /// <summary>
+    /// How many browser contexts stay open. Tests never close their pages, and
+    /// each context is a live Chromium renderer: a full local run used to pile
+    /// up one per test (hundreds of processes) until the machine stalled. No
+    /// test uses more than three pages at once, so closing all but the newest
+    /// eight never touches a page a running test still holds.
+    /// </summary>
+    private const int OpenContextLimit = 8;
+
+    private readonly Queue<IBrowserContext> _contexts = new();
+    private readonly object _contextGate = new();
     private Process? _host;
     private IPlaywright? _playwright;
 
@@ -91,6 +102,7 @@ public sealed class TestHostFixture : IAsyncLifetime
             ViewportSize = new ViewportSize { Width = 390, Height = 844 },
             IsMobile = false,
         });
+        await RetireOldContextsAsync(context);
         var page = await context.NewPageAsync();
         await page.GotoAsync(BaseUrl + path);
 
@@ -99,6 +111,17 @@ public sealed class TestHostFixture : IAsyncLifetime
         // exists but does nothing, which looks exactly like a broken feature.
         await WaitForInteractiveAsync(page);
         return page;
+    }
+
+    private async Task RetireOldContextsAsync(IBrowserContext newest)
+    {
+        List<IBrowserContext> retired = [];
+        lock (_contextGate)
+        {
+            _contexts.Enqueue(newest);
+            while (_contexts.Count > OpenContextLimit) retired.Add(_contexts.Dequeue());
+        }
+        foreach (var context in retired) await context.CloseAsync();
     }
 
     /// <summary>
