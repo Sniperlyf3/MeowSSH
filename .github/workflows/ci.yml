@@ -30,6 +30,8 @@ jobs:
         run: dotnet build --no-restore --configuration Release
       - name: Unit tests
         run: dotnet test tests/MeowSSH.Core.Tests --no-build --configuration Release --logger "trx;LogFileName=core.trx"
+      - name: Test the Play Store bootstrap script
+        run: bash scripts/test-play-store-bootstrap.sh
       - name: Install OpenSSH server
         run: sudo apt-get update && sudo apt-get install -y openssh-server
       - name: SSH engine integration tests

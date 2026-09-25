@@ -2,6 +2,8 @@
 
 MeowSSH's paid Android catalog is intentionally small and must use these identifiers.
 
+To set up a release from scratch, run `scripts/play-store-bootstrap.sh --help`. It generates the upload keystore, writes the GitHub `production` secrets and variables (and sets them with `--apply`), can create the GitHub-to-Google publishing identity (`--gcp-project`), checks the same gates the Play Release workflow checks, and lists the Play Console steps in order, including the products below. The backend half is MeowSSHAPI's `deploy/single-node/bootstrap.sh`, which prints the API URL and public key this script takes.
+
 ## One-time product — launch product
 
 - Product ID: `meowssh_pro_lifetime`
