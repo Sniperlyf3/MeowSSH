@@ -63,6 +63,7 @@ builder.Services.AddScoped<ICloudVaultBackupService>(sp => sp.GetRequiredService
 builder.Services.AddScoped<ICloudVaultSyncService, FakeCloudVaultSyncService>();
 builder.Services.AddScoped<IHostedAiService, FakeHostedAiService>();
 builder.Services.AddScoped<IHeartbeatMonitorService, FakeHeartbeatMonitorService>();
+builder.Services.AddScoped<ITeamService, FakeTeamService>();
 builder.Services.AddScoped<INotificationConsent, AlwaysGrantedNotificationConsent>();
 builder.Services.AddScoped<IPortForwardProfileStore, MemoryPortForwardProfileStore>();
 builder.Services.AddScoped<IPortForwardProfileService, PortForwardProfileService>();

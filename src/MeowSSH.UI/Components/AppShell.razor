@@ -38,6 +38,10 @@
         {
             <HeartbeatMonitorsPage />
         }
+        else if (_activeTool == "team")
+        {
+            <TeamPage />
+        }
         else if (_activeTool == "health")
         {
             <HostHealthDashboardPage OnNavigateToHosts="@(() => SelectTabAsync("hosts"))" />
@@ -89,6 +93,7 @@
         "monitoring" => "Monitoring",
         "health" => "Host Health",
         "heartbeats" => "Heartbeats",
+        "team" => "Team",
         "backup" => "Backup",
         "transferqueue" => "Transfer Queue",
         _ when _showToolsHub => "Tools",

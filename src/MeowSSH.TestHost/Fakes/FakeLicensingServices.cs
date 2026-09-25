@@ -37,15 +37,22 @@ public sealed class FakeEntitlementService : IEntitlementService
         GrantId = "test-pro-cloud",
     };
 
+    private static readonly EntitlementSnapshot VerifiedTeam = VerifiedPro with
+    {
+        Tier = EntitlementTier.Team,
+        GrantId = "test-team",
+    };
+
     private static readonly EntitlementSnapshot Unverified = EntitlementSnapshot.Free(DateTimeOffset.UnixEpoch);
 
     public EntitlementSnapshot Current { get; }
 
-    /// <remarks>"procloud" selects the subscription tier cloud backup needs.</remarks>
+    /// <remarks>"procloud" selects the subscription tier cloud backup needs; "teamtier" selects Team.</remarks>
     public FakeEntitlementService(NavigationManager navigation)
     {
         var query = new Uri(navigation.Uri).Query;
         Current = query.Contains("free", StringComparison.OrdinalIgnoreCase) ? Unverified
+            : query.Contains("teamtier", StringComparison.OrdinalIgnoreCase) ? VerifiedTeam
             : query.Contains("procloud", StringComparison.OrdinalIgnoreCase) ? VerifiedProCloud
             : VerifiedPro;
     }

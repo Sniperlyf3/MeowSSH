@@ -122,6 +122,11 @@ public static class MauiProgram
         builder.Services.AddSingleton<IHeartbeatCheckScheduler, AndroidHeartbeatCheckScheduler>();
         builder.Services.AddSingleton<INotificationConsent, AndroidNotificationConsent>();
         builder.Services.AddSingleton<IHeartbeatMonitorService, HeartbeatMonitorService>();
+        builder.Services.AddSingleton<ITeamApi>(sp => new HttpTeamApi(
+            sp.GetRequiredService<HttpClient>(),
+            sp.GetRequiredService<LicensingApiOptions>()));
+        builder.Services.AddSingleton<ITeamMemberSecretStore, SecureStorageTeamMemberSecretStore>();
+        builder.Services.AddSingleton<ITeamService, TeamService>();
         builder.Services.AddSingleton<IPortForwardProfileStore>(_ => new FilePortForwardProfileStore(
             Path.Combine(FileSystem.AppDataDirectory, "port-forward-profiles.json")));
         builder.Services.AddSingleton<IPortForwardProfileService, PortForwardProfileService>();
