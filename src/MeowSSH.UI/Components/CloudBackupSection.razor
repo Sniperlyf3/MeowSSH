@@ -3,6 +3,7 @@
 @using MeowSSH.Core.Storage
 @inject ICloudVaultBackupService Cloud
 @inject IEncryptedVaultBackupService Backups
+@inject ICloudVaultSyncService Sync
 
 @*
     Uploading needs Pro Cloud; restoring and deleting never do. A lapsed
@@ -46,6 +47,8 @@
                 }
             </ul>
         }
+
+        <CloudSyncSection />
 
         <button type="button" class="btn btn--ghost btn--block" data-testid="cloud-disable"
                 disabled="@_busy" @onclick="DisableAsync">Turn off on this phone</button>
@@ -192,8 +195,11 @@
         _message = "Backed up to the cloud.";
     });
 
+    // Sync rides on cloud backup's credential; left on without it, it would
+    // only fail on every unlock.
     private Task DisableAsync() => RunAsync(async () =>
     {
+        await Sync.DisableAsync();
         await Cloud.DisableAsync();
         await RefreshAsync();
         _message = "Cloud backup is off on this phone. Existing cloud backups were kept.";
@@ -201,6 +207,7 @@
 
     private Task DeleteAsync() => RunAsync(async () =>
     {
+        await Sync.DisableAsync();
         await Cloud.DeleteAllAsync();
         _confirmDelete = false;
         await RefreshAsync();

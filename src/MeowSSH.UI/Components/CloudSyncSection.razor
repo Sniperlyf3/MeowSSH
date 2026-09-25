@@ -1,0 +1,103 @@
+@using MeowSSH.Core.Services
+@using MeowSSH.Core.Storage
+@implements IDisposable
+@inject ICloudVaultSyncService Sync
+
+@*
+    Shown only while cloud backup is on for this vault: sync shares its
+    recovery-code identity, which is how another phone finds this vault.
+*@
+
+<div class="settings__section" data-testid="cloud-sync-section">
+    <h2 class="section-label">Sync across devices <span class="action-pro-badge">PRO CLOUD</span></h2>
+
+    @if (Sync.CanSync || _status.Enabled)
+    {
+        <label class="forward-option">
+            <input type="checkbox" data-testid="cloud-sync-toggle" checked="@_status.Enabled"
+                   disabled="@(_busy || (!Sync.CanSync && !_status.Enabled))" @onchange="ToggleAsync" />
+            <span>
+                <strong>Keep this vault in sync</strong>
+                <small>Hosts and keys you add, edit or delete here appear on your other phones, and theirs appear here. Only the encrypted vault is sent. On another phone, restore this vault from the cloud with the same recovery code, then turn sync on there too.</small>
+            </span>
+        </label>
+    }
+    else
+    {
+        <p class="setting-card__body" data-testid="cloud-sync-upsell">Syncing hosts and keys between phones needs MeowSSH Pro Cloud.</p>
+    }
+
+    @if (_status.Enabled)
+    {
+        <p class="setting-card__body" role="status" data-testid="cloud-sync-status">@Describe()</p>
+        @if (!Sync.CanSync)
+        {
+            <p class="setting-card__body" data-testid="cloud-sync-lapsed">Pro Cloud is not active, so sync is paused. Nothing on this phone or in the cloud was removed.</p>
+        }
+        <button type="button" class="btn btn--ghost btn--block" data-testid="cloud-sync-now"
+                disabled="@(_busy || _status.Syncing || !Sync.CanSync)" @onclick="SyncNowAsync">Sync now</button>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(_error))
+    {
+        <p class="setting-card__body" role="alert" data-testid="cloud-sync-error">@_error</p>
+    }
+</div>
+
+@code {
+    private CloudSyncStatus _status = CloudSyncStatus.Off;
+    private bool _busy;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Sync.StatusChanged += OnStatusChanged;
+        _status = await Sync.LoadAsync();
+        _error = _status.LastError;
+    }
+
+    // Auto-sync runs off the UI thread; its outcome arrives here.
+    private void OnStatusChanged(object? sender, EventArgs e) => _ = InvokeAsync(() =>
+    {
+        _status = Sync.Status;
+        if (!_busy) _error = _status.LastError;
+        StateHasChanged();
+    });
+
+    private string Describe()
+    {
+        if (_status.Syncing) return "Syncing…";
+        if (_status.LastSyncedAtUtc is not { } at) return "Not synced yet.";
+        return $"Last synced {at.ToLocalTime():yyyy-MM-dd HH:mm}.";
+    }
+
+    private Task ToggleAsync(ChangeEventArgs args) =>
+        RunAsync(args.Value is true ? Sync.EnableAsync : Sync.DisableAsync);
+
+    private Task SyncNowAsync() => RunAsync(Sync.SyncNowAsync);
+
+    private async Task RunAsync(Func<CancellationToken, Task> action)
+    {
+        if (_busy) return;
+        _busy = true;
+        _error = null;
+        try
+        {
+            await action(CancellationToken.None);
+        }
+        // Broad on purpose, as in CloudBackupSection: anything escaping a
+        // handler stops the renderer, and the message is already written for the user.
+        catch (Exception exception) when (exception is InvalidOperationException or CloudBackupException
+            or VaultFormatException or HttpRequestException or System.Text.Json.JsonException)
+        {
+            _error = exception.Message;
+        }
+        finally
+        {
+            _busy = false;
+            _status = Sync.Status;
+        }
+    }
+
+    public void Dispose() => Sync.StatusChanged -= OnStatusChanged;
+}

@@ -96,6 +96,18 @@ public static class MauiProgram
             sp.GetRequiredService<HttpClient>(),
             sp.GetRequiredService<LicensingApiOptions>()));
         builder.Services.AddSingleton<ICloudVaultBackupService, CloudVaultBackupService>();
+        builder.Services.AddSingleton<ICloudSyncCheckpointStore>(_ => new FileCloudSyncCheckpointStore(
+            Path.Combine(FileSystem.AppDataDirectory, "cloud-sync.json")));
+        builder.Services.AddSingleton(sp => new CloudVaultSyncService(
+            sp.GetRequiredService<VaultStore>(),
+            sp.GetRequiredService<IVaultStorage>(),
+            sp.GetRequiredService<ICloudBackupApi>(),
+            sp.GetRequiredService<ICloudEntitlementGrantSource>(),
+            sp.GetRequiredService<ICloudBackupCredentialStore>(),
+            sp.GetRequiredService<ICloudSyncCheckpointStore>(),
+            sp.GetRequiredService<IDeviceIdentity>(),
+            sp.GetRequiredService<IEntitlementService>()));
+        builder.Services.AddSingleton<ICloudVaultSyncService>(sp => sp.GetRequiredService<CloudVaultSyncService>());
         builder.Services.AddSingleton<IPortForwardProfileStore>(_ => new FilePortForwardProfileStore(
             Path.Combine(FileSystem.AppDataDirectory, "port-forward-profiles.json")));
         builder.Services.AddSingleton<IPortForwardProfileService, PortForwardProfileService>();

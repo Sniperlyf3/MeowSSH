@@ -238,6 +238,43 @@ public sealed class VaultStore(IVaultStorage storage, TimeProvider? timeProvider
         return UpdateAsync(document => change(document, now), cancellationToken);
     }
 
+    /// <summary>
+    /// Folds another phone's copy of this vault into the open one (see
+    /// <see cref="VaultMerge"/>) and saves the result if anything changed.
+    /// </summary>
+    /// <remarks>
+    /// The other copy is opened with this vault's own master key, which every
+    /// phone restored from the same recovery code shares. Nothing is written
+    /// when that fails, so a foreign or damaged file can never replace records.
+    /// </remarks>
+    /// <returns>True when anything was merged in and saved.</returns>
+    /// <exception cref="CryptographicException">The file is not a copy of this vault.</exception>
+    /// <exception cref="VaultFormatException">The file is malformed, or from a newer app version.</exception>
+    public async ValueTask<bool> MergeAsync(ReadOnlyMemory<byte> otherCopy, string deviceId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(deviceId);
+
+        bool changed;
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            RequireUnlocked();
+            var other = VaultFile.Read(otherCopy.Span, _keyRing!);
+            (var merged, changed) = VaultMerge.Merge(_document!, other, deviceId);
+            if (changed) await SaveAsync(merged, _keyRing!, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+
+        // Only on a real change: sync listens for Changed to know there is
+        // something to push, and a no-op merge announcing itself would have it
+        // chase its own tail.
+        if (changed) Changed?.Invoke(this, EventArgs.Empty);
+        return changed;
+    }
+
     /// <summary>Zeroes the master key and drops the decrypted records.</summary>
     public void Lock()
     {
