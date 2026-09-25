@@ -32,12 +32,26 @@ Pricing is not hard-coded in MeowSSH. When Pro Cloud sales are eventually enable
 
 A subscription offer may exist under either base plan. The app prefers the base-plan offer when available and otherwise uses an eligible offer for that base plan. The selected offer token is supplied to Google Play's billing flow; the backend does not trust the base-plan choice as proof of entitlement.
 
+## Team subscription — provision when ready, do not sell yet
+
+- Product ID: `meowssh_team`
+- Type: subscription
+- Entitlement: `Team`
+- Base plans: `monthly` and `yearly`, the same ids as Pro Cloud (the app reads both for either product).
+
+Team is built (invite-code teams, shared host addresses, shared Actions, an activity log), but it is not on sale. Production builds pass `EnableTeamSales=false`: the app then neither queries nor shows a Team offer and refuses a direct Team purchase. Existing Team subscriptions (licence testers) still restore, and MeowSSHAPI already maps `meowssh_team` to `Team`.
+
+Selling it takes the Play subscription, pricing, the Data Safety answers in `docs/play-data-safety.md`, and a release-workflow change to `EnableTeamSales=true`. As with Pro Cloud, activating the product in Play Console alone does nothing.
+
+In the app, the plan screen offers every product above the user's current tier, so a Pro user can move up to Pro Cloud or Team (whichever is on sale) and a Team user is offered nothing.
+
 ## Backend contract
 
 `MeowSSHAPI` should be configured with:
 
 - `Licensing__ProLifetimeProductId=meowssh_pro_lifetime`
 - `Licensing__ProCloudProductId=meowssh_pro_cloud`
+- `Licensing__TeamProductId=meowssh_team`
 
 The backend verifies active purchases with Google Play. Billing period and offer eligibility remain Google-owned state; a valid `meowssh_pro_cloud` subscription maps to `ProCloud` regardless of whether the active base plan is monthly or yearly.
 

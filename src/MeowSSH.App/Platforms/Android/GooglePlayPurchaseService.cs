@@ -43,6 +43,14 @@ public sealed class GooglePlayPurchaseService : Java.Lang.Object, IStorePurchase
                 new[] { MeowSshProducts.ProCloud }, ProductType.Subs, cancellationToken).ConfigureAwait(false));
         }
 
+        // Same rule for Team: an active meowssh_team subscription in Play
+        // Console is not enough to put it on sale.
+        if (CommercialBuildConfig.TeamSalesEnabled)
+        {
+            products.AddRange(await QueryProductsAsync(
+                new[] { MeowSshProducts.Team }, ProductType.Subs, cancellationToken).ConfigureAwait(false));
+        }
+
         return products;
     }
 
@@ -69,6 +77,11 @@ public sealed class GooglePlayPurchaseService : Java.Lang.Object, IStorePurchase
         {
             throw new InvalidOperationException(
                 "MeowSSH Pro Cloud is not available for purchase until cloud sync is released.");
+        }
+        if (string.Equals(productId, MeowSshProducts.Team, StringComparison.Ordinal) &&
+            !CommercialBuildConfig.TeamSalesEnabled)
+        {
+            throw new InvalidOperationException("MeowSSH Team is not available for purchase yet.");
         }
 
         await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
@@ -230,6 +243,7 @@ public sealed class GooglePlayPurchaseService : Java.Lang.Object, IStorePurchase
     {
         MeowSshProducts.ProLifetime => ProductType.Inapp,
         MeowSshProducts.ProCloud => ProductType.Subs,
+        MeowSshProducts.Team => ProductType.Subs,
         _ => throw new ArgumentOutOfRangeException(nameof(productId), productId, "Unknown MeowSSH Google Play product."),
     };
 

@@ -22,4 +22,14 @@ public sealed class StoreProductPresentationTests
     {
         Assert.Equal(displayName, StoreProductPresentation.BuyerFacingName(productId, displayName));
     }
+
+    [Theory]
+    [InlineData(MeowSshProducts.ProLifetime, EntitlementTier.Pro)]
+    [InlineData(MeowSshProducts.ProCloud, EntitlementTier.ProCloud)]
+    [InlineData(MeowSshProducts.Team, EntitlementTier.Team)]
+    [InlineData("future_product", EntitlementTier.Free)]
+    public void EachProductGrantsItsTierAndAnUnknownOneNothing(string productId, EntitlementTier tier)
+    {
+        Assert.Equal(tier, MeowSshProducts.TierFor(productId));
+    }
 }

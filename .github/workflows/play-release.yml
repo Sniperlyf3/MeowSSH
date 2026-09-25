@@ -228,6 +228,7 @@ jobs:
             "-p:ApplicationVersion=${{ inputs.version_code }}" \
             "-p:EnableTailcatVpn=${{ inputs.include_tailcat_vpn }}" \
             -p:EnableProCloudSales=false \
+            -p:EnableTeamSales=false \
             "-p:TailcatDerpMapUrl=$TAILCAT_DERP_MAP_URL" \
             "-p:LicensingApiBaseUrl=$LICENSING_API_BASE_URL" \
             "-p:LicensingPublicKeySubjectPublicKeyInfoBase64=$LICENSING_PUBLIC_KEY" \
