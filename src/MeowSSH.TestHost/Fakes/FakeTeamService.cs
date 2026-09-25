@@ -12,9 +12,10 @@ namespace MeowSSH.TestHost.Fakes;
 /// </summary>
 /// <remarks>
 /// "teamowned" starts as the owner of "Ops" with Alice as a member, one open
-/// invite, and two shared hosts: build-runner (already in the sample vault)
-/// and a web server that is not. "teammember" starts as Alice in the same
-/// team. The one invite code that joins is <see cref="WorkingCode"/>.
+/// invite, two shared hosts -- build-runner (already in the sample vault)
+/// and a web server that is not -- and one shared Action. "teammember"
+/// starts as Alice in the same team. The one invite code that joins is
+/// <see cref="WorkingCode"/>.
 /// </remarks>
 public sealed class FakeTeamService : ITeamService
 {
@@ -46,7 +47,10 @@ public sealed class FakeTeamService : ITeamService
                 new TeamSharedHost("h1", "build-runner", "build.internal", 2222, "ci", Seeded),
                 new TeamSharedHost("h2", "Shared web", "web.internal", 22, "deploy", Seeded),
             ],
-            owned ? [new TeamInviteInfo("i1", Seeded, Seeded.AddDays(30))] : []);
+            owned ? [new TeamInviteInfo("i1", Seeded, Seeded.AddDays(30))] : [])
+        {
+            Actions = [new TeamSharedAction("a1", "Restart app", "sudo systemctl restart app", 60, Seeded)],
+        };
         _audit.Add(new TeamAuditEntry(Seeded, "team_created", "sam", "Sam", "Ops"));
         _audit.Add(new TeamAuditEntry(Seeded.AddDays(1), "member_joined", "alice", "Alice", null));
     }
@@ -135,6 +139,25 @@ public sealed class FakeTeamService : ITeamService
         var host = team.Hosts.Single(h => h.Id == hostId);
         _team = team with { Hosts = [.. team.Hosts.Where(h => h.Id != hostId)] };
         Log("host_removed", $"{host.Label} ({(host.Username.Length > 0 ? host.Username + "@" : "")}{host.Host}:{host.Port})");
+        return Task.CompletedTask;
+    }
+
+    public Task<TeamSharedAction> ShareActionAsync(CommandAction action, CancellationToken cancellationToken = default)
+    {
+        var team = RequireOwner();
+        if (!CanOwn) throw new InvalidOperationException("Sharing Actions requires MeowSSH Team.");
+        var shared = new TeamSharedAction($"a{++_next + 1}", action.Name.Trim(), action.Command.Trim(), action.TimeoutSeconds, Now);
+        _team = team with { Actions = [.. team.Actions, shared] };
+        Log("action_shared", shared.Name);
+        return Task.FromResult(shared);
+    }
+
+    public Task UnshareActionAsync(string actionId, CancellationToken cancellationToken = default)
+    {
+        var team = RequireOwner();
+        var action = team.Actions.Single(a => a.Id == actionId);
+        _team = team with { Actions = [.. team.Actions.Where(a => a.Id != actionId)] };
+        Log("action_removed", action.Name);
         return Task.CompletedTask;
     }
 

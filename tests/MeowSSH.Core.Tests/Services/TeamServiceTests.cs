@@ -52,6 +52,13 @@ public sealed class TeamServiceTests
             return Task.FromResult(Record("share", secret, new TeamSharedHost("h1", label, host, port, username, DateTimeOffset.UtcNow)));
         }
         public Task UnshareHostAsync(string secret, string hostId, CancellationToken cancellationToken = default) => Task.FromResult(Record("unshare", secret, 0));
+        public (string Name, string Command, int Timeout)? LastActionShare { get; private set; }
+        public Task<TeamSharedAction> ShareActionAsync(string secret, SignedEntitlementGrant grant, string name, string command, int timeoutSeconds, CancellationToken cancellationToken = default)
+        {
+            LastActionShare = (name, command, timeoutSeconds);
+            return Task.FromResult(Record("share-action", secret, new TeamSharedAction("a1", name, command, timeoutSeconds, DateTimeOffset.UtcNow)));
+        }
+        public Task UnshareActionAsync(string secret, string actionId, CancellationToken cancellationToken = default) => Task.FromResult(Record("unshare-action", secret, 0));
         public Task<IReadOnlyList<TeamAuditEntry>> AuditAsync(string secret, CancellationToken cancellationToken = default) => Task.FromResult(Record<IReadOnlyList<TeamAuditEntry>>("audit", secret, []));
     }
 
@@ -197,6 +204,59 @@ public sealed class TeamServiceTests
         Assert.Equal((HostProtocol.Ssh, SshTransport.Tcp), (host.Protocol, host.Transport));
         Assert.True(TeamHosts.Matches(Host() with { Address = "DB.internal" }, shared));
         Assert.False(TeamHosts.Matches(Host() with { Port = 22 }, shared));
+    }
+
+    [Fact]
+    public async Task SharingAnActionSendsItsTextAndTimeoutButNeverItsHosts()
+    {
+        var rig = Create();
+        await rig.Service.CreateAsync("Ops", "Sam");
+        var action = new CommandAction(Guid.NewGuid(), " Deploy ", " git checkout {{branch}} ", [Guid.NewGuid(), Guid.NewGuid()], 120);
+
+        await rig.Service.ShareActionAsync(action);
+
+        Assert.Equal(("Deploy", "git checkout {{branch}}", 120), rig.Api.LastActionShare);
+    }
+
+    [Fact]
+    public async Task SharingAnActionNeedsTeamButUnsharingDoesNot()
+    {
+        var rig = Create();
+        await rig.Service.CreateAsync("Ops", "Sam");
+        rig.Tier.Tier = EntitlementTier.ProCloud;
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            rig.Service.ShareActionAsync(new CommandAction(Guid.NewGuid(), "Uptime", "uptime", [Guid.NewGuid()])));
+        await rig.Service.UnshareActionAsync("a1");
+
+        Assert.Equal(["create", "unshare-action"], rig.Api.Calls);
+    }
+
+    [Fact]
+    public void ASharedActionBecomesMyActionOnTheHostIPick()
+    {
+        var shared = new TeamSharedAction("a1", "Deploy", "git pull && make", 120, DateTimeOffset.UtcNow);
+        var host = Guid.NewGuid();
+
+        var action = TeamActions.ToCommandAction(shared, host);
+
+        Assert.Equal(("Deploy", "git pull && make", 120), (action.Name, action.Command, action.TimeoutSeconds));
+        Assert.Equal([host], action.HostIds);
+        Assert.True(TeamActions.Matches(action with { Name = "My deploy" }, shared));
+        Assert.False(TeamActions.Matches(action with { Command = "git pull" }, shared));
+    }
+
+    [Fact]
+    public async Task ATeamFromAServerWithoutSharedActionsHasNone()
+    {
+        var api = new HttpTeamApi(new HttpClient(new RecordingHandler(_ => Json(HttpStatusCode.OK, """
+            {"id":"t1","name":"Ops","yourMemberId":"m1","yourRole":"member","members":[],"hosts":[],"invites":[]}
+            """))), Options);
+
+        var team = await api.GetMineAsync("s");
+
+        Assert.NotNull(team!.Actions);
+        Assert.Empty(team.Actions);
     }
 
     [Fact]

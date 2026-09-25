@@ -21,6 +21,9 @@ public sealed record TeamMemberInfo(string Id, string DisplayName, string Role, 
 /// <summary>An address-book entry: there is deliberately nowhere to put a key or password.</summary>
 public sealed record TeamSharedHost(string Id, string Label, string Host, int Port, string Username, DateTimeOffset SharedAtUtc);
 
+/// <summary>A saved command as the team shares it: no hosts (those are each member's own) and no variable values.</summary>
+public sealed record TeamSharedAction(string Id, string Name, string Command, int TimeoutSeconds, DateTimeOffset SharedAtUtc);
+
 public sealed record TeamInviteInfo(string Id, DateTimeOffset CreatedAtUtc, DateTimeOffset ExpiresAtUtc);
 
 /// <summary>A team as its member sees it. Invites (the open ones) are sent to the owner only.</summary>
@@ -34,6 +37,20 @@ public sealed record TeamInfo(
     IReadOnlyList<TeamInviteInfo> Invites)
 {
     public bool IsOwner => YourRole == TeamRoles.Owner;
+
+    private readonly IReadOnlyList<TeamSharedAction> _actions = [];
+
+    /// <summary>
+    /// Empty, never null, when a server from before shared Actions leaves it
+    /// out. The initializer alone is not enough: the source-generated reader
+    /// builds this record through its constructor and then assigns every
+    /// init property, writing null over the default for one that is absent.
+    /// </summary>
+    public IReadOnlyList<TeamSharedAction> Actions
+    {
+        get => _actions;
+        init => _actions = value ?? [];
+    }
 }
 
 /// <summary>The only time the code exists outside the owner's clipboard: the server keeps a hash.</summary>
@@ -61,6 +78,8 @@ public interface ITeamApi
     Task RemoveMemberAsync(string secret, string memberId, CancellationToken cancellationToken = default);
     Task<TeamSharedHost> ShareHostAsync(string secret, SignedEntitlementGrant grant, string label, string host, int port, string username, CancellationToken cancellationToken = default);
     Task UnshareHostAsync(string secret, string hostId, CancellationToken cancellationToken = default);
+    Task<TeamSharedAction> ShareActionAsync(string secret, SignedEntitlementGrant grant, string name, string command, int timeoutSeconds, CancellationToken cancellationToken = default);
+    Task UnshareActionAsync(string secret, string actionId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<TeamAuditEntry>> AuditAsync(string secret, CancellationToken cancellationToken = default);
 }
 
@@ -115,6 +134,11 @@ public interface ITeamService
 
     Task UnshareHostAsync(string hostId, CancellationToken cancellationToken = default);
 
+    /// <summary>Shares the Action's name, command text and timeout; never its hosts.</summary>
+    Task<TeamSharedAction> ShareActionAsync(CommandAction action, CancellationToken cancellationToken = default);
+
+    Task UnshareActionAsync(string actionId, CancellationToken cancellationToken = default);
+
     /// <returns>Newest first. Owner only.</returns>
     Task<IReadOnlyList<TeamAuditEntry>> AuditAsync(CancellationToken cancellationToken = default);
 }
@@ -151,6 +175,22 @@ public static class TeamHosts
         && string.Equals(host.Address, shared.Host, StringComparison.OrdinalIgnoreCase)
         && host.Port == shared.Port
         && (shared.Username.Length == 0 || string.Equals(host.Username, shared.Username, StringComparison.Ordinal));
+}
+
+/// <summary>Between a saved Action and a team's shared ones, in both directions.</summary>
+public static class TeamActions
+{
+    /// <summary>
+    /// A new Action from a shared one, on a host the member picks from their
+    /// own vault: an Action needs at least one host, and the owner's host ids
+    /// would mean nothing here.
+    /// </summary>
+    public static CommandAction ToCommandAction(TeamSharedAction shared, Guid hostId) =>
+        new(Guid.NewGuid(), shared.Name, shared.Command, [hostId], shared.TimeoutSeconds);
+
+    /// <summary>Same command text, whatever it is called: renaming a copy does not make it a different command.</summary>
+    public static bool Matches(CommandAction action, TeamSharedAction shared) =>
+        string.Equals(action.Command.Trim(), shared.Command.Trim(), StringComparison.Ordinal);
 }
 
 public sealed class TeamService(
@@ -206,6 +246,15 @@ public sealed class TeamService(
         return await api.ShareHostAsync(secret, grant, host.Label, host.Address.Trim(), host.Port, host.Username?.Trim() ?? "", cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task<TeamSharedAction> ShareActionAsync(CommandAction action, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        if (!CanOwn) throw new InvalidOperationException("Sharing Actions requires MeowSSH Team.");
+        var secret = await ExistingSecretAsync(cancellationToken).ConfigureAwait(false);
+        var grant = await GrantAsync("Team", cancellationToken).ConfigureAwait(false);
+        return await api.ShareActionAsync(secret, grant, action.Name.Trim(), action.Command.Trim(), action.TimeoutSeconds, cancellationToken).ConfigureAwait(false);
+    }
+
     // Everything below only takes away, so none of it checks the tier: a
     // lapsed owner can still tidy up, and anyone can always leave.
     public async Task RevokeInviteAsync(string inviteId, CancellationToken cancellationToken = default) =>
@@ -216,6 +265,9 @@ public sealed class TeamService(
 
     public async Task UnshareHostAsync(string hostId, CancellationToken cancellationToken = default) =>
         await api.UnshareHostAsync(await ExistingSecretAsync(cancellationToken).ConfigureAwait(false), hostId, cancellationToken).ConfigureAwait(false);
+
+    public async Task UnshareActionAsync(string actionId, CancellationToken cancellationToken = default) =>
+        await api.UnshareActionAsync(await ExistingSecretAsync(cancellationToken).ConfigureAwait(false), actionId, cancellationToken).ConfigureAwait(false);
 
     public async Task LeaveAsync(CancellationToken cancellationToken = default) =>
         await api.LeaveAsync(await ExistingSecretAsync(cancellationToken).ConfigureAwait(false), cancellationToken).ConfigureAwait(false);
@@ -316,6 +368,17 @@ public sealed class HttpTeamApi(HttpClient httpClient, LicensingApiOptions optio
     public Task UnshareHostAsync(string secret, string hostId, CancellationToken cancellationToken = default) =>
         SendEmptyAsync(HttpMethod.Delete, "v1/teams/mine/hosts/" + Uri.EscapeDataString(hostId), secret, cancellationToken);
 
+    public async Task<TeamSharedAction> ShareActionAsync(string secret, SignedEntitlementGrant grant, string name, string command, int timeoutSeconds, CancellationToken cancellationToken = default)
+    {
+        using var request = Request(HttpMethod.Post, "v1/teams/mine/actions", secret, grant);
+        request.Content = JsonContent.Create(new ShareActionBody(name, command, timeoutSeconds), TeamJsonContext.Default.ShareActionBody);
+        using var response = await SendAsync(request, cancellationToken).ConfigureAwait(false);
+        return await ReadAsync(response, TeamJsonContext.Default.TeamSharedAction, cancellationToken).ConfigureAwait(false);
+    }
+
+    public Task UnshareActionAsync(string secret, string actionId, CancellationToken cancellationToken = default) =>
+        SendEmptyAsync(HttpMethod.Delete, "v1/teams/mine/actions/" + Uri.EscapeDataString(actionId), secret, cancellationToken);
+
     public async Task<IReadOnlyList<TeamAuditEntry>> AuditAsync(string secret, CancellationToken cancellationToken = default)
     {
         using var request = Request(HttpMethod.Get, "v1/teams/mine/audit", secret);
@@ -399,6 +462,7 @@ public sealed class HttpTeamApi(HttpClient httpClient, LicensingApiOptions optio
     internal sealed record CreateBody(string Name, string DisplayName);
     internal sealed record JoinBody(string Code, string DisplayName);
     internal sealed record ShareBody(string Label, string Host, int Port, string Username);
+    internal sealed record ShareActionBody(string Name, string Command, int TimeoutSeconds);
     internal sealed record AuditBody(IReadOnlyList<TeamAuditEntry> Events);
     internal sealed record ErrorBody(string? Error, string? Message);
 }
@@ -407,6 +471,8 @@ public sealed class HttpTeamApi(HttpClient httpClient, LicensingApiOptions optio
 [JsonSerializable(typeof(HttpTeamApi.CreateBody))]
 [JsonSerializable(typeof(HttpTeamApi.JoinBody))]
 [JsonSerializable(typeof(HttpTeamApi.ShareBody))]
+[JsonSerializable(typeof(HttpTeamApi.ShareActionBody))]
+[JsonSerializable(typeof(TeamSharedAction))]
 [JsonSerializable(typeof(HttpTeamApi.AuditBody))]
 [JsonSerializable(typeof(HttpTeamApi.ErrorBody))]
 [JsonSerializable(typeof(TeamInfo))]

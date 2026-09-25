@@ -78,10 +78,11 @@ Built as of 2026-09-25. Team is not on sale yet. Nothing is sent until the user 
 - **What is transmitted:**
   - the team name and each member's display name, which the users type;
   - shared hosts' labels, host names or IP addresses, ports and optional user names, which the owner chooses to share;
+  - shared Actions' names, command text and timeouts, which the owner chooses to share (variable values and host choices are not sent);
   - invite codes, which the server stores only as hashes;
   - a random per-install member secret, sent as a bearer credential and stored only as a hash.
-- **Stored by the service:** an activity log of team changes (joins, leaves, removals, invites, host shares), with display names and times. It is not a record of connections or session activity.
-- **Likely Data safety categories:** the display name as "Personal info → Name", and shared host addresses as "App activity → other user-generated content", collected for app functionality and shared only with the other members of the same team.
+- **Stored by the service:** an activity log of team changes (joins, leaves, removals, invites, host and Action shares), with display names and times. It is not a record of connections or session activity.
+- **Likely Data safety categories:** the display name as "Personal info → Name", and shared host addresses and Action commands as "App activity → other user-generated content", collected for app functionality and shared only with the other members of the same team.
 - **Not transmitted:** passwords, private keys, passphrases, tailcat addresses, proxy settings, session content, push tokens or device identifiers.
 - **User control:** leave or delete a team in the app and the data is removed immediately.
 
