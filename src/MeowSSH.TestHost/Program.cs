@@ -61,6 +61,7 @@ builder.Services.AddScoped<IEncryptedVaultBackupService, FakeEncryptedVaultBacku
 builder.Services.AddScoped<FakeCloudVaultBackupService>();
 builder.Services.AddScoped<ICloudVaultBackupService>(sp => sp.GetRequiredService<FakeCloudVaultBackupService>());
 builder.Services.AddScoped<ICloudVaultSyncService, FakeCloudVaultSyncService>();
+builder.Services.AddScoped<IHostedAiService, FakeHostedAiService>();
 builder.Services.AddScoped<IPortForwardProfileStore, MemoryPortForwardProfileStore>();
 builder.Services.AddScoped<IPortForwardProfileService, PortForwardProfileService>();
 builder.Services.AddScoped<FakeSshHardwareKeyStore>();

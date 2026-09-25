@@ -1,0 +1,112 @@
+@using MeowSSH.Core.Services
+@inject IHostedAiService Ai
+
+@*
+    Nothing leaves the phone until one of the two ask buttons is pressed, and
+    then only the text in the box below, which the user can see and edit
+    first: terminal output is exactly where hostnames, paths and the odd
+    pasted secret end up.
+*@
+
+<div class="sheet ai-panel" role="dialog" aria-label="Ask AI" data-testid="ai-panel">
+    <div class="ai-panel__header">
+        <h2 class="section-label">Ask AI <span class="action-pro-badge">PRO CLOUD</span></h2>
+        <button type="button" class="btn btn--ghost" data-testid="ai-close" @onclick="OnClose">Close</button>
+    </div>
+
+    @if (!Ai.CanUse)
+    {
+        <p class="setting-card__body" data-testid="ai-upsell">Ask AI explains terminal output and suggests commands. It needs MeowSSH Pro Cloud.</p>
+    }
+    else
+    {
+        <label class="field">
+            <span class="field__label">@(FromSelection ? "Your selection" : "Last lines on screen") · edit before sending</span>
+            <textarea class="field__input mono ai-panel__input" rows="6" spellcheck="false" autocomplete="off"
+                      data-testid="ai-input" disabled="@_busy" @bind="_input" @bind:event="oninput"></textarea>
+        </label>
+        <p class="setting-card__body" data-testid="ai-privacy">Only the text above, and your question, are sent to MeowSSH's AI service, which asks Anthropic's Claude. Neither stores it. Remove anything private first.</p>
+
+        <label class="field">
+            <span class="field__label">Question (needed for a command)</span>
+            <input class="field__input" type="text" maxlength="@HostedAiService.MaxQuestionCharacters" data-testid="ai-question"
+                   placeholder="e.g. free up disk space" disabled="@_busy" @bind="_question" @bind:event="oninput" />
+        </label>
+
+        <div class="ai-panel__actions">
+            <button type="button" class="btn btn--primary" data-testid="ai-explain"
+                    disabled="@(_busy || string.IsNullOrWhiteSpace(_input))" @onclick="() => AskAsync(AiAssistMode.Explain)">Explain</button>
+            <button type="button" class="btn btn--ghost" data-testid="ai-command"
+                    disabled="@(_busy || string.IsNullOrWhiteSpace(_question))" @onclick="() => AskAsync(AiAssistMode.Command)">Suggest a command</button>
+        </div>
+
+        @if (_busy)
+        {
+            <p class="setting-card__body" role="status" data-testid="ai-busy">Asking…</p>
+        }
+
+        @if (_answer is not null)
+        {
+            <div class="ai-panel__answer" data-testid="ai-answer">@_answer.Answer</div>
+            @if (_answer.Command is { } command)
+            {
+                <code class="ai-panel__command mono" data-testid="ai-command-text">@command</code>
+                @if (IsSingleLine(command))
+                {
+                    <button type="button" class="btn btn--primary btn--block" data-testid="ai-insert"
+                            @onclick="() => OnInsert.InvokeAsync(command)">Insert at prompt (does not run it)</button>
+                }
+                else
+                {
+                    <p class="setting-card__body" data-testid="ai-multiline">This is more than one line, so it is not inserted for you: pasting it would run every line but the last.</p>
+                }
+            }
+        }
+
+        @if (_error is not null)
+        {
+            <p class="setting-card__body" role="alert" data-testid="ai-error">@_error</p>
+        }
+    }
+</div>
+
+@code {
+    private string _input = "";
+    private string _question = "";
+    private bool _busy;
+    private AiAssistAnswer? _answer;
+    private string? _error;
+
+    /// <summary>What the terminal offered; copied into the editable box once.</summary>
+    [Parameter, EditorRequired] public string Context { get; set; } = "";
+    [Parameter] public bool FromSelection { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<string> OnInsert { get; set; }
+
+    protected override void OnInitialized() => _input = Context;
+
+    private async Task AskAsync(AiAssistMode mode)
+    {
+        if (_busy) return;
+        _busy = true;
+        _error = null;
+        _answer = null;
+        try
+        {
+            _answer = await Ai.AskAsync(new AiAssistRequest(mode, _input, _question));
+        }
+        // Broad on purpose, as elsewhere: anything escaping a click handler
+        // stops the renderer, and these messages are written for the user.
+        catch (Exception exception) when (exception is InvalidOperationException or HostedAiException
+            or HttpRequestException or System.Text.Json.JsonException)
+        {
+            _error = exception.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private static bool IsSingleLine(string command) => !command.Contains('\n') && !command.Contains('\r');
+}

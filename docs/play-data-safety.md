@@ -59,6 +59,17 @@ Built as of 2026-09-25, and off until the user turns it on. It needs cloud backu
 - **What is stored:** only the latest synced copy, apart from the backup versions. There is no extra identifier beyond the backup's locator.
 - **User control:** "Delete cloud backups" erases it too, and sync can be turned off per phone.
 
+### Ask AI (Pro Cloud hosted AI)
+
+Built as of 2026-09-25, and off on the service until an operator enables it with a model provider key.
+
+- **What is transmitted:** only text the user explicitly sends from the Ask AI panel: selected or recent terminal output, which the user can edit, plus an optional question. It goes to MeowSSHAPI and on to Anthropic's API.
+  - This is the first feature where terminal contents leave the device.
+  - It is user-initiated app content: likely "App activity → other user-generated content", processed for app functionality.
+  - Declare it if the production build enables Ask AI.
+- **Retention by MeowSSH:** none for the content. There are daily request counters per grant, which expire in two days.
+- **Third party:** Anthropic processes the text to generate the answer.
+
 Whether end-to-end encrypted user content still counts as "collected" is a Play policy question to review against Google's current Data safety guidance at submission time, not settled here.
 
 ## Required production answers before submission

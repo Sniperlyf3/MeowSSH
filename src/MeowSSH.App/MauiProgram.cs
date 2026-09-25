@@ -108,6 +108,10 @@ public static class MauiProgram
             sp.GetRequiredService<IDeviceIdentity>(),
             sp.GetRequiredService<IEntitlementService>()));
         builder.Services.AddSingleton<ICloudVaultSyncService>(sp => sp.GetRequiredService<CloudVaultSyncService>());
+        builder.Services.AddSingleton<IHostedAiApi>(sp => new HttpHostedAiApi(
+            sp.GetRequiredService<HttpClient>(),
+            sp.GetRequiredService<LicensingApiOptions>()));
+        builder.Services.AddSingleton<IHostedAiService, HostedAiService>();
         builder.Services.AddSingleton<IPortForwardProfileStore>(_ => new FilePortForwardProfileStore(
             Path.Combine(FileSystem.AppDataDirectory, "port-forward-profiles.json")));
         builder.Services.AddSingleton<IPortForwardProfileService, PortForwardProfileService>();

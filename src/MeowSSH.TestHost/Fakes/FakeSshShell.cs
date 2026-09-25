@@ -73,6 +73,13 @@ public sealed class FakeSshShell(Action<string?>? onRelayHealth = null) : ISshSh
                 case 0x09:               // Tab
                     break;
 
+                case 0x1b:               // ESC, echoed as a pty with echoctl does
+                    // Visible rather than dropped, so a test can see an
+                    // escape arrive that should not have (an armed Alt
+                    // leaking into pasted text, say).
+                    Emit("^[");
+                    break;
+
                 default:
                     if (b >= 0x20)
                     {
