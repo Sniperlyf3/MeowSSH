@@ -16,6 +16,10 @@
    matters: a deadline expiring while neither panel is on screen must still
    release the wakelock. *@
 @inject TailcatServerSessionLifetimeCoordinator TailcatServerLifetime
+@* The same reason again: constructing the sync service is what subscribes it
+   to vault changes, so the first unlock already pulls other phones' edits
+   instead of waiting until someone opens the backup page. *@
+@inject ICloudVaultSyncService CloudSync
 
 @if (!_ready)
 {

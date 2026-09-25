@@ -51,6 +51,14 @@ Built as of 2026-09-24. Nothing is sent until the user turns it on. Facts to bas
 - **Retention:** the five most recent versions are kept.
 - **Not collected:** cloud backup does not send plaintext hosts, usernames, passwords or keys, and does not send analytics.
 
+### Encrypted cross-device sync (Pro Cloud)
+
+Built as of 2026-09-25, and off until the user turns it on. It needs cloud backup to be on as well.
+
+- **What is transmitted:** the same end-to-end encrypted vault file, sent whenever the vault changes and on unlock or periodic checks while the app is open.
+- **What is stored:** only the latest synced copy, apart from the backup versions. There is no extra identifier beyond the backup's locator.
+- **User control:** "Delete cloud backups" erases it too, and sync can be turned off per phone.
+
 Whether end-to-end encrypted user content still counts as "collected" is a Play policy question to review against Google's current Data safety guidance at submission time, not settled here.
 
 ## Required production answers before submission

@@ -59,7 +59,11 @@ Encrypted local backup exports the vault file to a location the user chooses on 
 - **Deletion:** "Delete cloud backups" erases every stored version immediately. "Turn off on this phone" stops uploads and forgets the device's copy of the locator secret, but leaves stored versions in place so they can still be restored.
 - **Restoring and account recovery:** a backup can be restored on any device from the recovery code alone, with or without an active subscription. MeowSSH cannot recover a lost recovery code, and without it a cloud backup can be neither found nor decrypted.
 
-Cross-device sync is not offered yet.
+**Cross-device sync (MeowSSH Pro Cloud).** Sync is off until the user turns it on, and it can only be turned on while cloud backup is on for the vault, because it uses the same recovery-code identity to find the vault's other phones. Once on, the app uploads the vault file whenever it changes and checks for other phones' changes when the vault is unlocked, every few minutes while it stays open, and on "Sync now". Merging happens on each phone.
+
+- **What the service receives and keeps:** one encrypted copy of the vault file, kept apart from the backup versions. Its size and a hash of the encrypted bytes, used to tell phones apart from stale copies, are also kept. As with backups, the service cannot read anything inside.
+- **Retention:** only the latest synced copy. Each sync replaces it, and it never takes the place of a backup version.
+- **Deletion:** "Delete cloud backups" also erases the synced copy immediately. A phone that finds its synced copy gone turns sync off rather than uploading the vault again. "Turn off on this phone" stops syncing on that phone only.
 
 ## Diagnostics and analytics
 
@@ -85,7 +89,7 @@ No software can guarantee the security of a compromised device, remote host, thi
 
 ## Retention and deletion
 
-Local MeowSSH data remains on the device until the user deletes it, clears the relevant history, removes the app, or restores/replaces the local vault as applicable. Encrypted cloud backups remain on the MeowSSH service until the user deletes them or newer uploads replace them (see "Backups and cloud features"); removing the app does not delete them. Google Play, the MeowSSH licensing service, and third-party relay infrastructure may have separate operational log or retention practices. MeowSSH does not intentionally send terminal contents, passwords or private SSH keys to the licensing service.
+Local MeowSSH data remains on the device until the user deletes it, clears the relevant history, removes the app, or restores/replaces the local vault as applicable. Encrypted cloud backups and the synced copy remain on the MeowSSH service until the user deletes them or newer uploads replace them (see "Backups and cloud features"); removing the app does not delete them. Google Play, the MeowSSH licensing service, and third-party relay infrastructure may have separate operational log or retention practices. MeowSSH does not intentionally send terminal contents, passwords or private SSH keys to the licensing service.
 
 ## Children
 
@@ -93,7 +97,7 @@ MeowSSH is a professional remote-administration tool and is not designed for chi
 
 ## Changes
 
-This policy may be updated when functionality changes, especially before cloud sync, hosted monitoring, analytics or other server-side features are introduced.
+This policy may be updated when functionality changes, especially before hosted monitoring, analytics or other server-side features are introduced.
 
 ## Contact
 

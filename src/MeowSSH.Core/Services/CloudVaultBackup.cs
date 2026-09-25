@@ -20,6 +20,26 @@ public sealed record CloudBackupVersion(string Id, DateTimeOffset CreatedAtUtc, 
 /// </param>
 public sealed record CloudBackupStatus(bool Enabled, bool NeedsRecoveryCode);
 
+/// <summary>What the sync slot held when asked.</summary>
+public sealed record CloudSyncFetch(CloudSyncFetchKind Kind, string? ETag = null, byte[]? Content = null)
+{
+    public static CloudSyncFetch Empty { get; } = new(CloudSyncFetchKind.Empty);
+    public static CloudSyncFetch NotModified(string etag) => new(CloudSyncFetchKind.NotModified, etag);
+    public static CloudSyncFetch Changed(string etag, byte[] content) => new(CloudSyncFetchKind.Changed, etag, content);
+}
+
+public enum CloudSyncFetchKind
+{
+    /// <summary>Nothing was ever synced (or it was deleted).</summary>
+    Empty,
+
+    /// <summary>Still the ETag the caller last merged; no body was sent.</summary>
+    NotModified,
+
+    /// <summary>Another phone wrote since; <see cref="CloudSyncFetch.Content"/> holds its vault.</summary>
+    Changed,
+}
+
 /// <summary><see cref="Exception.Message"/> is written for the user.</summary>
 public sealed class CloudBackupException(string? code, string message, Exception? inner = null) : Exception(message, inner)
 {
@@ -41,6 +61,24 @@ public interface ICloudBackupApi
     Task<byte[]> DownloadAsync(CloudBackupCredential credential, string versionId, CancellationToken cancellationToken = default);
 
     Task DeleteAllAsync(CloudBackupCredential credential, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Reads the sync slot. Passing the ETag last merged as
+    /// <paramref name="ifNoneMatch"/> makes an unchanged slot cost no download.
+    /// </summary>
+    Task<CloudSyncFetch> FetchSyncAsync(CloudBackupCredential credential, string? ifNoneMatch, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Replaces the sync slot only if it still holds <paramref name="expectedETag"/>
+    /// (null: only if it is empty). Returns the new ETag.
+    /// </summary>
+    /// <exception cref="CloudBackupException">Code <c>sync_conflict</c>: another phone wrote first; fetch and merge again.</exception>
+    Task<string> PushSyncAsync(
+        CloudBackupCredential credential,
+        SignedEntitlementGrant grant,
+        ReadOnlyMemory<byte> content,
+        string? expectedETag,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -205,11 +243,23 @@ public sealed class CloudVaultBackupService(
         }
     }
 
-    private async Task<CloudBackupCredential> RequireCurrentCredentialAsync(CancellationToken cancellationToken)
+    private Task<CloudBackupCredential> RequireCurrentCredentialAsync(CancellationToken cancellationToken) =>
+        RequireCurrentCredentialAsync(credentials, storage, cancellationToken);
+
+    /// <summary>
+    /// The stored credential, only if it belongs to the vault on this phone now.
+    /// Shared with sync, which must refuse a stale identity for the same reason
+    /// backup does: it would write this vault where the old one's phones look.
+    /// </summary>
+    internal static async Task<CloudBackupCredential> RequireCurrentCredentialAsync(
+        ICloudBackupCredentialStore credentials,
+        IVaultStorage storage,
+        CancellationToken cancellationToken)
     {
         var stored = await credentials.LoadAsync(cancellationToken).ConfigureAwait(false)
             ?? throw new InvalidOperationException("Turn on cloud backup first.");
-        if (!string.Equals(stored.VaultFingerprint, await CurrentFingerprintAsync(cancellationToken).ConfigureAwait(false), StringComparison.Ordinal))
+        var current = await storage.ReadAsync(cancellationToken).ConfigureAwait(false);
+        if (current is null || !string.Equals(stored.VaultFingerprint, Fingerprint(current), StringComparison.Ordinal))
             throw new InvalidOperationException("This phone's vault changed since cloud backup was turned on. Enter its recovery code again to keep backing it up.");
         return stored;
     }
@@ -304,6 +354,47 @@ public sealed class HttpCloudBackupApi(HttpClient httpClient, LicensingApiOption
         using var response = await SendAsync(request, cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task<CloudSyncFetch> FetchSyncAsync(CloudBackupCredential credential, string? ifNoneMatch, CancellationToken cancellationToken = default)
+    {
+        using var request = Request(HttpMethod.Get, credential, "sync");
+        if (ifNoneMatch is not null) request.Headers.IfNoneMatch.Add(new EntityTagHeaderValue(Quote(ifNoneMatch)));
+        try
+        {
+            using var response = await SendAsync(request, cancellationToken, allowNotModified: true).ConfigureAwait(false);
+            if (response.StatusCode == HttpStatusCode.NotModified) return CloudSyncFetch.NotModified(ifNoneMatch!);
+            var etag = Unquote(response.Headers.ETag?.Tag)
+                ?? throw new CloudBackupException("empty_response", "The MeowSSH cloud service returned a synced vault without its version tag.");
+            return CloudSyncFetch.Changed(etag, await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false));
+        }
+        catch (CloudBackupException exception) when (exception.Code == "not_found")
+        {
+            return CloudSyncFetch.Empty;
+        }
+    }
+
+    public async Task<string> PushSyncAsync(
+        CloudBackupCredential credential,
+        SignedEntitlementGrant grant,
+        ReadOnlyMemory<byte> content,
+        string? expectedETag,
+        CancellationToken cancellationToken = default)
+    {
+        using var request = Request(HttpMethod.Put, credential, "sync");
+        request.Headers.Add("X-MeowSSH-Entitlement-Grant", grant.PayloadBase64 + "." + grant.SignatureBase64);
+        if (expectedETag is null) request.Headers.IfNoneMatch.Add(EntityTagHeaderValue.Any);
+        else request.Headers.IfMatch.Add(new EntityTagHeaderValue(Quote(expectedETag)));
+        request.Content = new ReadOnlyMemoryContent(content);
+        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+        using var response = await SendAsync(request, cancellationToken).ConfigureAwait(false);
+        return Unquote(response.Headers.ETag?.Tag)
+            ?? throw new CloudBackupException("empty_response", "The MeowSSH cloud service accepted the sync without returning its version tag.");
+    }
+
+    private static string Quote(string etag) => "\"" + etag + "\"";
+
+    private static string? Unquote(string? tag) =>
+        tag is { Length: > 2 } && tag[0] == '"' && tag[^1] == '"' ? tag[1..^1] : null;
+
     private HttpRequestMessage Request(HttpMethod method, CloudBackupCredential credential, string? suffix)
     {
         if (!options.IsConfigured || options.BaseUri is null)
@@ -314,7 +405,7 @@ public sealed class HttpCloudBackupApi(HttpClient httpClient, LicensingApiOption
         return request;
     }
 
-    private async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    private async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken, bool allowNotModified = false)
     {
         HttpResponseMessage response;
         try
@@ -332,7 +423,7 @@ public sealed class HttpCloudBackupApi(HttpClient httpClient, LicensingApiOption
             // frozen-screen failure VaultSetupScreen already documents.
             throw new CloudBackupException("timeout", "The MeowSSH cloud service took too long to answer. Try again.", exception);
         }
-        if (response.IsSuccessStatusCode) return response;
+        if (response.IsSuccessStatusCode || (allowNotModified && response.StatusCode == HttpStatusCode.NotModified)) return response;
 
         using (response)
         {
@@ -354,6 +445,8 @@ public sealed class HttpCloudBackupApi(HttpClient httpClient, LicensingApiOption
             "Your Pro Cloud purchase could not be verified right now. Try again in a moment.",
         "backup_too_large" => "This vault is larger than the cloud backup limit. Use an encrypted local backup instead.",
         "not_found" => "That backup is no longer stored. Choose another version.",
+        "sync_conflict" => "Another device synced at the same moment. Sync again to include its changes.",
+        "precondition_required" => "This version of MeowSSH could not sync. Update the app and try again.",
         "unauthorized" => "No cloud backup matches that recovery code.",
         "cloud_backup_unavailable" => "Cloud backup is not available on the MeowSSH service yet.",
         _ when status == HttpStatusCode.TooManyRequests => "The MeowSSH cloud service is busy. Try again in a minute.",

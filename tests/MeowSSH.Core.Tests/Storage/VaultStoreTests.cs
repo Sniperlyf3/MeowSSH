@@ -351,6 +351,45 @@ public class VaultStoreTests
         Assert.Equal(VaultStore.DeriveDeviceId(seed), VaultStore.DeriveDeviceId(seed));
     }
 
+    [Fact]
+    public async Task MergingAnotherVaultsFileIsRefusedAndWritesNothing()
+    {
+        var (mine, myStorage, myKeys) = NewStore();
+        var (other, otherStorage, otherKeys) = NewStore();
+        using var _ = mine;
+        using var __ = other;
+        await mine.CreateAsync(myKeys, "device-a", Kdf);
+        await other.CreateAsync(otherKeys, "device-b", Kdf);
+        await other.UpdateAsync((d, now) => d.WithHost(AHost("not-mine"), now));
+        var before = await myStorage.ReadAsync();
+
+        await Assert.ThrowsAnyAsync<CryptographicException>(async () =>
+            await mine.MergeAsync((await otherStorage.ReadAsync())!, "device-a"));
+
+        Assert.Equal(before, await myStorage.ReadAsync());
+        Assert.Empty(mine.Document.Hosts);
+    }
+
+    [Fact]
+    public async Task MergingACopyWithNothingNewNeitherSavesNorAnnouncesAChange()
+    {
+        // Sync listens for Changed to know there is something to push; a merge
+        // that changed nothing must not set that off.
+        var (store, storage, keys) = NewStore();
+        using var _ = store;
+        await store.CreateAsync(keys, "device-a", Kdf);
+        await store.UpdateAsync((d, now) => d.WithHost(AHost(), now));
+        var copy = (await storage.ReadAsync())!;
+        var changes = 0;
+        store.Changed += (_, _) => changes++;
+
+        var merged = await store.MergeAsync(copy, "device-a");
+
+        Assert.False(merged);
+        Assert.Equal(0, changes);
+        Assert.Equal(copy, await storage.ReadAsync());
+    }
+
     private static IEnumerable<byte[]> Windows(byte[] haystack, int size)
     {
         for (var i = 0; i + size <= haystack.Length; i++) yield return haystack[i..(i + size)];
