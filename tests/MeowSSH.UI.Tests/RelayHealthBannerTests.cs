@@ -56,6 +56,13 @@ public sealed class RelayHealthBannerTests(TestHostFixture fixture)
         // what sent every keyboard-driven test in this file after "exit" or
         // "relayhealth ..." off looking like an unrelated load flake instead.
         await Assertions.Expect(page.Locator(".xterm-screen")).ToBeVisibleAsync();
+        // .xterm-screen is still not enough: TerminalView focuses the terminal
+        // only after create, resize and the backlog write, and keys typed
+        // before then are dropped. RelayHealthBannerClearsWhenTheProblemGoesAway-
+        // WithoutReconnecting failed that way in CI (banner still there after
+        // 10s, "relayhealth clear" never reached the shell); TerminalTests'
+        // OpenSessionAsync already waits for focus for the same reason.
+        await Assertions.Expect(page.Locator(".xterm-helper-textarea")).ToBeFocusedAsync();
         return page;
     }
 
