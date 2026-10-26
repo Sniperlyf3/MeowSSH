@@ -174,7 +174,10 @@ public sealed class TailcatTemporaryShareServiceTests
         Assert.Null(service.Active);
         var recorded = (await service.GetHistoryAsync()).Single(item => item.Id == share.Id);
         Assert.Equal(TailcatTemporaryShareEndReason.Expired, recorded.EndReason);
-        Assert.True(recorded.EndedAtUtc >= recorded.CreatedAtUtc + TimeSpan.FromMilliseconds(150));
+        // Measured against the deadline the hub published, not CreatedAtUtc:
+        // the service stamps CreatedAtUtc only after StartServerAsync returns,
+        // so it is later than the instant the server's lifetime started from.
+        Assert.True(recorded.EndedAtUtc >= recorded.ExpiresAtUtc);
     }
 
     [Fact]
@@ -253,15 +256,29 @@ public sealed class TailcatTemporaryShareServiceTests
             _deadline?.Cancel();
             var cts = new CancellationTokenSource();
             _deadline = cts;
-            _ = RunDeadlineAsync(request.Lifetime, cts.Token);
+            _ = RunDeadlineAsync(_server.ExpiresAt, cts.Token);
 
             RaiseChanged();
             return Task.CompletedTask;
         }
 
-        private async Task RunDeadlineAsync(TimeSpan lifetime, CancellationToken token)
+        private async Task RunDeadlineAsync(DateTimeOffset expiresAt, CancellationToken token)
         {
-            try { await Task.Delay(lifetime, token).ConfigureAwait(false); }
+            // Stops no earlier than the ExpiresAt it published, as a real
+            // server must. A single Task.Delay(lifetime) does not promise that:
+            // on Linux it is timed against a coarse monotonic clock, so it can
+            // complete a few ms short of the wall-clock deadline, and
+            // ADeadlineThatActuallyElapsesEndsTheShareAsExpired failed about
+            // one run in five that way.
+            try
+            {
+                for (var remaining = expiresAt - DateTimeOffset.UtcNow;
+                     remaining > TimeSpan.Zero;
+                     remaining = expiresAt - DateTimeOffset.UtcNow)
+                {
+                    await Task.Delay(remaining, token).ConfigureAwait(false);
+                }
+            }
             catch (TaskCanceledException) { return; }
             if (token.IsCancellationRequested) return;
             _server = null;
