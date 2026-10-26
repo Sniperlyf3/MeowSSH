@@ -2,7 +2,10 @@ name: CI
 
 on:
   push:
-    branches: ["claude/beautiful-bohr-im81me"]
+    # The default branch. This named the old mainline,
+    # claude/beautiful-bohr-im81me, for a month after it was renamed to main
+    # (2026-09-22), so nothing merged in that time had CI on the merged result.
+    branches: ["main"]
   pull_request:
 
 permissions:
