@@ -35,16 +35,26 @@ public interface IE2EPlatform
 /// <summary>Software key stores; the Linux run.</summary>
 public sealed class SoftwareE2EPlatform(string scratchRoot) : IE2EPlatform
 {
+    // Per install, and kept across a restart of that install, the way a
+    // device's key store outlives the app process.
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (SoftwareDeviceKeyStore Vault, SoftwareSshHardwareKeyStore Ssh)> _stores = new();
+
     public string Name => "linux";
     public string? NativeBinaryDirectory => null;
     public string ScratchRoot { get; } = Directory.CreateDirectory(scratchRoot).FullName;
 
     public void AddPlatformServices(IServiceCollection services, string instanceId)
     {
-        services.AddSingleton<IDeviceKeyStore, SoftwareDeviceKeyStore>();
-        services.AddSingleton<SoftwareSshHardwareKeyStore>();
-        services.AddSingleton<ISshHardwareKeyStore>(sp => sp.GetRequiredService<SoftwareSshHardwareKeyStore>());
-        services.AddSingleton<ISshHardwareKeySigner>(sp => sp.GetRequiredService<SoftwareSshHardwareKeyStore>());
+        var stores = _stores.GetOrAdd(instanceId, _ => (new SoftwareDeviceKeyStore(), new SoftwareSshHardwareKeyStore()));
+        services.AddSingleton<IDeviceKeyStore>(stores.Vault);
+        services.AddSingleton<ISshHardwareKeyStore>(stores.Ssh);
+        services.AddSingleton<ISshHardwareKeySigner>(stores.Ssh);
+    }
+
+    public Task CleanUpAsync(string instanceId)
+    {
+        _stores.TryRemove(instanceId, out _);
+        return Task.CompletedTask;
     }
 }
 
@@ -55,7 +65,6 @@ public sealed class SoftwareE2EPlatform(string scratchRoot) : IE2EPlatform
 public sealed class E2EApp : IAsyncDisposable
 {
     private readonly ServiceProvider _services;
-    private readonly IE2EPlatform _platform;
     private readonly string _instanceId;
     private readonly InteractiveSshPrompts _prompts;
     private readonly List<HostKeyPrompt> _hostKeyPrompts = [];
@@ -64,7 +73,7 @@ public sealed class E2EApp : IAsyncDisposable
     private E2EApp(ServiceProvider services, IE2EPlatform platform, string instanceId, string dataDirectory)
     {
         _services = services;
-        _platform = platform;
+        Platform = platform;
         _instanceId = instanceId;
         DataDirectory = dataDirectory;
         _prompts = services.GetRequiredService<InteractiveSshPrompts>();
@@ -72,6 +81,11 @@ public sealed class E2EApp : IAsyncDisposable
     }
 
     public IServiceProvider Services => _services;
+    public IE2EPlatform Platform { get; }
+
+    /// <summary>Identifies this install's platform key-store entries; the same across a restart.</summary>
+    public string InstanceId => _instanceId;
+    public EntitlementTier Tier { get; private init; }
     public string DataDirectory { get; }
     public T Get<T>() where T : notnull => _services.GetRequiredService<T>();
     public FixedEntitlementGrantProvider Entitlement => Get<FixedEntitlementGrantProvider>();
@@ -90,6 +104,9 @@ public sealed class E2EApp : IAsyncDisposable
     /// <summary>How the user answers a keyboard-interactive challenge. Null cancels.</summary>
     public Func<KeyboardInteractivePrompt, IReadOnlyList<string>?>? ChallengeAnswers { get; set; }
 
+    /// <summary>The recovery code shown at vault setup, on the launch that created the vault.</summary>
+    public string? RecoveryCode { get; private set; }
+
     public int PasswordPrompts { get; private set; }
     public int ChallengePrompts { get; private set; }
 
@@ -97,9 +114,10 @@ public sealed class E2EApp : IAsyncDisposable
         IE2EPlatform platform,
         string dataDirectory,
         EntitlementTier tier = EntitlementTier.ProCloud,
+        string? instanceId = null,
         CancellationToken cancellationToken = default)
     {
-        var instanceId = "e2e-" + Guid.NewGuid().ToString("N")[..12];
+        instanceId ??= "e2e-" + Guid.NewGuid().ToString("N")[..12];
         Directory.CreateDirectory(dataDirectory);
 
         var services = new ServiceCollection();
@@ -142,17 +160,28 @@ public sealed class E2EApp : IAsyncDisposable
         // ValidateOnBuild is the point of building the real graph: a service the
         // app registers but cannot construct fails here, not on a phone.
         var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
-        var app = new E2EApp(provider, platform, instanceId, dataDirectory);
+        var app = new E2EApp(provider, platform, instanceId, dataDirectory) { Tier = tier };
         try
         {
             var entitlements = app.Get<EntitlementService>();
             await entitlements.InitializeAsync(cancellationToken);
             await entitlements.RefreshAsync(cancellationToken);
 
+            // First launch sets the vault up; a later launch on the same data
+            // unlocks it, through the same biometric-then-Keystore path.
             var vault = app.Get<IVaultSession>();
             await vault.InitializeAsync(cancellationToken);
-            var created = await vault.CreateAsync(cancellationToken);
-            if (!created.Succeeded) throw new InvalidOperationException("Vault setup failed: " + created.Message);
+            if (vault.State == VaultState.NotCreated)
+            {
+                var created = await vault.CreateAsync(cancellationToken);
+                if (!created.Succeeded) throw new InvalidOperationException("Vault setup failed: " + created.Message);
+                app.RecoveryCode = created.RecoveryCode;
+            }
+            else
+            {
+                var unlocked = await vault.UnlockAsync(cancellationToken);
+                if (!unlocked.Succeeded) throw new InvalidOperationException($"Vault unlock failed ({vault.State}): {unlocked.Message}");
+            }
             return app;
         }
         catch
@@ -272,7 +301,5 @@ public sealed class E2EApp : IAsyncDisposable
     {
         _prompts.Changed -= OnPromptsChanged;
         await _services.DisposeAsync();
-        try { await _platform.CleanUpAsync(_instanceId); }
-        catch (Exception) { /* best effort: never mask the scenario's own result */ }
     }
 }

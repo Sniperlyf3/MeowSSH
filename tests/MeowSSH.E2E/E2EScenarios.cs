@@ -8,6 +8,7 @@ public static class E2EScenarios
     public static IReadOnlyList<E2EScenario> All { get; } =
     [
         .. SshScenarios.All,
+        .. SftpScenarios.All,
     ];
 
     public static E2EScenario Named(string name) =>

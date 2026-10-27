@@ -13,6 +13,7 @@ public sealed record E2EScenario(string Name, Func<E2EContext, Task> Run)
 public sealed class E2EContext : IAsyncDisposable
 {
     private readonly List<E2EApp> _apps = [];
+    private readonly List<string> _instances = [];
     private readonly string _root;
 
     public E2EContext(string scenario, IE2EPlatform platform, E2EServer server, Action<string> log)
@@ -32,9 +33,23 @@ public sealed class E2EContext : IAsyncDisposable
     /// <summary>A fresh install of the app with an unlocked vault. Disposed with the context.</summary>
     public async Task<E2EApp> StartAppAsync(EntitlementTier tier = EntitlementTier.ProCloud)
     {
-        var app = await E2EApp.StartAsync(Platform, Path.Combine(_root, "app" + _apps.Count), tier);
+        var app = await E2EApp.StartAsync(Platform, Path.Combine(_root, "app" + _instances.Count), tier);
+        _instances.Add(app.InstanceId);
         _apps.Add(app);
         return app;
+    }
+
+    /// <summary>
+    /// Quits <paramref name="app"/> and launches it again on the same data and
+    /// key-store entries: what the user sees after the process is killed.
+    /// </summary>
+    public async Task<E2EApp> RestartAsync(E2EApp app)
+    {
+        _apps.Remove(app);
+        await app.DisposeAsync();
+        var restarted = await E2EApp.StartAsync(Platform, app.DataDirectory, app.Tier, app.InstanceId);
+        _apps.Add(restarted);
+        return restarted;
     }
 
     /// <summary>A started app with the server saved as a host using its private key.</summary>
@@ -48,6 +63,11 @@ public sealed class E2EContext : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         foreach (var app in _apps) await app.DisposeAsync();
+        foreach (var instance in _instances)
+        {
+            try { await Platform.CleanUpAsync(instance); }
+            catch (Exception ex) { Log($"cleanup of {instance} failed: {ex.Message}"); }
+        }
         try { Directory.Delete(_root, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
     }
 }
