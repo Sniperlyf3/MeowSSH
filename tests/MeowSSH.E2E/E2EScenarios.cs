@@ -11,6 +11,7 @@ public static class E2EScenarios
         .. SftpScenarios.All,
         .. ForwardingScenarios.All,
         .. ProtocolScenarios.All,
+        .. AutomationScenarios.All,
     ];
 
     public static E2EScenario Named(string name) =>
