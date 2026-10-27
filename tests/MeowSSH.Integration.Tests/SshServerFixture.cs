@@ -120,6 +120,20 @@ public sealed class SshServerFixture : IAsyncLifetime
         return path;
     }
 
+    /// <summary>This server as the shared E2E scenarios see it, with the client key authorised.</summary>
+    public E2E.E2EServer AsE2EServer()
+    {
+        AuthorizeClientKey();
+        var hostKey = File.ReadAllText(HostKeyPath + ".pub").Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return new E2E.E2EServer(
+            "127.0.0.1",
+            Port,
+            Username,
+            Password,
+            File.ReadAllText(ClientKeyPath),
+            hostKey[0] + " " + hostKey[1]);
+    }
+
     private static void EnsureUser()
     {
         if (Directory.Exists($"/home/{Username}")) return;

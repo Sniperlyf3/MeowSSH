@@ -50,6 +50,11 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\MeowSSH.Android\MeowSSH.Android.csproj" />
     <ProjectReference Include="..\..\src\MeowSSH.Core\MeowSSH.Core.csproj" />
+    <!--
+      The shared E2E scenarios, run here against an OpenSSH server on the CI
+      runner when "am instrument" is given its address (scripts/run-device-tests.sh).
+    -->
+    <ProjectReference Include="..\MeowSSH.E2E\MeowSSH.E2E.csproj" />
   </ItemGroup>
 
 </Project>
