@@ -101,6 +101,12 @@ public sealed class E2EApp : IAsyncDisposable
     /// <summary>Identifies this install's platform key-store entries; the same across a restart.</summary>
     public string InstanceId => _instanceId;
     public EntitlementTier Tier { get; private init; }
+
+    /// <summary>The backend this install talks to; null when it runs without one.</summary>
+    public E2EApi? Api { get; private init; }
+
+    /// <summary>What the user has bought, when running against the API.</summary>
+    public E2EPlayStore Store => Get<E2EPlayStore>();
     public string DataDirectory { get; }
     public T Get<T>() where T : notnull => _services.GetRequiredService<T>();
     public FixedEntitlementGrantProvider Entitlement => Get<FixedEntitlementGrantProvider>();
@@ -131,6 +137,8 @@ public sealed class E2EApp : IAsyncDisposable
         EntitlementTier tier = EntitlementTier.ProCloud,
         string? instanceId = null,
         bool unlock = true,
+        E2EApi? api = null,
+        E2EPlayStore? store = null,
         CancellationToken cancellationToken = default)
     {
         instanceId ??= "e2e-" + Guid.NewGuid().ToString("N")[..12];
@@ -139,14 +147,30 @@ public sealed class E2EApp : IAsyncDisposable
         var services = new ServiceCollection();
         platform.AddPlatformServices(services, instanceId);
         services.AddSingleton<IBiometricGate, ApprovingBiometricGate>();
-        services.AddSingleton<IStorePurchaseService, NoStorePurchaseService>();
-        services.AddSingleton<IPlayIntegrityService, NoPlayIntegrityService>();
         services.AddSingleton<IEntitlementCache, InMemoryEntitlementCache>();
-        // No backend: the licensing client is unconfigured, exactly as a build
-        // without LicensingApiBaseUrl is, and entitlement comes from the scenario.
-        services.AddSingleton(new LicensingApiOptions(null, "", "dev.sniperlyf3.meowssh"));
         services.AddSingleton(new FixedEntitlementGrantProvider(tier));
-        services.AddSingleton<IEntitlementGrantProvider>(sp => sp.GetRequiredService<FixedEntitlementGrantProvider>());
+        if (api is null)
+        {
+            // No backend: the licensing client is unconfigured, exactly as a build
+            // without LicensingApiBaseUrl is, and entitlement comes from the scenario.
+            services.AddSingleton<IStorePurchaseService, NoStorePurchaseService>();
+            services.AddSingleton<IPlayIntegrityService, NoPlayIntegrityService>();
+            services.AddSingleton(new LicensingApiOptions(null, "", "dev.sniperlyf3.meowssh"));
+            services.AddSingleton<IEntitlementGrantProvider>(sp => sp.GetRequiredService<FixedEntitlementGrantProvider>());
+        }
+        else
+        {
+            // The release wiring: entitlement is whatever the real API grants
+            // for what is in the (stand-in) Play Store, and every backend
+            // client talks to the API over TLS.
+            store ??= E2EPlayStore.For(tier);
+            services.AddSingleton(store);
+            services.AddSingleton<IStorePurchaseService>(store);
+            services.AddSingleton<E2EPlayIntegrity>();
+            services.AddSingleton<IPlayIntegrityService>(sp => sp.GetRequiredService<E2EPlayIntegrity>());
+            services.AddSingleton(await api.LicensingOptionsAsync(cancellationToken));
+            services.AddSingleton<IEntitlementGrantProvider>(sp => sp.GetRequiredService<LicensingApiGrantProvider>());
+        }
         services.AddSingleton<IActiveSessionLifetime, NoOpActiveSessionLifetime>();
         services.AddSingleton(new DirectoryLocalFileTransferService(Path.Combine(dataDirectory, "user-files")));
         services.AddSingleton<ILocalFileTransferService>(sp => sp.GetRequiredService<DirectoryLocalFileTransferService>());
@@ -172,11 +196,13 @@ public sealed class E2EApp : IAsyncDisposable
             dataDirectory,
             Path.Combine(dataDirectory, "cache"),
             platform.NativeBinaryDirectory));
+        if (api is not null)
+            services.AddSingleton(_ => api.CreateHttpClient());
 
         // ValidateOnBuild is the point of building the real graph: a service the
         // app registers but cannot construct fails here, not on a phone.
         var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
-        var app = new E2EApp(provider, platform, instanceId, dataDirectory) { Tier = tier };
+        var app = new E2EApp(provider, platform, instanceId, dataDirectory) { Tier = tier, Api = api };
         try
         {
             var entitlements = app.Get<EntitlementService>();

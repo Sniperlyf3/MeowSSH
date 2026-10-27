@@ -193,7 +193,19 @@ public sealed class LicensingApiGrantProvider : IEntitlementGrantProvider, IMana
         var purchases = await GetPurchasesAsync(cancellationToken).ConfigureAwait(false);
         if (purchases.Length == 0) return EntitlementSnapshot.Free(now);
 
-        var grant = await RequestPaidGrantAsync(purchases, cancellationToken).ConfigureAwait(false);
+        SignedEntitlementGrant? grant;
+        try
+        {
+            grant = await RequestPaidGrantAsync(purchases, cancellationToken).ConfigureAwait(false);
+        }
+        catch (PurchasesDeniedException)
+        {
+            // The service's answer, not an outage: Google no longer vouches for
+            // these purchases (refunded, lapsed, an unlicensed build). This
+            // used to throw like a network error, which left the cached paid
+            // tier in force until it expired and failed every refresh.
+            return EntitlementSnapshot.Free(now);
+        }
         return grant is null ? EntitlementSnapshot.Free(now) : VerifyGrant(grant, now);
     }
 
@@ -219,6 +231,11 @@ public sealed class LicensingApiGrantProvider : IEntitlementGrantProvider, IMana
             verificationRequest,
             LicensingApiJsonContext.Default.LicensingVerificationRequest,
             cancellationToken).ConfigureAwait(false);
+        // 403 is MeowSSHAPI's entitlement_denied: it asked Google and was told
+        // no. Anything else (5xx, a timeout) says nothing about the purchase,
+        // so it stays an exception and the cached tier survives the outage.
+        if (response.StatusCode == HttpStatusCode.Forbidden)
+            throw new PurchasesDeniedException();
         response.EnsureSuccessStatusCode();
 
         return await response.Content.ReadFromJsonAsync(
@@ -336,3 +353,7 @@ public sealed class LicensingApiGrantProvider : IEntitlementGrantProvider, IMana
             .Replace('+', '-')
             .Replace('/', '_');
 }
+
+/// <summary>The licensing service checked the purchases with Google Play and refused them.</summary>
+internal sealed class PurchasesDeniedException()
+    : SecurityException("Google Play did not confirm these purchases, so they unlock nothing.");

@@ -16,6 +16,12 @@ public static class E2EScenarios
         .. TailcatScenarios.All,
     ];
 
+    /// <summary>
+    /// The app and MeowSSHAPI together. Kept out of <see cref="All"/>: they
+    /// need a running API, which only MeowSSHAPI's CI has (see <see cref="E2EApi"/>).
+    /// </summary>
+    public static IReadOnlyList<E2EScenario> Api { get; } = ApiScenarios.All;
+
     public static E2EScenario Named(string name) =>
-        All.SingleOrDefault(s => s.Name == name) ?? throw new ArgumentException($"No E2E scenario '{name}'.", nameof(name));
+        All.Concat(Api).SingleOrDefault(s => s.Name == name) ?? throw new ArgumentException($"No E2E scenario '{name}'.", nameof(name));
 }

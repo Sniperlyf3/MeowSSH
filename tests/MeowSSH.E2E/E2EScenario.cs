@@ -16,8 +16,9 @@ public sealed class E2EContext : IAsyncDisposable
     private readonly List<string> _instances = [];
     private readonly string _root;
 
-    public E2EContext(string scenario, IE2EPlatform platform, E2EServer server, Action<string> log)
+    public E2EContext(string scenario, IE2EPlatform platform, E2EServer server, Action<string> log, E2EApi? api = null)
     {
+        Api = api;
         Scenario = scenario;
         Platform = platform;
         Server = server;
@@ -30,10 +31,21 @@ public sealed class E2EContext : IAsyncDisposable
     public E2EServer Server { get; }
     public Action<string> Log { get; }
 
+    /// <summary>The real backend, when the run has one; null otherwise (see <see cref="E2EApi"/>).</summary>
+    public E2EApi? Api { get; }
+
+    /// <summary>The backend, for a scenario that cannot run without one.</summary>
+    public E2EApi RequireApi() =>
+        Api ?? throw new InvalidOperationException("This scenario needs a running MeowSSHAPI (E2E_API_URL).");
+
     /// <summary>A fresh install of the app with an unlocked vault. Disposed with the context.</summary>
-    public async Task<E2EApp> StartAppAsync(EntitlementTier tier = EntitlementTier.ProCloud)
+    /// <remarks>
+    /// With a backend, the tier is what the API grants for the matching Play
+    /// purchase (<see cref="E2EPlayStore.For"/>), or for <paramref name="store"/>.
+    /// </remarks>
+    public async Task<E2EApp> StartAppAsync(EntitlementTier tier = EntitlementTier.ProCloud, E2EPlayStore? store = null)
     {
-        var app = await E2EApp.StartAsync(Platform, Path.Combine(_root, "app" + _instances.Count), tier);
+        var app = await E2EApp.StartAsync(Platform, Path.Combine(_root, "app" + _instances.Count), tier, api: Api, store: store);
         _instances.Add(app.InstanceId);
         _apps.Add(app);
         return app;
@@ -48,7 +60,8 @@ public sealed class E2EContext : IAsyncDisposable
     {
         _apps.Remove(app);
         await app.DisposeAsync();
-        var restarted = await E2EApp.StartAsync(Platform, app.DataDirectory, app.Tier, app.InstanceId, unlock);
+        var restarted = await E2EApp.StartAsync(Platform, app.DataDirectory, app.Tier, app.InstanceId, unlock,
+            app.Api, app.Api is null ? null : app.Store);
         _apps.Add(restarted);
         return restarted;
     }
@@ -77,10 +90,10 @@ public sealed record E2EResult(string Name, bool Passed, TimeSpan Duration, stri
 
 public static class E2ERunner
 {
-    public static async Task<E2EResult> RunAsync(E2EScenario scenario, IE2EPlatform platform, E2EServer server, Action<string> log, TimeSpan? timeout = null)
+    public static async Task<E2EResult> RunAsync(E2EScenario scenario, IE2EPlatform platform, E2EServer server, Action<string> log, TimeSpan? timeout = null, E2EApi? api = null)
     {
         var clock = Stopwatch.StartNew();
-        await using var context = new E2EContext(scenario.Name, platform, server, log);
+        await using var context = new E2EContext(scenario.Name, platform, server, log, api);
         try
         {
             var run = scenario.Run(context);
