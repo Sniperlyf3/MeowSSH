@@ -204,6 +204,14 @@ jobs:
         run: >
           dotnet build tests/MeowSSH.Device.Tests/MeowSSH.Device.Tests.csproj
           -c Debug -f net10.0-android36.0
+      # The shared E2E scenarios (tests/MeowSSH.E2E) run inside the device
+      # test APK against this server, which the emulator reaches as 10.0.2.2.
+      # It exports E2E_*; run-device-tests.sh passes them on, and fails the
+      # job if they were set but no scenario ran.
+      - name: Start the E2E SSH server
+        run: |
+          sudo apt-get update && sudo apt-get install -y openssh-server
+          sudo -E ./scripts/start-e2e-sshd.sh
       - name: Run the device tests on an emulator
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
         with:
@@ -218,7 +226,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: device-test-report
-          path: instrumentation.txt
+          path: |
+            instrumentation.txt
+            ${{ env.E2E_SSHD_LOG }}
           if-no-files-found: ignore
 
   play-aab-smoke:
