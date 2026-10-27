@@ -35,8 +35,10 @@ jobs:
         run: dotnet test tests/MeowSSH.Core.Tests --no-build --configuration Release --logger "trx;LogFileName=core.trx"
       - name: Test the Play Store bootstrap script
         run: bash scripts/test-play-store-bootstrap.sh
+      # mosh and busybox-static (whose busybox has telnetd, unlike Ubuntu's
+      # default one) serve the Mosh and Telnet E2E scenarios.
       - name: Install OpenSSH server
-        run: sudo apt-get update && sudo apt-get install -y openssh-server
+        run: sudo apt-get update && sudo apt-get install -y openssh-server mosh busybox-static
       - name: SSH engine integration tests
         run: sudo -E env "PATH=$PATH" dotnet test tests/MeowSSH.Integration.Tests --no-build --configuration Release --logger "trx;LogFileName=integration.trx"
       - name: Install Playwright browsers
@@ -210,7 +212,7 @@ jobs:
       # job if they were set but no scenario ran.
       - name: Start the E2E SSH server
         run: |
-          sudo apt-get update && sudo apt-get install -y openssh-server
+          sudo apt-get update && sudo apt-get install -y openssh-server mosh busybox-static
           sudo -E ./scripts/start-e2e-sshd.sh
       - name: Run the device tests on an emulator
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d

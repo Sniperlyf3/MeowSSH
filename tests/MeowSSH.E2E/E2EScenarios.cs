@@ -10,6 +10,7 @@ public static class E2EScenarios
         .. SshScenarios.All,
         .. SftpScenarios.All,
         .. ForwardingScenarios.All,
+        .. ProtocolScenarios.All,
     ];
 
     public static E2EScenario Named(string name) =>

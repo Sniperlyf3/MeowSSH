@@ -40,7 +40,16 @@ public sealed class SoftwareE2EPlatform(string scratchRoot) : IE2EPlatform
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (SoftwareDeviceKeyStore Vault, SoftwareSshHardwareKeyStore Ssh)> _stores = new();
 
     public string Name => "linux";
-    public string? NativeBinaryDirectory => null;
+    // Explicit, as on Android (where the app always passes NativeLibraryDir):
+    // the local terminal refuses to guess, and the engines should run the
+    // runtime package's binaries from a known place here too.
+    public string? NativeBinaryDirectory { get; } = FindRuntimeNativeDirectory();
+
+    private static string? FindRuntimeNativeDirectory()
+    {
+        var dir = Path.Combine(AppContext.BaseDirectory, "runtimes", System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier, "native");
+        return File.Exists(Path.Combine(dir, OperatingSystem.IsWindows() ? "meowshell.exe" : "meowshell")) ? dir : null;
+    }
     public string ScratchRoot { get; } = Directory.CreateDirectory(scratchRoot).FullName;
 
     public void AddPlatformServices(IServiceCollection services, string instanceId)
