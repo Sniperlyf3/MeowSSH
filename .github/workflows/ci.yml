@@ -39,8 +39,14 @@ jobs:
       # default one) serve the Mosh and Telnet E2E scenarios.
       - name: Install OpenSSH server
         run: sudo apt-get update && sudo apt-get install -y openssh-server mosh busybox-static
+      # These tests run as root, and Meowshell refuses to run a tailcat binary
+      # that root does not own, or one under a directory root does not own
+      # (here, /home/runner): copy the bundled binaries somewhere root-owned.
       - name: SSH engine integration tests
-        run: sudo -E env "PATH=$PATH" dotnet test tests/MeowSSH.Integration.Tests --no-build --configuration Release --logger "trx;LogFileName=integration.trx"
+        run: |
+          sudo install -d -o root -g root -m 755 /opt/meowssh-e2e-bin
+          sudo install -o root -g root -m 755 tests/MeowSSH.Integration.Tests/bin/Release/net10.0/runtimes/linux-x64/native/* /opt/meowssh-e2e-bin/
+          sudo -E env "PATH=$PATH" MEOWSHELL_BINARIES=/opt/meowssh-e2e-bin dotnet test tests/MeowSSH.Integration.Tests --no-build --configuration Release --logger "trx;LogFileName=integration.trx"
       - name: Install Playwright browsers
         run: pwsh tests/MeowSSH.UI.Tests/bin/Release/net10.0/playwright.ps1 install chromium --with-deps
       - name: UI end-to-end tests

@@ -47,6 +47,12 @@ public sealed class SoftwareE2EPlatform(string scratchRoot) : IE2EPlatform
 
     private static string? FindRuntimeNativeDirectory()
     {
+        // Meowshell refuses a tailcat binary, or any directory above it, owned
+        // by someone other than the current user or root. CI runs these tests
+        // under sudo against a runner-owned build tree, so it copies the
+        // binaries somewhere root-owned and points MEOWSHELL_BINARIES there.
+        if (Environment.GetEnvironmentVariable("MEOWSHELL_BINARIES") is { Length: > 0 } configured)
+            return configured;
         var dir = Path.Combine(AppContext.BaseDirectory, "runtimes", System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier, "native");
         return File.Exists(Path.Combine(dir, OperatingSystem.IsWindows() ? "meowshell.exe" : "meowshell")) ? dir : null;
     }
