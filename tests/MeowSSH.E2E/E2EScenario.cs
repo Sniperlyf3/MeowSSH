@@ -43,11 +43,12 @@ public sealed class E2EContext : IAsyncDisposable
     /// Quits <paramref name="app"/> and launches it again on the same data and
     /// key-store entries: what the user sees after the process is killed.
     /// </summary>
-    public async Task<E2EApp> RestartAsync(E2EApp app)
+    /// <param name="unlock">False leaves an existing vault at the lock screen, for the scenario to unlock.</param>
+    public async Task<E2EApp> RestartAsync(E2EApp app, bool unlock = true)
     {
         _apps.Remove(app);
         await app.DisposeAsync();
-        var restarted = await E2EApp.StartAsync(Platform, app.DataDirectory, app.Tier, app.InstanceId);
+        var restarted = await E2EApp.StartAsync(Platform, app.DataDirectory, app.Tier, app.InstanceId, unlock);
         _apps.Add(restarted);
         return restarted;
     }

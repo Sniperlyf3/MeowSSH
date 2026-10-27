@@ -12,6 +12,7 @@ public static class E2EScenarios
         .. ForwardingScenarios.All,
         .. ProtocolScenarios.All,
         .. AutomationScenarios.All,
+        .. VaultScenarios.All,
     ];
 
     public static E2EScenario Named(string name) =>

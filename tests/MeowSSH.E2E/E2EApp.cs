@@ -124,6 +124,7 @@ public sealed class E2EApp : IAsyncDisposable
         string dataDirectory,
         EntitlementTier tier = EntitlementTier.ProCloud,
         string? instanceId = null,
+        bool unlock = true,
         CancellationToken cancellationToken = default)
     {
         instanceId ??= "e2e-" + Guid.NewGuid().ToString("N")[..12];
@@ -186,7 +187,7 @@ public sealed class E2EApp : IAsyncDisposable
                 if (!created.Succeeded) throw new InvalidOperationException("Vault setup failed: " + created.Message);
                 app.RecoveryCode = created.RecoveryCode;
             }
-            else
+            else if (unlock)
             {
                 var unlocked = await vault.UnlockAsync(cancellationToken);
                 if (!unlocked.Succeeded) throw new InvalidOperationException($"Vault unlock failed ({vault.State}): {unlocked.Message}");
