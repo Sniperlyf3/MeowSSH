@@ -136,13 +136,20 @@ public static class MeowSshApplicationServices
             Path.Combine(data, "port-forward-profiles.json")));
         services.AddSingleton<IPortForwardProfileService, PortForwardProfileService>();
 
+        // One Tailcat home for the engines and the hub, so the app has one
+        // Tailcat client identity. The engines used to run from "agent", whose
+        // HOME held no saved client key, so a saved Tailcat host connected as
+        // a fresh ephemeral key -- never the one the Keys screen shows and the
+        // user puts in another phone's allow list -- and was always refused.
+        // known_hosts stays where it was, so trusted hosts survive the upgrade.
+        var tailcatHome = Path.Combine(data, "tailcat-home");
         services.AddSingleton(new MeowshellSshEngineOptions(
-            WorkingDirectory: Path.Combine(data, "agent"),
+            WorkingDirectory: tailcatHome,
             KnownHostsPath: Path.Combine(data, "agent", "known_hosts"),
             BinaryDirectory: paths.NativeBinaryDirectory));
         services.AddSingleton(new TailcatHubRuntimeOptions(
             paths.NativeBinaryDirectory ?? AppContext.BaseDirectory,
-            Path.Combine(data, "tailcat-home"),
+            tailcatHome,
             Path.Combine(paths.CacheDirectory, "tailcat-work"),
             string.IsNullOrWhiteSpace(paths.TailcatDerpMapUrl) ? null : paths.TailcatDerpMapUrl));
         services.AddSingleton<MeowshellTailcatHubService>();
