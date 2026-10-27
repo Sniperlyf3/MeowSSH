@@ -54,6 +54,10 @@ Subsystem sftp /usr/lib/openssh/sftp-server
 CONFIG
 
 mkdir -p /run/sshd
+# Created first and world-readable: sshd would create it 0600 as root, and
+# the CI step that uploads it as an artifact runs as the runner user.
+touch "$ROOT/sshd.log"
+chmod 644 "$ROOT/sshd.log"
 /usr/sbin/sshd -f "$ROOT/sshd_config" -E "$ROOT/sshd.log"
 
 for _ in $(seq 1 100); do
