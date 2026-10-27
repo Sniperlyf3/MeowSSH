@@ -227,9 +227,16 @@ internal sealed class MeowshellSshForward(MeowshellForward forward, SshForwardKi
     public string? SocksUsername => forward.SocksUsername;
     public string? SocksPassword => forward.SocksPassword;
 
-    public Task CloseAsync(CancellationToken cancellationToken = default) => forward.CloseAsync(cancellationToken);
+    // One close, shared by every caller. Meowshell 0.1.973 answers only the
+    // first close_channel for a forward: a second CloseAsync -- including the
+    // DisposeAsync of an "await using" after an explicit close -- waits for an
+    // acknowledgement that never comes and hangs forever. Found by the
+    // forward.local E2E scenario.
+    private readonly Lazy<Task> _close = new(() => forward.CloseAsync(CancellationToken.None));
 
-    public ValueTask DisposeAsync() => forward.DisposeAsync();
+    public Task CloseAsync(CancellationToken cancellationToken = default) => _close.Value.WaitAsync(cancellationToken);
+
+    public ValueTask DisposeAsync() => new(_close.Value);
 }
 
 internal sealed class MeowshellSshShell : ISshShell

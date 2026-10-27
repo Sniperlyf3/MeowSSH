@@ -20,6 +20,28 @@ public sealed record E2EServer(
         "SHA256:" + Convert.ToBase64String(System.Security.Cryptography.SHA256.HashData(
             Convert.FromBase64String(HostPublicKey.Split(' ', StringSplitOptions.RemoveEmptyEntries)[1]))).TrimEnd('=');
 
+    /// <summary>
+    /// The base64 public-key blob of <see cref="ClientPrivateKey"/>, as it
+    /// appears in authorized_keys or "ssh-add -L". Read from the private key
+    /// file's own public-key section (unencrypted in every OpenSSH key).
+    /// </summary>
+    public string ClientPublicKeyBody
+    {
+        get
+        {
+            var body = string.Concat(ClientPrivateKey.Split('\n')
+                .Select(l => l.Trim())
+                .Where(l => l.Length > 0 && !l.StartsWith("-----", StringComparison.Ordinal)));
+            var bytes = Convert.FromBase64String(body);
+            var offset = "openssh-key-v1\0"u8.Length;
+            int ReadLength() { var n = System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(bytes.AsSpan(offset)); offset += 4; return n; }
+            for (var i = 0; i < 3; i++) { var skip = ReadLength(); offset += skip; } // cipher, kdf, kdf options
+            offset += 4; // key count
+            var length = ReadLength();
+            return Convert.ToBase64String(bytes, offset, length);
+        }
+    }
+
     /// <summary>Instrumentation/environment keys, shared by the CI script and both runners.</summary>
     public static class Keys
     {
