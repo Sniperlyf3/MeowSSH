@@ -100,7 +100,7 @@
     <PackageReference Include="Microsoft.Maui.Controls" Version="10.0.120" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebView.Maui" Version="10.0.120" />
     <PackageReference Include="UsbSerialForAndroid" Version="2.0.1" />
-    <PackageReference Include="Xamarin.AndroidX.Work.Runtime" Version="2.11.2.1" />
+    <PackageReference Include="Xamarin.AndroidX.Work.Runtime" Version="2.12.0" />
     <PackageReference Include="ZXing.Net.Maui.Controls" Version="0.10.4" />
     <PackageReference Include="Xamarin.Android.Google.BillingClient" Version="9.1.0.2" />
     <PackageReference Include="Xamarin.Google.Android.Play.Integrity" Version="1.6.0.4" />
@@ -109,7 +109,7 @@
     <PackageReference Include="Xamarin.AndroidX.Lifecycle.LiveData" Version="2.11.0.1" />
     <PackageReference Include="Xamarin.AndroidX.Lifecycle.LiveData.Core.Ktx" Version="2.11.0.1" />
     <PackageReference Include="Xamarin.AndroidX.Lifecycle.Process" Version="2.11.0.1" />
-    <PackageReference Include="Xamarin.AndroidX.Tracing.Tracing.Ktx" Version="2.0.2" />
+    <PackageReference Include="Xamarin.AndroidX.Tracing.Tracing.Ktx" Version="2.0.3" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(EnableTailcatVpn)' == 'true'">
