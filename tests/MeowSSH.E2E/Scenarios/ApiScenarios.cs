@@ -24,6 +24,7 @@ public static class ApiScenarios
         new("api.heartbeat.create-ping-delete", HeartbeatMonitorSeesPings),
         new("api.team.invite-join-share", TeamSharesAHostWithAJoinedMember),
         new("api.free-tier.refused-by-the-service", ServiceRefusesFreeUsers),
+        new("api.hosted-ai.explain-and-command", AskAiExplainsOutputAndSuggestsACommandThatRuns),
     ];
 
     private static async Task PurchasesGrantTheirTier(E2EContext c)
@@ -227,6 +228,45 @@ public static class ApiScenarios
         await Assert.ThrowsAnyAsync<Exception>(() => free.Get<ICloudBackupApi>().UploadAsync(credential, grant, new byte[] { 1, 2, 3 }));
         await Assert.ThrowsAnyAsync<Exception>(() => free.Get<IHeartbeatMonitorApi>().CreateAsync("owner-" + Guid.NewGuid().ToString("N"), grant, "x", 3600, 600));
         await Assert.ThrowsAnyAsync<Exception>(() => free.Get<ITeamApi>().CreateAsync("member-" + Guid.NewGuid().ToString("N"), grant, "t", "n"));
+    }
+
+    /// <summary>
+    /// Ask AI from the terminal: the app sends output the server really
+    /// printed, gets an explanation, asks for a command and runs the one it is
+    /// given. The model is MeowSSHAPI's Anthropic stand-in; everything between
+    /// the panel and the provider's HTTP endpoint is real.
+    /// </summary>
+    private static async Task AskAiExplainsOutputAndSuggestsACommandThatRuns(E2EContext c)
+    {
+        c.RequireApi();
+        var (app, host) = await StartWithHostAsync(c, EntitlementTier.ProCloud);
+        var ai = app.Get<IHostedAiService>();
+        Assert.True(ai.CanUse);
+        await using var connection = await app.ConnectSshAsync(host);
+
+        var failed = await connection.RunCommandAsync("meowssh-no-such-command 2>&1; true");
+        Assert.Contains("not found", failed.StandardOutput, StringComparison.Ordinal);
+        var explained = await ai.AskAsync(new AiAssistRequest(AiAssistMode.Explain, failed.StandardOutput, "why?"));
+        Assert.Equal("E2E explanation of the terminal output.", explained.Answer);
+        Assert.Null(explained.Command);
+
+        var suggested = await ai.AskAsync(new AiAssistRequest(AiAssistMode.Command, "", "print a line"));
+        var command = suggested.Command ?? throw new InvalidOperationException("A command request came back with no command: " + suggested.Answer);
+        Assert.Equal("meowssh-ai-e2e", (await connection.RunCommandAsync(command)).StandardOutput.Trim());
+
+        // A model refusal reaches the panel as a refusal, not an empty answer.
+        var refused = await Assert.ThrowsAsync<HostedAiException>(() => ai.AskAsync(new AiAssistRequest(AiAssistMode.Explain, "E2E_REFUSE", null)));
+        Assert.Equal("ai_refused", refused.Code);
+
+        // Pro is not Pro Cloud: the app hides Ask AI, and the API turns the
+        // Pro grant away when it is presented anyway.
+        var pro = await c.StartAppAsync(EntitlementTier.Pro);
+        Assert.False(pro.Get<IHostedAiService>().CanUse);
+        var proGrant = await pro.Get<ICloudEntitlementGrantSource>().GetPaidGrantAsync();
+        var denied = await Assert.ThrowsAsync<HostedAiException>(() => pro.Get<IHostedAiApi>()
+            .AssistAsync(proGrant, new AiAssistRequest(AiAssistMode.Explain, "anything", null)));
+        Assert.NotNull(denied.Code);
+        c.Log("a Pro grant is refused with " + denied.Code);
     }
 
     private static async Task<(E2EApp App, HostRecord Host)> StartWithHostAsync(E2EContext c, EntitlementTier tier)
