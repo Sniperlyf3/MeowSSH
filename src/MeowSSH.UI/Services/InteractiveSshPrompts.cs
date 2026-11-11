@@ -75,6 +75,11 @@ public sealed class ChallengeRequest(KeyboardInteractivePrompt prompt)
 /// invisible and unanswerable, and the handshake behind it hanging.
 /// </para>
 /// </remarks>
+public sealed class PublicRelayRequest(PublicRelayPrompt prompt) : SshPromptRequest<PublicRelayChoice>
+{
+    public PublicRelayPrompt Prompt { get; } = prompt;
+}
+
 public sealed class InteractiveSshPrompts : ISshPrompts, IDisposable
 {
     private readonly SemaphoreSlim _oneAtATime = new(1, 1);
@@ -87,6 +92,13 @@ public sealed class InteractiveSshPrompts : ISshPrompts, IDisposable
 
     /// <summary>The challenge awaiting answers, if any.</summary>
     public ChallengeRequest? PendingChallenge { get; private set; }
+
+    /// <summary>The public-relay question awaiting an answer, if any.</summary>
+    public PublicRelayRequest? PendingPublicRelay { get; private set; }
+
+    /// <summary>True while any question is waiting for the user.</summary>
+    public bool IsAsking => PendingHostKey is not null || PendingPassword is not null
+        || PendingChallenge is not null || PendingPublicRelay is not null;
 
     /// <summary>Raised when a question appears or is answered.</summary>
     public event EventHandler? Changed;
@@ -103,6 +115,18 @@ public sealed class InteractiveSshPrompts : ISshPrompts, IDisposable
             // A cancelled connection is not a trusted host. Defaulting the other
             // way would silently accept a key nobody looked at.
             declined: false,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<PublicRelayChoice> ConfirmPublicRelayAsync(PublicRelayPrompt prompt, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(prompt);
+        return await AskAsync<PublicRelayRequest, PublicRelayChoice>(
+            new PublicRelayRequest(prompt),
+            r => PendingPublicRelay = r,
+            () => PendingPublicRelay = null,
+            // Walking away is not consent.
+            declined: PublicRelayChoice.Cancel,
             cancellationToken).ConfigureAwait(false);
     }
 

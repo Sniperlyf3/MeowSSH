@@ -136,6 +136,28 @@
                 }
             }
 
+            @if (_protocol == HostProtocol.Ssh && _transport == SshTransport.Tailcat)
+            {
+                <label class="field">
+                    <span class="field__label">Public relay</span>
+                    <select class="field__input" data-testid="host-public-relay" @bind="_publicRelay">
+                        <option value="@PublicRelayConsent.Ask">Ask each time</option>
+                        <option value="@PublicRelayConsent.Always">Always allow</option>
+                        <option value="@PublicRelayConsent.Never">Never allow</option>
+                    </select>
+                    <span class="field__hint" data-testid="host-public-relay-hint">
+                        Only matters when this address is on the public tailcat.dev relay instead of MeowSSH's own. MeowSSH never uses it without your say-so.
+                    </span>
+                </label>
+                <label class="field">
+                    <span class="field__label">Custom relay map (optional)</span>
+                    <input class="field__input mono" type="url" data-testid="host-tailcat-derpmap"
+                           placeholder="https://…/derpmap.json" autocomplete="off" autocapitalize="none" spellcheck="false"
+                           @bind="_tailcatDerpMapUrl" @bind:event="oninput" />
+                    <span class="field__hint">A relay you run yourself. Used without asking.</span>
+                </label>
+            }
+
             @if (_protocol == HostProtocol.Telnet)
             {
                 <p class="note" data-testid="telnet-warning">
@@ -338,6 +360,8 @@
     private SshTransport _transport = SshTransport.Tcp;
     private bool _autoReconnect = true;
     private bool _forwardAgent;
+    private PublicRelayConsent _publicRelay = PublicRelayConsent.Ask;
+    private string _tailcatDerpMapUrl = "";
     private int _serialBaudRate = 115200;
     private int _serialDataBits = 8;
     private SerialParity _serialParity = SerialParity.None;
@@ -478,6 +502,8 @@
             _transport = host.Transport;
             _autoReconnect = host.AutoReconnect;
             _forwardAgent = host.ForwardAgent;
+            _publicRelay = host.PublicRelay;
+            _tailcatDerpMapUrl = host.TailcatDerpMapUrl ?? "";
             _proxyUrl = host.ProxyUrl ?? "";
             _jumpHostId = host.JumpHostId?.ToString() ?? "";
             _serialBaudRate = host.SerialBaudRate;
@@ -587,6 +613,12 @@
                 AutoReconnect = _protocol != HostProtocol.Local && _autoReconnect,
                 ProxyUrl = SupportsProxy && !string.IsNullOrWhiteSpace(_proxyUrl) ? _proxyUrl.Trim() : null,
                 ForwardAgent = _protocol == HostProtocol.Ssh && _forwardAgent,
+                // Kept whatever the transport: switching to TCP and back must
+                // not quietly turn a "Never" into "Ask".
+                PublicRelay = _publicRelay,
+                TailcatDerpMapUrl = _protocol == HostProtocol.Ssh && _transport == SshTransport.Tailcat && !string.IsNullOrWhiteSpace(_tailcatDerpMapUrl)
+                    ? _tailcatDerpMapUrl.Trim()
+                    : null,
                 SerialBaudRate = _serialBaudRate,
                 SerialDataBits = _serialDataBits,
                 SerialParity = _serialParity,

@@ -32,7 +32,37 @@ public interface ISshPrompts
     /// </summary>
     /// <returns>One answer per question, or null if the user cancelled.</returns>
     Task<IReadOnlyList<string>?> AnswerChallengeAsync(KeyboardInteractivePrompt prompt, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Asks whether to reach a Tailcat address over the public tailcat.dev
+    /// relay, the only relay it can be reached through.
+    /// </summary>
+    /// <remarks>
+    /// Defaults to <see cref="PublicRelayChoice.Cancel"/>: anything that cannot
+    /// put the question to a person refuses, so the public relay is never used
+    /// because nobody was there to say no.
+    /// </remarks>
+    Task<PublicRelayChoice> ConfirmPublicRelayAsync(PublicRelayPrompt prompt, CancellationToken cancellationToken = default) =>
+        Task.FromResult(PublicRelayChoice.Cancel);
 }
+
+public enum PublicRelayChoice
+{
+    Cancel,
+    ConnectOnce,
+
+    /// <summary>Connect, and stop asking for this saved host.</summary>
+    AlwaysForHost,
+}
+
+/// <param name="Target">What is being reached, as the user knows it: a host label, or the address.</param>
+/// <param name="Address">The Tailcat address.</param>
+/// <param name="CanRemember">
+/// Whether <see cref="PublicRelayChoice.AlwaysForHost"/> can be offered: only a
+/// saved host has somewhere to keep the answer. A pasted address asks every
+/// time, and can be saved as a host to stop asking.
+/// </param>
+public sealed record PublicRelayPrompt(string Target, string Address, bool CanRemember);
 
 /// <param name="Host">The host as the user asked for it.</param>
 /// <param name="Fingerprint">SHA256 fingerprint, in the form ssh-keygen prints.</param>

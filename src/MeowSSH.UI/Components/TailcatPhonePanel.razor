@@ -75,6 +75,7 @@
                 <p class="tailcat-danger-warning" role="alert" data-testid="tailcat-serve-all-warning"><strong>Serving all ports exposes every reachable local service through this Tailcat address.</strong></p>
             }
 
+            <RelayAudiencePicker @bind-PublicRelay="_publicRelay" TestId="tailcat-server-audience" />
             <details class="tailcat-advanced" data-testid="tailcat-server-address-options">
                 <summary>Address and DERP options</summary>
                 <div class="tailcat-stack">
@@ -132,6 +133,7 @@
     private bool _fullAddress;
     private bool _usePresharedKey = true;
     private string _derpMapUrl = "";
+    private bool _publicRelay;
     private bool _busy;
     private string? _error;
     private string? _notice;
@@ -214,7 +216,7 @@
             var privateKeyJson = string.IsNullOrWhiteSpace(_serverIdentityName) ? null : await IdentityStore.ExportAsync(_serverIdentityName);
             await Hub.StartServerAsync(new TailcatServeRequest(TimeSpan.FromHours(_hours), AllowedTailcatClientKeys(), _shell, AuthorizedSshKeys(), _files, _folder, _fileMode, _exitNode,
                 AllowAnyClient: _allowAnyClient, UseTailcatCredentialForShell: _useTailcatCredentialForShell, FullAddress: _fullAddress, UsePresharedKey: _usePresharedKey,
-                DerpMapUrl: Empty(_derpMapUrl), PrivateKeyJson: privateKeyJson, ServeTargets: ServeTargetList));
+                DerpMapUrl: RelayAudiencePicker.DerpMapUrlFor(_publicRelay, _derpMapUrl), PrivateKeyJson: privateKeyJson, ServeTargets: ServeTargetList));
             _notice = "Tailcat sharing started.";
         }
         catch (Exception ex) { _error = ex.Message; }

@@ -28,6 +28,13 @@ public enum SshFailure
     PermissionDenied,
     NotFound,
     Cancelled,
+
+    /// <summary>
+    /// The address is only reachable over the public tailcat.dev relay, and the
+    /// user declined it, or the host is set never to use it. Not retryable: it
+    /// needs the user to change their answer, which the host's settings allow.
+    /// </summary>
+    PublicRelayDeclined,
 }
 
 public sealed class SshException(SshFailure failure, string message, Exception? innerException = null)

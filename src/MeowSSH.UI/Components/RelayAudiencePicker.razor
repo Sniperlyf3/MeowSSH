@@ -1,0 +1,39 @@
+@using MeowSSH.Core.Services
+@*
+    Who a share is for decides the relay it lands on, because a Tailcat server
+    sits on exactly one: MeowSSH's relay reaches only MeowSSH apps, the public
+    one reaches anyone, stock tailcat included. So the person sharing makes the
+    choice; the person connecting cannot.
+*@
+<label class="field">
+    <span class="field__label">Who can connect?</span>
+    <select class="field__input" data-testid="@TestId" value="@(PublicRelay ? "anyone" : "mine")" @onchange="OnChangedAsync">
+        <option value="mine">My MeowSSH devices</option>
+        <option value="anyone">Anyone with the address, including stock tailcat</option>
+    </select>
+    @if (PublicRelay)
+    {
+        <span class="field__hint" role="note" data-testid="@($"{TestId}-public-warning")">
+            Shared on the public tailcat.dev relay, which MeowSSH does not run. Traffic stays end-to-end encrypted.
+        </span>
+    }
+    else
+    {
+        <span class="field__hint">Through MeowSSH's own relay.</span>
+    }
+</label>
+
+@code {
+    /// <summary>True: share on the public relay, for anyone with the address.</summary>
+    [Parameter] public bool PublicRelay { get; set; }
+    [Parameter] public EventCallback<bool> PublicRelayChanged { get; set; }
+    [Parameter] public string TestId { get; set; } = "relay-audience";
+
+    /// <summary>The relay map a share for this audience is started with.</summary>
+    public static string? DerpMapUrlFor(bool publicRelay, string? customMap) =>
+        !string.IsNullOrWhiteSpace(customMap) ? customMap.Trim()
+        : publicRelay ? TailcatRelayPolicyOptions.PublicDerpMapUrl
+        : null;
+
+    private Task OnChangedAsync(ChangeEventArgs e) => PublicRelayChanged.InvokeAsync(e.Value as string == "anyone");
+}

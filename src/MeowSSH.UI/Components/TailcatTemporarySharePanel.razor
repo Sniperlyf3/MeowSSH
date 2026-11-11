@@ -98,6 +98,7 @@
                     <textarea class="field__input mono" rows="2" data-testid="tailcat-temporary-share-clients" placeholder="nodekey:..." @bind="_allowedClients" @bind:event="oninput"></textarea>
                     <span class="field__hint">Required -- a temporary share narrows how long the address works, not who may use it. Comma-separate additional <span class="mono">nodekey:</span> public keys.</span>
                 </label>
+                <RelayAudiencePicker @bind-PublicRelay="_publicRelay" TestId="tailcat-temporary-share-audience" />
                 <label class="field">
                     <span class="field__label">Expires after</span>
                     <select class="field__input" data-testid="tailcat-temporary-share-lifetime" @bind="_lifetimeMinutes">
@@ -146,6 +147,7 @@
 </div>
 
 @code {
+    private bool _publicRelay;
     private sealed record SavedTailcatClientKey(string Name, string PublicKey);
 
     private string _label = "";
@@ -225,7 +227,8 @@
         _busy = true; _error = _notice = null;
         try
         {
-            await Shares.CreateAsync(new TailcatTemporaryShareRequest(_label.Trim(), ServeTargetList, AllowedTailcatClientKeys(), TimeSpan.FromMinutes(_lifetimeMinutes)));
+            await Shares.CreateAsync(new TailcatTemporaryShareRequest(_label.Trim(), ServeTargetList, AllowedTailcatClientKeys(), TimeSpan.FromMinutes(_lifetimeMinutes),
+                RelayAudiencePicker.DerpMapUrlFor(_publicRelay, null)));
             _notice = "Temporary share started.";
         }
         catch (Exception ex) { _error = ex.Message; }

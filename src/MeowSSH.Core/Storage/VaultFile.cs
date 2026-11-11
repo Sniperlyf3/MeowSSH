@@ -181,6 +181,12 @@ public static class VaultFile
 
         if (schemaVersion >= 5)
             writer.WriteNullableString(host.TerminalTheme);
+
+        if (schemaVersion >= 6)
+        {
+            writer.WriteInt32((int)host.PublicRelay);
+            writer.WriteNullableString(host.TailcatDerpMapUrl);
+        }
     }
 
     private static HostRecord ReadHost(ref VaultReader reader, int schemaVersion)
@@ -238,6 +244,17 @@ public static class VaultFile
 
         var terminalTheme = schemaVersion >= 5 ? reader.ReadNullableString() : null;
 
+        // Hosts saved before v6 ask: a choice nobody made is never "always".
+        var publicRelay = PublicRelayConsent.Ask;
+        string? tailcatDerpMapUrl = null;
+        if (schemaVersion >= 6)
+        {
+            publicRelay = (PublicRelayConsent)reader.ReadInt32();
+            if (!Enum.IsDefined(publicRelay))
+                throw new VaultFormatException($"A host contains unsupported public relay value {(int)publicRelay}.");
+            tailcatDerpMapUrl = reader.ReadNullableString();
+        }
+
         return new HostRecord
         {
             Id = id,
@@ -253,6 +270,8 @@ public static class VaultFile
             Group = group,
             IsFavorite = isFavorite,
             TerminalTheme = terminalTheme,
+            PublicRelay = publicRelay,
+            TailcatDerpMapUrl = tailcatDerpMapUrl,
             SerialBaudRate = serialBaudRate,
             SerialDataBits = serialDataBits,
             SerialStopBits = serialStopBits,

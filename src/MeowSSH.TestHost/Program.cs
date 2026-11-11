@@ -15,13 +15,30 @@ builder.Services.AddRazorComponents()
 builder.Services.AddScoped<FakeHostDirectory>();
 builder.Services.AddScoped<IHostDirectory>(sp => sp.GetRequiredService<FakeHostDirectory>());
 builder.Services.AddScoped<IHostEditor>(sp => sp.GetRequiredService<FakeHostDirectory>());
-builder.Services.AddScoped<ISshEngine, FakeSshEngine>();
+builder.Services.AddScoped<FakeSshEngine>();
+// The real relay gate in front of the fake transport, so the public-relay
+// prompt, the host's remembered choice and the refusal are all the app's own.
+builder.Services.AddScoped<ITailcatRelayDirectorySource, FakeTailcatRelayDirectory>();
+builder.Services.AddScoped(_ => new TailcatRelayPolicyOptions(FakeTailcatRelayDirectory.ManagedDerpMapUrl));
+builder.Services.AddScoped(sp => new TailcatRelayPolicy(
+    sp.GetRequiredService<FakeTailcatHubService>(),
+    sp.GetRequiredService<ITailcatRelayDirectorySource>(),
+    sp.GetRequiredService<TailcatRelayPolicyOptions>()));
+builder.Services.AddScoped<ISshEngine>(sp => new TailcatRelaySshEngine(
+    sp.GetRequiredService<FakeSshEngine>(),
+    sp.GetRequiredService<TailcatRelayPolicy>(),
+    sp.GetRequiredService<IHostDirectory>(),
+    sp.GetRequiredService<IHostEditor>()));
 builder.Services.AddScoped<IProtocolConnectionEngine>(sp =>
     new SshProtocolConnectionEngine(sp.GetRequiredService<ISshEngine>()));
 builder.Services.AddScoped<ConnectionEngine>();
 builder.Services.AddScoped<ICredentialResolver, FakeCredentialResolver>();
 builder.Services.AddScoped<ISerialDeviceService, UnsupportedSerialDeviceService>();
-builder.Services.AddScoped<ITailcatHubService, FakeTailcatHubService>();
+builder.Services.AddScoped<FakeTailcatHubService>();
+builder.Services.AddScoped<ITailcatHubService>(sp => new PublicRelayGuardTailcatHubService(
+    sp.GetRequiredService<FakeTailcatHubService>(),
+    sp.GetRequiredService<TailcatRelayPolicy>(),
+    sp.GetRequiredService<ISshPrompts>()));
 builder.Services.AddScoped<ITailcatIdentityStore, FakeTailcatIdentityStore>();
 builder.Services.AddScoped<IManagedDerpUsageService, FakeManagedDerpUsageService>();
 builder.Services.AddScoped<ITailcatWorkspaceStore, MemoryTailcatWorkspaceStore>();

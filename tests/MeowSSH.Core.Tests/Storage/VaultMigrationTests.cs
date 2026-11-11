@@ -140,4 +140,55 @@ public sealed class VaultMigrationTests
 
         Assert.Equal("danger", Assert.Single(reopened.Hosts).TerminalTheme);
     }
+
+    [Fact]
+    public void Schema5HostsAskBeforeThePublicRelayAndHaveNoCustomRelay()
+    {
+        using var keyRing = VaultKeyRing.CreateNew();
+        var document = VaultDocument.CreateEmpty("device") with
+        {
+            Revision = 3,
+            Hosts =
+            [
+                new HostRecord
+                {
+                    Id = Guid.NewGuid(),
+                    Label = "phone",
+                    Address = "tcabc",
+                    Transport = SshTransport.Tailcat,
+                    TerminalTheme = "danger",
+                    // Did not exist in schema 5; must not leak into its bytes.
+                    PublicRelay = PublicRelayConsent.Always,
+                    TailcatDerpMapUrl = "https://must-not-exist-in-v5.example/derp.json",
+                },
+            ],
+        };
+
+        var host = Assert.Single(VaultFile.Read(VaultFile.Write(document, keyRing, schemaVersion: 5), keyRing).Hosts);
+
+        // A consent nobody gave must never read back as "always".
+        Assert.Equal(PublicRelayConsent.Ask, host.PublicRelay);
+        Assert.Null(host.TailcatDerpMapUrl);
+        Assert.Equal("danger", host.TerminalTheme);
+    }
+
+    [Fact]
+    public void PublicRelayConsentAndCustomRelayRoundTripThroughTheCurrentSchema()
+    {
+        using var keyRing = VaultKeyRing.CreateNew();
+        var document = VaultDocument.CreateEmpty("device") with
+        {
+            Revision = 1,
+            Hosts =
+            [
+                new HostRecord { Id = Guid.NewGuid(), Label = "a", Address = "tca", Transport = SshTransport.Tailcat, PublicRelay = PublicRelayConsent.Never },
+                new HostRecord { Id = Guid.NewGuid(), Label = "b", Address = "tcb", Transport = SshTransport.Tailcat, PublicRelay = PublicRelayConsent.Always, TailcatDerpMapUrl = "https://relay.example/derp.json" },
+            ],
+        };
+
+        var hosts = VaultFile.Read(VaultFile.Write(document, keyRing), keyRing).Hosts;
+
+        Assert.Equal((PublicRelayConsent.Never, (string?)null), (hosts[0].PublicRelay, hosts[0].TailcatDerpMapUrl));
+        Assert.Equal((PublicRelayConsent.Always, "https://relay.example/derp.json"), (hosts[1].PublicRelay, hosts[1].TailcatDerpMapUrl));
+    }
 }
