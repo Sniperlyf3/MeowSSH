@@ -21,7 +21,13 @@ public sealed class FakeSshEngine(NavigationManager navigation) : ISshEngine
 {
     internal const string OverQuotaRelayHealth = "MeowSSH managed relay: monthly usage allowance exceeded";
 
-    public Task<ISshConnection> ConnectAsync(
+    /// <summary>The fingerprint the "hostkeyprompt" hook asks about.</summary>
+    internal const string PromptFingerprint = "SHA256:FakeTestHostKeyFingerprintForTheUiSuite0000";
+
+    /// <summary>The only password the "passwordprompt" hook accepts.</summary>
+    internal const string PromptPassword = "correct horse";
+
+    public async Task<ISshConnection> ConnectAsync(
         HostRecord host,
         SshCredentials credentials,
         ISshPrompts prompts,
@@ -30,10 +36,30 @@ public sealed class FakeSshEngine(NavigationManager navigation) : ISshEngine
         cancellationToken.ThrowIfCancellationRequested();
         var isTailcat = host.Transport == SshTransport.Tailcat;
         var query = new Uri(navigation.Uri).Query;
+        // The handshake's questions, asked the way the real engine asks them:
+        // through the prompts it was handed, answered in the sheets. Opt-in by
+        // query string so every other test still connects without a question.
+        if (!isTailcat && query.Contains("hostkeyprompt", StringComparison.OrdinalIgnoreCase)
+            && !await prompts.ConfirmUnknownHostKeyAsync(new HostKeyPrompt(host.Address, PromptFingerprint, "ssh-ed25519"), cancellationToken))
+            throw new SshException(SshFailure.HostKeyUnknown, $"{host.Address}'s host key was not trusted.");
+        if (!isTailcat && query.Contains("passwordprompt", StringComparison.OrdinalIgnoreCase))
+        {
+            using var password = await prompts.RequestPasswordAsync($"Password for {host.Username ?? "you"}@{host.Address}", cancellationToken);
+            if (password is null) throw new SshException(SshFailure.Cancelled, "Sign-in was cancelled.");
+            if (System.Text.Encoding.UTF8.GetString(password.ReadOnlySpan) != PromptPassword)
+                throw new SshException(SshFailure.AuthenticationFailed, "The password was not accepted.");
+        }
+        if (!isTailcat && query.Contains("challengeprompt", StringComparison.OrdinalIgnoreCase))
+        {
+            var answers = await prompts.AnswerChallengeAsync(new KeyboardInteractivePrompt(
+                "Two-step sign-in", "Enter the code from your authenticator.", ["Verification code: "], [true]), cancellationToken);
+            if (answers is null) throw new SshException(SshFailure.Cancelled, "Sign-in was cancelled.");
+            if (answers is not ["123456"]) throw new SshException(SshFailure.AuthenticationFailed, "The code was not accepted.");
+        }
         var relayHealth = isTailcat && query.Contains("relayhealth", StringComparison.OrdinalIgnoreCase)
             ? OverQuotaRelayHealth
             : null;
-        return Task.FromResult<ISshConnection>(new FakeSshConnection(host.Id, isTailcat, relayHealth));
+        return new FakeSshConnection(host.Id, isTailcat, relayHealth);
     }
 
     private sealed class FakeSshConnection : ISshConnection, IConnectionPathTelemetry, IConnectionRelayHealth
