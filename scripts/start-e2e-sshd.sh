@@ -52,6 +52,13 @@ AllowUsers $USERNAME
 StrictModes no
 Subsystem sftp /usr/lib/openssh/sftp-server
 CONFIG
+# OpenSSH 9.8+ drops connections from an address that has failed to
+# authenticate too often, and the scenarios decline host keys and send wrong
+# passwords on purpose, all from one address. Older sshd refuses to start on
+# the keyword, so only where it exists. (See SshServerFixture.PenaltiesOff.)
+if /usr/sbin/sshd -G -f /dev/null 2>/dev/null | grep -q '^persourcepenalties '; then
+  echo "PerSourcePenalties no" >> "$ROOT/sshd_config"
+fi
 
 mkdir -p /run/sshd
 # Created first and world-readable: sshd would create it 0600 as root, and

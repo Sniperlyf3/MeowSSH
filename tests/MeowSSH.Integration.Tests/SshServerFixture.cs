@@ -82,6 +82,7 @@ public sealed class SshServerFixture : IAsyncLifetime
             AllowUsers {Username}
             StrictModes no
             Subsystem sftp /usr/lib/openssh/sftp-server
+            {PenaltiesOff()}
             """);
 
         Start();
@@ -133,6 +134,26 @@ public sealed class SshServerFixture : IAsyncLifetime
             File.ReadAllText(ClientKeyPath),
             hostKey[0] + " " + hostKey[1]);
     }
+
+    /// <summary>
+    /// "PerSourcePenalties no" where this sshd has the option, else nothing.
+    /// </summary>
+    /// <remarks>
+    /// OpenSSH 9.8 and later penalise a source address for every connection
+    /// that fails to authenticate, and once the penalties pass 15s they drop
+    /// that address's new connections at the handshake. The suite declines
+    /// host keys and sends wrong passwords on purpose, all from 127.0.0.1, so
+    /// on the CI runner's sshd (10.2) the last scenarios of a fast run were
+    /// reset before they began: six failed in a row with "connection reset by
+    /// peer" / "handshake failed: EOF". Older sshd rejects the option as a bad
+    /// keyword and will not start, hence the probe.
+    /// </remarks>
+    private static string PenaltiesOff() =>
+        Run("/usr/sbin/sshd", "-G", "-f", "/dev/null")
+            .Split('\n')
+            .Any(line => line.StartsWith("persourcepenalties ", StringComparison.Ordinal))
+            ? "PerSourcePenalties no"
+            : "";
 
     private static void EnsureUser()
     {
