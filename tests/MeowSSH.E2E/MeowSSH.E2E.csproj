@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    End-to-end scenarios for the app's business logic, written once and run in
+    two places:
+
+    - on an Android emulator, by MeowSSH.Device.Tests, against an OpenSSH server
+      on the CI runner (the emulator reaches it as 10.0.2.2). This is the run
+      that matters: the real Keystore, the real Android engine binaries and
+      the emulator's network stack.
+    - on Linux, by MeowSSH.Integration.Tests, against the same kind of server.
+      Faster to iterate on, and a second platform for free.
+
+    Each scenario builds the app's own service graph (AddMeowSshApplication),
+    the same one MauiProgram builds, so a test cannot pass against wiring the
+    app does not have. Only what needs a person or a store is stood in: the
+    biometric prompt, Play Billing/Integrity, notifications and file pickers.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>false</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.assert" Version="2.9.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\MeowSSH.Core\MeowSSH.Core.csproj" />
+    <ProjectReference Include="..\..\src\MeowSSH.UI\MeowSSH.UI.csproj" />
+  </ItemGroup>
+
+</Project>

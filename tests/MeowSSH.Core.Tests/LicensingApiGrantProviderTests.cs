@@ -44,6 +44,32 @@ public sealed class LicensingApiGrantProviderTests
     }
 
     [Fact]
+    public async Task PurchasesTheServiceRefusesUnlockNothingInsteadOfFailingTheRefresh()
+    {
+        // Regression test: a 403 (Google says refunded/lapsed/unlicensed) used
+        // to throw like an outage, leaving the cached paid tier in force.
+        using var signer = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        using var http = new HttpClient(new StatusHandler(HttpStatusCode.Forbidden));
+        var provider = CreateProvider(signer, http, DateTimeOffset.UtcNow);
+
+        Assert.Equal(EntitlementTier.Free, (await provider.RefreshAsync()).Tier);
+        Assert.Equal(EntitlementTier.Free, (await provider.RestorePurchasesAsync()).Tier);
+        await Assert.ThrowsAnyAsync<SecurityException>(() => provider.GetPaidGrantAsync());
+    }
+
+    [Fact]
+    public async Task AnOutageIsNotADenial()
+    {
+        // A 503 says nothing about the purchase: it must stay an error, so
+        // EntitlementService keeps the cached tier instead of downgrading.
+        using var signer = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        using var http = new HttpClient(new StatusHandler(HttpStatusCode.ServiceUnavailable));
+        var provider = CreateProvider(signer, http, DateTimeOffset.UtcNow);
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => provider.RefreshAsync());
+    }
+
+    [Fact]
     public async Task UnconfiguredProviderFailsClosedWithoutCallingStoreOrIntegrity()
     {
         var store = new FakeStore(throwIfCalled: true);
@@ -230,6 +256,13 @@ public sealed class LicensingApiGrantProviderTests
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
             Task.FromResult(response);
+    }
+
+    /// <summary>A fresh response per request: the client disposes each one it is given.</summary>
+    private sealed class StatusHandler(HttpStatusCode status) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(status));
     }
 
     private sealed class RecordingHandler(HttpResponseMessage response) : HttpMessageHandler

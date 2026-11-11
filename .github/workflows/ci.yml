@@ -35,10 +35,20 @@ jobs:
         run: dotnet test tests/MeowSSH.Core.Tests --no-build --configuration Release --logger "trx;LogFileName=core.trx"
       - name: Test the Play Store bootstrap script
         run: bash scripts/test-play-store-bootstrap.sh
+      # mosh and busybox-static (whose busybox has telnetd, unlike Ubuntu's
+      # default one) serve the Mosh and Telnet E2E scenarios.
       - name: Install OpenSSH server
-        run: sudo apt-get update && sudo apt-get install -y openssh-server
+        run: sudo apt-get update && sudo apt-get install -y openssh-server mosh busybox-static
+      # These tests run as root, and Meowshell refuses to run a tailcat binary
+      # that root does not own, or one under a directory root does not own
+      # (here, /home/runner): copy the bundled binaries to a root-owned
+      # directory directly under /. Not /opt: on the runner image it is
+      # group/other-writable without the sticky bit, which Meowshell refuses too.
       - name: SSH engine integration tests
-        run: sudo -E env "PATH=$PATH" dotnet test tests/MeowSSH.Integration.Tests --no-build --configuration Release --logger "trx;LogFileName=integration.trx"
+        run: |
+          sudo install -d -o root -g root -m 755 /meowssh-e2e-bin
+          sudo install -o root -g root -m 755 tests/MeowSSH.Integration.Tests/bin/Release/net10.0/runtimes/linux-x64/native/* /meowssh-e2e-bin/
+          sudo -E env "PATH=$PATH" MEOWSHELL_BINARIES=/meowssh-e2e-bin dotnet test tests/MeowSSH.Integration.Tests --no-build --configuration Release --logger "trx;LogFileName=integration.trx"
       - name: Install Playwright browsers
         run: pwsh tests/MeowSSH.UI.Tests/bin/Release/net10.0/playwright.ps1 install chromium --with-deps
       - name: UI end-to-end tests
@@ -204,6 +214,14 @@ jobs:
         run: >
           dotnet build tests/MeowSSH.Device.Tests/MeowSSH.Device.Tests.csproj
           -c Debug -f net10.0-android36.0
+      # The shared E2E scenarios (tests/MeowSSH.E2E) run inside the device
+      # test APK against this server, which the emulator reaches as 10.0.2.2.
+      # It exports E2E_*; run-device-tests.sh passes them on, and fails the
+      # job if they were set but no scenario ran.
+      - name: Start the E2E SSH server
+        run: |
+          sudo apt-get update && sudo apt-get install -y openssh-server mosh busybox-static
+          sudo -E ./scripts/start-e2e-sshd.sh
       - name: Run the device tests on an emulator
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
         with:
@@ -218,7 +236,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: device-test-report
-          path: instrumentation.txt
+          path: |
+            instrumentation.txt
+            ${{ env.E2E_SSHD_LOG }}
           if-no-files-found: ignore
 
   play-aab-smoke:

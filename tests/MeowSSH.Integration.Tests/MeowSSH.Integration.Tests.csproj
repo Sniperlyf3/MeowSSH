@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\MeowSSH.Core\MeowSSH.Core.csproj" />
+    <ProjectReference Include="..\MeowSSH.E2E\MeowSSH.E2E.csproj" />
   </ItemGroup>
 
 </Project>

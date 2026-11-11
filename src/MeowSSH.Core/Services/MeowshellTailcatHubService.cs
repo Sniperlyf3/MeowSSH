@@ -278,10 +278,43 @@ public sealed class MeowshellTailcatHubService : ITailcatHubService
         RaiseChanged();
     }
 
-    public Task<string> GetClientPublicKeyAsync(string? name = null, CancellationToken cancellationToken = default)
+    /// <summary>The key client modes use when none is named ("client-default").</summary>
+    public const string DefaultClientKeyName = "client-default";
+
+    private readonly SemaphoreSlim _defaultClientKeyGate = new(1, 1);
+
+    public async Task<string> GetClientPublicKeyAsync(string? name = null, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return TailcatClient.PrintPubAsync(ClientOptions(), NullIfWhiteSpace(name));
+        var keyName = NullIfWhiteSpace(name);
+        // Without a saved client-default, tailcat's client modes -- and printpub,
+        // which reports "the key that would be used" -- fall back to a fresh
+        // ephemeral key on every run. So "this phone's public key" used to be a
+        // throwaway: pasted into another phone's allow list it could never
+        // match, and managed-relay registration and usage lookups ran against
+        // it. Asking for the default identity now makes it exist first.
+        if (keyName is null) await EnsureDefaultClientKeyAsync(cancellationToken).ConfigureAwait(false);
+        return await TailcatClient.PrintPubAsync(ClientOptions(), keyName).ConfigureAwait(false);
+    }
+
+    private async Task EnsureDefaultClientKeyAsync(CancellationToken cancellationToken)
+    {
+        await _defaultClientKeyGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var keys = await TailcatClient.ListKeysAsync(ClientOptions()).ConfigureAwait(false);
+            if (keys.Contains(DefaultClientKeyName, StringComparer.Ordinal)) return;
+            await TailcatClient.GenerateKeyAsync(ClientOptions(), new TailcatKeyOptions
+            {
+                Name = DefaultClientKeyName,
+                Client = true,
+            }).ConfigureAwait(false);
+            RaiseChanged();
+        }
+        finally
+        {
+            _defaultClientKeyGate.Release();
+        }
     }
 
     public async Task<string> ResolveAddressAsync(string address, string? derpMapUrl = null, CancellationToken cancellationToken = default)
@@ -381,6 +414,7 @@ public sealed class MeowshellTailcatHubService : ITailcatHubService
         foreach (var forward in forwards) await StopForwardAsync(forward.Id).ConfigureAwait(false);
         await StopServerAsync().ConfigureAwait(false);
         _gate.Dispose();
+        _defaultClientKeyGate.Dispose();
     }
 
     private TailcatClientOptions ClientOptions(TimeSpan? timeout = null, string? derpMapUrl = null) => new()
