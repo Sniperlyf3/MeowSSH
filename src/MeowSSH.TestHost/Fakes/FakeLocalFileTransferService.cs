@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Components;
 using MeowSSH.UI.Services;
 
 namespace MeowSSH.TestHost.Fakes;
@@ -5,12 +6,15 @@ namespace MeowSSH.TestHost.Fakes;
 /// <summary>
 /// Browser-test file picker. Each pick produces an app-owned temporary file
 /// named start.sh so the SFTP UI can exercise the existing-file conflict path
-/// without a platform file-picker dialog.
+/// without a platform file-picker dialog. With "pickcancel" in the query
+/// string the user backs out of the picker instead.
 /// </summary>
-public sealed class FakeLocalFileTransferService : ILocalFileTransferService
+public sealed class FakeLocalFileTransferService(NavigationManager navigation) : ILocalFileTransferService
 {
     public async Task<LocalFileSelection?> PickFileAsync(CancellationToken cancellationToken = default)
     {
+        if (new Uri(navigation.Uri).Query.Contains("pickcancel", StringComparison.OrdinalIgnoreCase))
+            return null;
         var path = CreateTemporaryPath("start.sh");
         await File.WriteAllTextAsync(path, "#!/bin/sh\necho uploaded replacement\n", cancellationToken);
         return new LocalFileSelection(path, "start.sh");

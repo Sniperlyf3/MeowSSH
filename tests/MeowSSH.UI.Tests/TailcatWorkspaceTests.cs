@@ -44,6 +44,8 @@ public sealed class TailcatWorkspaceTests(TestHostFixture fixture)
         await Assertions.Expect(page.GetByTestId("start-tailcat-workspace")).ToBeVisibleAsync();
 
         await page.GetByTestId("tailcat-section-connect").ClickAsync();
+        // The panel first: an absence checked before it renders proves nothing.
+        await Assertions.Expect(page.GetByTestId("start-tailcat-socks")).ToBeVisibleAsync();
         await Assertions.Expect(page.GetByTestId("tailcat-socks-running")).ToHaveCountAsync(0);
         await Assertions.Expect(page.GetByTestId("tailcat-forward-row")).ToHaveCountAsync(0);
     }

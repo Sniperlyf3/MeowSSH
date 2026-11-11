@@ -61,6 +61,18 @@ public sealed class ParameterizedCommandActionRunnerTests
             CommandActionTemplate.Render("echo {{name}}", new Dictionary<string, string>()));
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void ABlankValueIsMissingNotAnEmptyArgument(string blank)
+    {
+        // The form sends every variable, blank or not: a blank one used to
+        // render as '' and run, so "rm -rf /srv/{{dir}}" removed /srv.
+        var error = Assert.Throws<ArgumentException>(() =>
+            CommandActionTemplate.Render("rm -rf /srv/{{dir}}", new Dictionary<string, string> { ["dir"] = blank }));
+        Assert.Contains("'dir'", error.Message, StringComparison.Ordinal);
+    }
+
     private static HostRecord Host() => new()
     {
         Id = Guid.NewGuid(),

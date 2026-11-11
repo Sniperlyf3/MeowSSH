@@ -36,7 +36,11 @@ public static partial class CommandActionTemplate
 
         foreach (var variable in variables)
         {
-            if (!values.TryGetValue(variable, out var value))
+            // Empty counts as missing. The values form always sends every
+            // variable, so this check never fired from the UI and a blank field
+            // ran as '': "rm -rf /srv/{{dir}}" with dir left empty would have
+            // run "rm -rf /srv/''", which is /srv itself.
+            if (!values.TryGetValue(variable, out var value) || string.IsNullOrWhiteSpace(value))
                 throw new ArgumentException($"Enter a value for Action variable '{variable}'.", nameof(values));
             if (value.Length > MaxValueLength)
                 throw new ArgumentException($"Action variable '{variable}' must be {MaxValueLength} characters or fewer.", nameof(values));
