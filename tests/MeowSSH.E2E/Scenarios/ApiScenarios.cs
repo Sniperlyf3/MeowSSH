@@ -25,6 +25,7 @@ public static class ApiScenarios
         new("api.team.invite-join-share", TeamSharesAHostWithAJoinedMember),
         new("api.free-tier.refused-by-the-service", ServiceRefusesFreeUsers),
         new("api.hosted-ai.explain-and-command", AskAiExplainsOutputAndSuggestsACommandThatRuns),
+        new("api.managed-relay.guest-on-another-account", AGuestOnAnotherAccountIsCarriedAndBilledToTheOwner),
     ];
 
     private static async Task PurchasesGrantTheirTier(E2EContext c)
@@ -267,6 +268,67 @@ public static class ApiScenarios
             .AssistAsync(proGrant, new AiAssistRequest(AiAssistMode.Explain, "anything", null)));
         Assert.NotNull(denied.Code);
         c.Log("a Pro grant is refused with " + denied.Code);
+    }
+
+    /// <summary>
+    /// Two MeowSSH accounts on the managed relay: the owner shares with a
+    /// client on another account by putting it on the share's allowed-client
+    /// list, and the relay -- asked exactly as it asks before forwarding --
+    /// carries that pair, billed to the owner. Anyone else on another account
+    /// is still refused.
+    /// </summary>
+    private static async Task AGuestOnAnotherAccountIsCarriedAndBilledToTheOwner(E2EContext c)
+    {
+        var api = c.RequireApi();
+        var owner = await c.StartAppAsync(EntitlementTier.Pro);
+        var guest = await c.StartAppAsync(EntitlementTier.Free);
+        var stranger = await c.StartAppAsync(EntitlementTier.Free);
+        var ownerHub = owner.Get<ITailcatHubService>();
+        // What each Keys screen shows; showing it also registers the node.
+        var ownerNode = await ownerHub.GetClientPublicKeyAsync();
+        var guestNode = await guest.Get<ITailcatHubService>().GetClientPublicKeyAsync();
+        var strangerNode = await stranger.Get<ITailcatHubService>().GetClientPublicKeyAsync();
+        Assert.Equal(3, new[] { ownerNode, guestNode, strangerNode }.Distinct().Count());
+
+        var address = await TailcatScenarios.StartHermeticServerAsync(ownerHub, new TailcatServeRequest(
+            Lifetime: TimeSpan.FromMinutes(10),
+            AllowedClientKeys: $"{ownerNode},{guestNode}",
+            EnableShell: true,
+            AuthorizedSshKeys: null,
+            EnableFiles: false,
+            SharedFolder: null,
+            FileMode: "ro",
+            EnableExitNode: false,
+            UseTailcatCredentialForShell: true));
+        try
+        {
+            var server = (await ownerHub.InspectAddressAsync(address)).ServerPublicKey;
+            // Registration follows the share in the background, as on a phone.
+            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(30);
+            E2EApi.RelayPairDecision toServer;
+            while (!(toServer = await api.AuthorizePairAsync(guestNode, server)).Allow && DateTime.UtcNow < deadline)
+                await Task.Delay(500);
+            c.Log($"guest -> server: {toServer.Reason}");
+
+            Assert.True(toServer.Allow, $"the owner's guest was refused: {toServer.Reason}");
+            // Billed to the owner's own node, never to the guest's account.
+            Assert.Equal(ownerNode, toServer.ClientNodePublic);
+            var back = await api.AuthorizePairAsync(server, guestNode);
+            Assert.True(back.Allow);
+            Assert.Equal(ownerNode, back.ClientNodePublic);
+            // The owner's own phone, as before.
+            Assert.Equal(ownerNode, (await api.AuthorizePairAsync(ownerNode, server)).ClientNodePublic);
+
+            var refused = await api.AuthorizePairAsync(strangerNode, server);
+            Assert.False(refused.Allow);
+            Assert.Equal("DifferentOwner", refused.Reason);
+            // A guest of the server, not of the owner's phone.
+            Assert.False((await api.AuthorizePairAsync(guestNode, ownerNode)).Allow);
+        }
+        finally
+        {
+            await ownerHub.StopServerAsync();
+        }
     }
 
     private static async Task<(E2EApp App, HostRecord Host)> StartWithHostAsync(E2EContext c, EntitlementTier tier)

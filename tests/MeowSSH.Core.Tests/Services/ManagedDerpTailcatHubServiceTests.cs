@@ -41,6 +41,51 @@ public sealed class ManagedDerpTailcatHubServiceTests
         Assert.Equal("home-server", server.Label);
     }
 
+    private const string Guest = "nodekey:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+    private const string OtherGuest = "nodekey:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
+
+    private static TailcatServeRequest Serve(string allowed) =>
+        new(TimeSpan.FromMinutes(5), allowed, EnableShell: true, AuthorizedSshKeys: null, EnableFiles: false, SharedFolder: null, FileMode: "ro", EnableExitNode: false);
+
+    [Fact]
+    public async Task ASharedServerRegistersItsAllowedClientsAsGuests()
+    {
+        var registrations = new FakeRegistrations();
+        var service = new ManagedDerpTailcatHubService(new FakeHub(), registrations);
+
+        // Separators as people type them, a duplicate, and a saved key name the
+        // API could never match.
+        await service.StartServerAsync(Serve($"{OtherGuest}, {Guest}\n{Guest} my-laptop"));
+        await WaitForAsync(() => registrations.Servers.Count == 1);
+
+        Assert.Equal([Guest, OtherGuest], registrations.ServerGuests.Single());
+    }
+
+    [Fact]
+    public async Task ChangingTheAllowedClientsRegistersTheServerAgain()
+    {
+        var registrations = new FakeRegistrations();
+        var service = new ManagedDerpTailcatHubService(new FakeHub(), registrations);
+
+        await service.StartServerAsync(Serve(Guest));
+        await WaitForAsync(() => registrations.Servers.Count == 1);
+        // Same list again: nothing to tell the API.
+        await service.StartServerAsync(Serve(Guest));
+        await Task.Delay(100);
+        Assert.Single(registrations.Servers);
+        // Guest removed: it must lose its access, so the API hears about it.
+        await service.StartServerAsync(Serve(OtherGuest));
+        await WaitForAsync(() => registrations.Servers.Count == 2);
+
+        Assert.Equal([OtherGuest], registrations.ServerGuests[1]);
+    }
+
+    private static async Task WaitForAsync(Func<bool> condition)
+    {
+        for (var i = 0; i < 100 && !condition(); i++) await Task.Delay(20);
+        Assert.True(condition());
+    }
+
     [Fact]
     public async Task RegistrationFailureDoesNotDiscardGeneratedIdentity()
     {
@@ -95,15 +140,19 @@ public sealed class ManagedDerpTailcatHubServiceTests
             return Task.CompletedTask;
         }
 
+        public List<IReadOnlyList<string>> ServerGuests { get; } = [];
+
         public Task RegisterServerAsync(
             string clientNodePublic,
             string serverNodePublic,
             string? label = null,
+            IReadOnlyList<string>? allowedClientNodes = null,
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (Fail) throw new InvalidOperationException("licensing API unavailable");
             Servers.Add((clientNodePublic, serverNodePublic, label));
+            ServerGuests.Add(allowedClientNodes ?? []);
             return Task.CompletedTask;
         }
     }

@@ -35,7 +35,7 @@ public static class TailcatScenarios
     private static readonly SemaphoreSlim HermeticEnvironment = new(1, 1);
 
     /// <summary>Starts the hub's server with the loopback relay in its environment only.</summary>
-    private static async Task<string> StartHermeticServerAsync(ITailcatHubService hub, TailcatServeRequest request)
+    internal static async Task<string> StartHermeticServerAsync(ITailcatHubService hub, TailcatServeRequest request)
     {
         await HermeticAsync(() => hub.StartServerAsync(request));
         return hub.Snapshot.Server?.Address ?? throw new InvalidOperationException("The server started but published no address.");
