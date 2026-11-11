@@ -23,6 +23,41 @@
     </div>
 }
 
+@if (Questions.PendingPublicRelay is { } relay)
+{
+    <div class="sheet" role="alertdialog" data-testid="public-relay-prompt">
+        <p class="sheet__title">Use the public relay?</p>
+        <p class="sheet__body">
+            <strong>@relay.Prompt.Target</strong> is only reachable through the public tailcat.dev
+            relay, not MeowSSH's own. Its traffic stays end-to-end encrypted, but is carried by a
+            relay MeowSSH does not run.
+        </p>
+        @if (!relay.Prompt.CanRemember)
+        {
+            <p class="sheet__body" data-testid="public-relay-save-hint">
+                Save this address as a host to be able to allow it for good.
+            </p>
+        }
+        <div class="form__actions">
+            <button type="button" class="btn btn--primary btn--block"
+                    data-testid="public-relay-once" @onclick="() => relay.Answer(PublicRelayChoice.ConnectOnce)">
+                Connect once
+            </button>
+            @if (relay.Prompt.CanRemember)
+            {
+                <button type="button" class="btn btn--ghost btn--block"
+                        data-testid="public-relay-always" @onclick="() => relay.Answer(PublicRelayChoice.AlwaysForHost)">
+                    Always for this host
+                </button>
+            }
+            <button type="button" class="btn btn--ghost btn--block"
+                    data-testid="public-relay-cancel" @onclick="() => relay.Answer(PublicRelayChoice.Cancel)">
+                Cancel
+            </button>
+        </div>
+    </div>
+}
+
 @if (Questions.PendingPassword is { } password)
 {
     <div class="sheet" role="alertdialog" data-testid="password-prompt">

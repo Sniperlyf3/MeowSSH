@@ -27,6 +27,11 @@ public sealed class MeowshellSshEngine(MeowshellSshEngineOptions options) : ISsh
             Timeout = options.ConnectTimeout,
             Verbose = options.Verbose,
             BinaryDirectory = options.BinaryDirectory!,
+            // Decided by TailcatRelaySshEngine; null for an address that
+            // carries its own relay, and for TCP hosts, where it is unused.
+            DerpMapUrl = host.Transport == SshTransport.Tailcat && !string.IsNullOrWhiteSpace(host.TailcatDerpMapUrl)
+                ? host.TailcatDerpMapUrl
+                : null,
         };
 
         MeowshellAgentConnection? agent = null;

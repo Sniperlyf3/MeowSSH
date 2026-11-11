@@ -156,9 +156,12 @@ public static class MeowSshApplicationServices
         services.AddSingleton<ManagedDerpTailcatHubService>(sp => new ManagedDerpTailcatHubService(
             sp.GetRequiredService<MeowshellTailcatHubService>(),
             sp.GetRequiredService<IManagedDerpRegistrationService>()));
-        services.AddSingleton<ITailcatHubService>(sp => new EntitlementTailcatHubService(
-            sp.GetRequiredService<ManagedDerpTailcatHubService>(),
-            sp.GetRequiredService<IEntitlementService>()));
+        services.AddSingleton<ITailcatHubService>(sp => new PublicRelayGuardTailcatHubService(
+            new EntitlementTailcatHubService(
+                sp.GetRequiredService<ManagedDerpTailcatHubService>(),
+                sp.GetRequiredService<IEntitlementService>()),
+            sp.GetRequiredService<TailcatRelayPolicy>(),
+            sp.GetRequiredService<ISshPrompts>()));
         services.AddSingleton<ITailcatIdentityStore, TailcatIdentityStore>();
         services.AddSingleton<ITailcatWorkspaceStore>(_ => new FileTailcatWorkspaceStore(
             Path.Combine(data, "tailcat-workspaces.json")));
@@ -180,7 +183,22 @@ public static class MeowSshApplicationServices
         services.AddSingleton<CommandMonitoringService>();
         services.AddSingleton<ICommandMonitoringService>(sp => sp.GetRequiredService<CommandMonitoringService>());
 
-        services.AddSingleton<ISshEngine>(sp => new MeowshellSshEngine(sp.GetRequiredService<MeowshellSshEngineOptions>()));
+        services.AddSingleton(new TailcatRelayPolicyOptions(
+            string.IsNullOrWhiteSpace(paths.TailcatDerpMapUrl) ? null : paths.TailcatDerpMapUrl));
+        services.AddSingleton<ITailcatRelayDirectorySource>(sp => new HttpTailcatRelayDirectorySource(
+            sp.GetRequiredService<HttpClient>(),
+            sp.GetRequiredService<TailcatRelayPolicyOptions>()));
+        // Inspecting an address dials nothing, so the bare hub: the policy
+        // must not sit behind the guard it feeds.
+        services.AddSingleton(sp => new TailcatRelayPolicy(
+            sp.GetRequiredService<MeowshellTailcatHubService>(),
+            sp.GetRequiredService<ITailcatRelayDirectorySource>(),
+            sp.GetRequiredService<TailcatRelayPolicyOptions>()));
+        services.AddSingleton<ISshEngine>(sp => new TailcatRelaySshEngine(
+            new MeowshellSshEngine(sp.GetRequiredService<MeowshellSshEngineOptions>()),
+            sp.GetRequiredService<TailcatRelayPolicy>(),
+            sp.GetRequiredService<IHostDirectory>(),
+            sp.GetRequiredService<IHostEditor>()));
         services.AddSingleton<IProtocolConnectionEngine>(sp => new SshProtocolConnectionEngine(sp.GetRequiredService<ISshEngine>()));
         services.AddSingleton<IProtocolConnectionEngine>(sp => new MoshConnectionEngine(sp.GetRequiredService<MeowshellSshEngineOptions>()));
         services.AddSingleton<IProtocolConnectionEngine, TelnetConnectionEngine>();

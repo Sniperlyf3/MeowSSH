@@ -16,6 +16,13 @@ public sealed class CredentialSshPrompts(ISshPrompts fallback, SshCredentials cr
         CancellationToken cancellationToken = default) =>
         fallback.ConfirmUnknownHostKeyAsync(prompt, cancellationToken);
 
+    // Not a credential question: always the user's. Without this the
+    // interface default would answer Cancel for them.
+    public Task<PublicRelayChoice> ConfirmPublicRelayAsync(
+        PublicRelayPrompt prompt,
+        CancellationToken cancellationToken = default) =>
+        fallback.ConfirmPublicRelayAsync(prompt, cancellationToken);
+
     public Task<SecretBuffer?> RequestPasswordAsync(
         string prompt,
         CancellationToken cancellationToken = default)

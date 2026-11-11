@@ -18,6 +18,20 @@ public enum SshTransport
     TailscaleSsh,
 }
 
+/// <summary>
+/// Whether MeowSSH may carry this host's Tailcat traffic over the public
+/// tailcat.dev relay. MeowSSH never starts a connection through it on its own
+/// initiative: an address on that relay is reached only after the user says
+/// so, once or for good, and the choice stays editable in the host's settings.
+/// </summary>
+public enum PublicRelayConsent
+{
+    /// <summary>Ask on every connect that would use the public relay.</summary>
+    Ask = 0,
+    Always = 1,
+    Never = 2,
+}
+
 public enum SerialParity
 {
     None = 1,
@@ -64,6 +78,19 @@ public sealed record HostRecord
 
     /// <summary>Optional SOCKS5 or HTTP CONNECT proxy used to reach the first TCP SSH hop.</summary>
     public string? ProxyUrl { get; init; }
+
+    /// <summary>
+    /// For <see cref="SshTransport.Tailcat"/>: whether the public relay may be
+    /// used for this host. See <see cref="PublicRelayConsent"/>.
+    /// </summary>
+    public PublicRelayConsent PublicRelay { get; init; } = PublicRelayConsent.Ask;
+
+    /// <summary>
+    /// For <see cref="SshTransport.Tailcat"/>: the user's own relay map for
+    /// this host, or null to use the address's own relay. A relay the user
+    /// named themselves needs no consent prompt.
+    /// </summary>
+    public string? TailcatDerpMapUrl { get; init; }
 
     /// <summary>Forward the local ssh-agent into this SSH session.</summary>
     public bool ForwardAgent { get; init; }

@@ -198,6 +198,14 @@ public sealed class E2EApp : IAsyncDisposable
             platform.NativeBinaryDirectory));
         if (api is not null)
             services.AddSingleton(_ => api.CreateHttpClient());
+        // Which relays are whose, as a scenario says. The real source fetches
+        // the managed and public maps over the internet, which no run may do.
+        services.AddSingleton<E2ERelayDirectory>();
+        services.AddSingleton<ITailcatRelayDirectorySource>(sp => sp.GetRequiredService<E2ERelayDirectory>());
+        // A build with a managed relay, as every release is. "none" is Tailcat's
+        // own "no map": dialling with it reaches an address that carries its
+        // relay -- every run's loopback one -- and nothing on the network.
+        services.AddSingleton(new TailcatRelayPolicyOptions(E2ERelayDirectory.ManagedDerpMapUrl));
 
         // ValidateOnBuild is the point of building the real graph: a service the
         // app registers but cannot construct fails here, not on a phone.
@@ -252,7 +260,28 @@ public sealed class E2EApp : IAsyncDisposable
             ChallengePrompts++;
             challenge.Answer(ChallengeAnswers?.Invoke(challenge.Prompt));
         }
+        if (_prompts.PendingPublicRelay is { } relay)
+        {
+            lock (_publicRelayPrompts) _publicRelayPrompts.Add(relay.Prompt);
+            relay.Answer(PublicRelayAnswer(relay.Prompt));
+        }
     }
+
+    private readonly List<PublicRelayPrompt> _publicRelayPrompts = [];
+
+    /// <summary>
+    /// How the user answers "Use the public relay?". Default: cancel, so a
+    /// scenario that is asked without expecting it fails on the refusal
+    /// instead of quietly agreeing. The relay scenario sets this, and checks
+    /// <see cref="PublicRelayPrompts"/>, explicitly.
+    /// </summary>
+    public Func<PublicRelayPrompt, PublicRelayChoice> PublicRelayAnswer { get; set; } = static _ => PublicRelayChoice.Cancel;
+
+    /// <summary>The public-relay questions the app actually put to the user, in order.</summary>
+    public IReadOnlyList<PublicRelayPrompt> PublicRelayPrompts { get { lock (_publicRelayPrompts) return [.. _publicRelayPrompts]; } }
+
+    /// <summary>Which relays this install treats as MeowSSH's and as public.</summary>
+    public E2ERelayDirectory Relays => Get<E2ERelayDirectory>();
 
     public Task<CredentialRecord> AddPasswordAsync(string username, string password) =>
         SaveCredentialAsync(new CredentialRecord

@@ -130,7 +130,10 @@ else
     <SshPromptSheets Questions="Questions" />
 }
 
-@if (_connecting is not null)
+@* Hidden while a question waits: the two are both bottom sheets, and the
+   status one used to sit over the question's last buttons -- the public-relay
+   sheet's Cancel could not be pressed at phone height. *@
+@if (_connecting is not null && !Questions.IsAsking)
 {
     <div class="sheet" role="status" data-testid="connecting">
         <p class="sheet__title">@(_connectingForFiles ? $"Opening files on {_connecting}" : $"Connecting to {_connecting}")</p>
@@ -143,6 +146,12 @@ else
     <div class="sheet sheet--danger" role="alert" data-testid="connect-error">
         <p class="sheet__title">@_failure.Title</p>
         <p class="sheet__body">@_failure.Body</p>
+        @if (_failure.SettingsFor is { } settingsHost)
+        {
+            @* The answer that refused this lives on the host: one tap to change it. *@
+            <button type="button" class="btn btn--primary btn--block"
+                    data-testid="open-host-settings" @onclick="() => { _failure = null; EditHost(settingsHost); }">Host settings</button>
+        }
         <button type="button" class="btn btn--ghost btn--block"
                 data-testid="dismiss-error" @onclick="() => _failure = null">Dismiss</button>
     </div>
@@ -160,7 +169,10 @@ else
     private bool _settingUpVault;
 
     private sealed record EditorState(HostRecord? Host);
-    private sealed record Failure(string Title, string Body);
+    /// <param name="Title">The sheet's heading.</param>
+    /// <param name="Body">What went wrong, for the user.</param>
+    /// <param name="SettingsFor">A host whose settings can change the outcome, offered as a button.</param>
+    private sealed record Failure(string Title, string Body, HostRecord? SettingsFor = null);
 
     private sealed class RunningForward(ForwardRequest request, ISshForward forward)
     {
@@ -315,7 +327,7 @@ else
         }
         catch (SshException ex)
         {
-            _failure = MapFailure(initialView == SessionView.Files ? "Could not open files" : "Could not connect", ex);
+            _failure = MapFailure(initialView == SessionView.Files ? "Could not open files" : "Could not connect", ex, host);
         }
         catch (Exception ex) when (ex is IOException or InvalidOperationException or ObjectDisposedException)
         {
@@ -717,7 +729,7 @@ else
     private static bool IsRetryable(Exception exception) => exception switch
     {
         SshException { Failure: SshFailure.AuthenticationFailed or SshFailure.HostKeyChanged or SshFailure.HostKeyUnknown
-            or SshFailure.PermissionDenied or SshFailure.Cancelled } => false,
+            or SshFailure.PermissionDenied or SshFailure.Cancelled or SshFailure.PublicRelayDeclined } => false,
         InvalidOperationException => false,
         _ => true,
     };
@@ -843,8 +855,9 @@ else
             ? relay.RelayHealth ?? session.RelayHealth
             : session.RelayHealth;
 
-    private static Failure MapFailure(string fallbackTitle, SshException ex) => ex.Failure switch
+    private static Failure MapFailure(string fallbackTitle, SshException ex, HostRecord? host = null) => ex.Failure switch
     {
+        SshFailure.PublicRelayDeclined => new("Public relay not allowed", ex.Message, host),
         SshFailure.HostKeyChanged => new("Host key changed", ex.Message),
         SshFailure.HostKeyUnknown => new("Host not trusted yet", ex.Message),
         SshFailure.AuthenticationFailed => new("Could not sign in", ex.Message),

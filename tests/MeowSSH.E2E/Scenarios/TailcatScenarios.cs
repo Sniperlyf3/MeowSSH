@@ -29,6 +29,7 @@ public static class TailcatScenarios
         new("tailcat.serve-shell-and-files", PhoneServesShellAndFilesOverTailcat),
         new("tailcat.temporary-share.revoke-and-expire", TemporaryShareWorksUntilRevokedOrExpired),
         new("tailcat.workspace.forwards-and-socks", WorkspaceStartsForwardsAndSocksAndSurvivesARestart),
+        new("tailcat.relay-policy.every-route-connects-or-asks", EveryRelayRouteConnectsOrAsks),
     ];
 
     private static readonly SemaphoreSlim HermeticEnvironment = new(1, 1);
@@ -317,6 +318,116 @@ public static class TailcatScenarios
         finally
         {
             await otherHub.StopServerAsync();
+        }
+    }
+
+    /// <summary>
+    /// The relay rules, each through a real Tailcat connection: MeowSSH's relay
+    /// and a custom one are used without asking; the public one only on the
+    /// user's answer -- once, for good (kept on the host and editable), or
+    /// never -- and a pasted address asks every time. The loopback relay plays
+    /// each kind in turn (<see cref="E2ERelayDirectory"/>).
+    /// </summary>
+    private static async Task EveryRelayRouteConnectsOrAsks(E2EContext c)
+    {
+        var server = await c.StartAppAsync();
+        var serverHub = server.Get<ITailcatHubService>();
+        var app = await c.StartAppAsync();
+        var hub = app.Get<ITailcatHubService>();
+        var shared = Directory.CreateDirectory(Path.Combine(server.DataDirectory, "shared")).FullName;
+        await File.WriteAllTextAsync(Path.Combine(shared, "hello.txt"), "from the phone");
+
+        // With a managed relay, sharing is on it by default: nobody is asked.
+        var request = new TailcatServeRequest(
+            Lifetime: TimeSpan.FromMinutes(10),
+            AllowedClientKeys: await hub.GetClientPublicKeyAsync(),
+            EnableShell: true,
+            AuthorizedSshKeys: null,
+            EnableFiles: true,
+            SharedFolder: shared,
+            FileMode: "ro",
+            EnableExitNode: false,
+            UseTailcatCredentialForShell: true);
+        var address = await StartHermeticServerAsync(serverHub, request);
+        Assert.Empty(server.PublicRelayPrompts);
+
+        try
+        {
+            var host = await app.AddHostAsync("the other phone", address, 22, null, h => h with { Transport = SshTransport.Tailcat, Username = "e2e" });
+            var editor = app.Get<IHostEditor>();
+            async Task<HostRecord> StoredAsync() => (await app.Get<IHostDirectory>().GetHostsAsync()).Single(s => s.Host.Id == host.Id).Host;
+            async Task ConnectsAsync()
+            {
+                await using var connection = await app.ConnectAsync(await StoredAsync());
+                await using var terminal = new E2ETerminal(await connection.OpenTerminalAsync(80, 24));
+                Assert.Equal("42", await terminal.CheckAsync("echo $((6*7))", TimeSpan.FromSeconds(60)));
+            }
+            app.PublicRelayAnswer = _ => throw new InvalidOperationException("Asked about the public relay for a relay that is not public.");
+
+            // A relay nobody claims, carried in the address: the user's own.
+            await ConnectsAsync();
+            // MeowSSH's relay.
+            app.Relays.TreatLoopbackAsManaged();
+            await ConnectsAsync();
+            Assert.Empty(app.PublicRelayPrompts);
+
+            // The public relay. Once: connects, and asks again next time.
+            app.Relays.TreatLoopbackAsPublic();
+            app.PublicRelayAnswer = _ => PublicRelayChoice.ConnectOnce;
+            await ConnectsAsync();
+            var asked = Assert.Single(app.PublicRelayPrompts);
+            Assert.Equal((host.Label, address, true), (asked.Target, asked.Address, asked.CanRemember));
+            Assert.Equal(PublicRelayConsent.Ask, (await StoredAsync()).PublicRelay);
+
+            // Cancel: no connection, and an error that says what to change.
+            app.PublicRelayAnswer = _ => PublicRelayChoice.Cancel;
+            var declined = await Assert.ThrowsAsync<SshException>(() => app.ConnectAsync(host));
+            Assert.Equal(SshFailure.PublicRelayDeclined, declined.Failure);
+            Assert.False(declined.IsRetryable);
+            Assert.Equal(2, app.PublicRelayPrompts.Count);
+
+            // Always for this host: kept on the host, and never asked again.
+            app.PublicRelayAnswer = _ => PublicRelayChoice.AlwaysForHost;
+            await ConnectsAsync();
+            Assert.Equal(PublicRelayConsent.Always, (await StoredAsync()).PublicRelay);
+            app.PublicRelayAnswer = _ => throw new InvalidOperationException("Asked again after \"Always for this host\".");
+            await ConnectsAsync();
+            Assert.Equal(3, app.PublicRelayPrompts.Count);
+
+            // The choice is editable in the host's settings: "Never" refuses
+            // without asking, and the message names the setting.
+            await editor.SaveHostAsync(await StoredAsync() with { PublicRelay = PublicRelayConsent.Never });
+            var never = await Assert.ThrowsAsync<SshException>(() => app.ConnectAsync(host));
+            Assert.Equal(SshFailure.PublicRelayDeclined, never.Failure);
+            Assert.Contains("\"Public relay\"", never.Message, StringComparison.Ordinal);
+            Assert.Equal(3, app.PublicRelayPrompts.Count);
+            // ...and back again.
+            await editor.SaveHostAsync(await StoredAsync() with { PublicRelay = PublicRelayConsent.Always });
+            await ConnectsAsync();
+
+            // A pasted address has nowhere to keep an answer: asked every time.
+            app.PublicRelayAnswer = _ => PublicRelayChoice.Cancel;
+            await Assert.ThrowsAsync<TailcatPublicRelayDeclinedException>(() => hub.ListRemoteFilesAsync(address, "/"));
+            app.PublicRelayAnswer = _ => PublicRelayChoice.ConnectOnce;
+            Assert.Contains(await hub.ListRemoteFilesAsync(address, "/"), f => f.Name == "hello.txt");
+            Assert.Contains(await hub.ListRemoteFilesAsync(address, "/"), f => f.Name == "hello.txt");
+            var pasted = app.PublicRelayPrompts.Skip(3).ToArray();
+            Assert.Equal(3, pasted.Length);
+            Assert.All(pasted, p => Assert.False(p.CanRemember));
+
+            // Back on MeowSSH's relay, the same pasted address just works.
+            app.Relays.TreatLoopbackAsManaged();
+            Assert.Contains(await hub.ListRemoteFilesAsync(address, "/"), f => f.Name == "hello.txt");
+            Assert.Equal(6, app.PublicRelayPrompts.Count);
+        }
+        catch
+        {
+            foreach (var line in serverHub.Snapshot.RecentLogLines) c.Log("server: " + line);
+            throw;
+        }
+        finally
+        {
+            await serverHub.StopServerAsync();
         }
     }
 
