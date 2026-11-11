@@ -43,7 +43,7 @@ public sealed class ManagedDerpTailcatHubService(
     {
         await inner.StartServerAsync(request, cancellationToken).ConfigureAwait(false);
         if (inner.Snapshot.Server is { Address: { Length: > 0 } address })
-            _ = TryRegisterServerAddressAsync(address, label: null, request.DerpMapUrl, CancellationToken.None);
+            _ = TryRegisterServerAddressAsync(address, label: null, request.DerpMapUrl, AllowedNodes(request.AllowedClientKeys), CancellationToken.None);
     }
 
     public Task StopServerAsync(CancellationToken cancellationToken = default) =>
@@ -80,7 +80,7 @@ public sealed class ManagedDerpTailcatHubService(
         if (generated.Client)
             await TryRegisterClientPublicAsync(generated.Value, cancellationToken).ConfigureAwait(false);
         else
-            await TryRegisterServerAddressAsync(generated.Value, generated.Name, request.DerpMapUrl, cancellationToken).ConfigureAwait(false);
+            await TryRegisterServerAddressAsync(generated.Value, generated.Name, request.DerpMapUrl, [], cancellationToken).ConfigureAwait(false);
         return generated;
     }
 
@@ -200,10 +200,26 @@ public sealed class ManagedDerpTailcatHubService(
         }
     }
 
+    /// <summary>
+    /// The node keys in a server's allowed-client list. Whoever on another
+    /// MeowSSH account is on it becomes that server's guest on the managed
+    /// relay; anything that is not a node key (a saved key name the hub
+    /// resolved itself) is not something the API can match, so it is left out.
+    /// </summary>
+    internal static string[] AllowedNodes(string? allowedClientKeys) =>
+        string.IsNullOrWhiteSpace(allowedClientKeys)
+            ? []
+            : [.. allowedClientKeys
+                .Split([',', ' ', '\n', '\r', '\t'], StringSplitOptions.RemoveEmptyEntries)
+                .Where(static key => key.StartsWith("nodekey:", StringComparison.Ordinal))
+                .Distinct(StringComparer.Ordinal)
+                .Order(StringComparer.Ordinal)];
+
     private async Task TryRegisterServerAddressAsync(
         string address,
         string? label,
         string? derpMapUrl,
+        IReadOnlyList<string> allowedClientNodes,
         CancellationToken cancellationToken)
     {
         try
@@ -213,13 +229,17 @@ public sealed class ManagedDerpTailcatHubService(
                 return;
 
             var details = await inner.InspectAddressAsync(address, derpMapUrl, cancellationToken).ConfigureAwait(false);
-            var key = "server:" + details.ServerPublicKey;
+            // The guest list is part of the key: the same server restarted
+            // with a different allowed-client list must be registered again,
+            // or a removed guest would keep its access.
+            var key = "server:" + details.ServerPublicKey + "|" + string.Join(',', allowedClientNodes);
             if (_registered.ContainsKey(key)) return;
 
             await registrations.RegisterServerAsync(
                 clientPublic,
                 details.ServerPublicKey,
                 label,
+                allowedClientNodes,
                 cancellationToken).ConfigureAwait(false);
             _registered.TryAdd(key, 0);
         }

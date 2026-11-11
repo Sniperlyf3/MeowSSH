@@ -22,6 +22,13 @@ namespace MeowSSH.E2E;
 /// <param name="CertificateSha256">Hex SHA-256 of the API's DER-encoded TLS certificate.</param>
 public sealed record E2EApi(Uri BaseUri, string CertificateSha256)
 {
+    /// <summary>
+    /// The relay's own credential for the API's /internal/derp endpoints
+    /// (E2E_API_RELAY_TOKEN), so a scenario can ask exactly what the relay asks
+    /// before it carries a pair's traffic. Null when the run did not pass one.
+    /// </summary>
+    public string? RelayToken { get; init; }
+
     public const string PackageName = "dev.sniperlyf3.meowssh";
 
     /// <summary>
@@ -45,7 +52,11 @@ public sealed record E2EApi(Uri BaseUri, string CertificateSha256)
         var uri = new Uri(url.EndsWith('/') ? url : url + "/");
         if (uri.Scheme != Uri.UriSchemeHttps)
             throw new InvalidOperationException("E2E_API_URL must be https: the app refuses anything else.");
-        return new E2EApi(uri, cert.Replace(":", "", StringComparison.Ordinal).Trim().ToUpperInvariant());
+        var relayToken = get("e2e_api_relay_token");
+        return new E2EApi(uri, cert.Replace(":", "", StringComparison.Ordinal).Trim().ToUpperInvariant())
+        {
+            RelayToken = string.IsNullOrWhiteSpace(relayToken) ? null : relayToken.Trim(),
+        };
     }
 
     /// <summary>An HttpClient that trusts the API's certificate and no other untrusted one.</summary>
@@ -65,6 +76,29 @@ public sealed record E2EApi(Uri BaseUri, string CertificateSha256)
             ?? throw new InvalidOperationException("The API returned no grant public key.");
         return new LicensingApiOptions(BaseUri, key.SubjectPublicKeyInfoBase64, PackageName);
     }
+
+    /// <summary>
+    /// What the managed relay asks before forwarding packets between two nodes,
+    /// and what it bills them to (/internal/derp/authorize-pair).
+    /// </summary>
+    public async Task<RelayPairDecision> AuthorizePairAsync(string source, string destination, CancellationToken cancellationToken = default)
+    {
+        var token = RelayToken ?? throw new InvalidOperationException(
+            "This scenario asks the API what the relay asks, and needs E2E_API_RELAY_TOKEN (MeowSSHAPI's run-app-e2e.sh sets it).");
+        using var http = CreateHttpClient();
+        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(BaseUri, "internal/derp/authorize-pair"))
+        {
+            Content = JsonContent.Create(new { sourceNodePublic = source, destinationNodePublic = destination }),
+        };
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        using var response = await http.SendAsync(request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<RelayPairDecision>(cancellationToken)
+            ?? throw new InvalidOperationException("The API returned no pair decision.");
+    }
+
+    /// <param name="ClientNodePublic">The node the relay bills this pair's traffic to.</param>
+    public sealed record RelayPairDecision(bool Allow, string Reason, string? ClientNodePublic);
 
     private sealed record PublicKeyResponse(string SubjectPublicKeyInfoBase64);
 }

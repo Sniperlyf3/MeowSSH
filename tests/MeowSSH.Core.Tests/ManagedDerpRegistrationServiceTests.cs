@@ -46,6 +46,21 @@ public sealed class ManagedDerpRegistrationServiceTests
     }
 
     [Fact]
+    public async Task AServersAllowedClientsGoOutAsAllowedClientNodes()
+    {
+        var handler = new RecordingHandler(HttpStatusCode.OK);
+        using var http = new HttpClient(handler);
+        var service = CreateService(new FakeGrantProvider(), http);
+        const string Guest = "nodekey:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+
+        await service.RegisterServerAsync(ClientNode, ServerNode, "phone server", [Guest]);
+
+        // MeowSSHAPI's DerpGrantRegistrationRequest.AllowedClientNodes.
+        using var body = JsonDocument.Parse(handler.RequestBody!);
+        Assert.Equal(Guest, Assert.Single(body.RootElement.GetProperty("allowedClientNodes").EnumerateArray()).GetString());
+    }
+
+    [Fact]
     public async Task OwnershipConflictFailsClosed()
     {
         var handler = new RecordingHandler(HttpStatusCode.Conflict);

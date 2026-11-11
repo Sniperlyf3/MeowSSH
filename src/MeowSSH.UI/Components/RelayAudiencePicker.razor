@@ -1,14 +1,16 @@
 @using MeowSSH.Core.Services
 @*
     Who a share is for decides the relay it lands on, because a Tailcat server
-    sits on exactly one: MeowSSH's relay reaches only MeowSSH apps, the public
-    one reaches anyone, stock tailcat included. So the person sharing makes the
-    choice; the person connecting cannot.
+    sits on exactly one: MeowSSH's relay reaches MeowSSH apps the owner allows --
+    their own devices, and allowed clients on other MeowSSH accounts, whose
+    traffic counts against the owner's allowance -- the public one reaches
+    anyone, stock tailcat included. So the person sharing makes the choice; the
+    person connecting cannot.
 *@
 <label class="field">
     <span class="field__label">Who can connect?</span>
     <select class="field__input" data-testid="@TestId" value="@(PublicRelay ? "anyone" : "mine")" @onchange="OnChangedAsync">
-        <option value="mine">My MeowSSH devices</option>
+        <option value="mine">MeowSSH apps I allow</option>
         <option value="anyone">Anyone with the address, including stock tailcat</option>
     </select>
     @if (PublicRelay)
@@ -19,7 +21,9 @@
     }
     else
     {
-        <span class="field__hint">Through MeowSSH's own relay.</span>
+        <span class="field__hint" data-testid="@($"{TestId}-managed-hint")">
+            Through MeowSSH's own relay. Allowed clients on other MeowSSH accounts can connect too, on your relay allowance.
+        </span>
     }
 </label>
 
