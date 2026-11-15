@@ -105,7 +105,7 @@
     <PackageReference Include="Xamarin.Android.Google.BillingClient" Version="9.1.0.2" />
     <PackageReference Include="Xamarin.Google.Android.Play.Integrity" Version="1.6.0.4" />
     <PackageReference Include="Xamarin.AndroidX.Collection.Ktx" Version="1.6.0.1" />
-    <PackageReference Include="Xamarin.AndroidX.Fragment.Ktx" Version="1.9.0" />
+    <PackageReference Include="Xamarin.AndroidX.Fragment.Ktx" Version="1.9.1" />
     <PackageReference Include="Xamarin.AndroidX.Lifecycle.LiveData" Version="2.11.0.1" />
     <PackageReference Include="Xamarin.AndroidX.Lifecycle.LiveData.Core.Ktx" Version="2.11.0.1" />
     <PackageReference Include="Xamarin.AndroidX.Lifecycle.Process" Version="2.11.0.1" />
